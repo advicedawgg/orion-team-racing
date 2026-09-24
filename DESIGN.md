@@ -46,6 +46,8 @@ src/audio.js          SFX + music + synthesized engines                         
 src/save.js           localStorage save (unlocks, best times, settings, ghosts) (ui agent)
 ui.css                HUD (.hx-*) + menu (#ui .scr-*) styles, linked from index.html (ui agent)
 tools/check.js        THE GATE: track checks + headless 8-AI race sim           (core, extended by all)
+tools/balance.js      win share / spread / star economy / kid bots over N races (balance agent)
+tools/kidbots.js      kidBot + wobblyKid: models of a young player for the gate  (balance agent)
 tools/shot.mjs        screenshot through the GPU headless Chrome                 (core)
 tools/slide-test.mjs  scripted power slide in the real browser, 3 turbos + shots (core)
 tools/ui-test.mjs     menu/HUD browser driver: screens, key/pad/tap flows, cup, time trial (ui agent)
@@ -89,7 +91,7 @@ editing in parallel). Never rewrite or reformat a file you don't own.
   slide, counter-steer tightens/loosens the arc (steer into slide = tight, away = wide).
 - **Boost reserve**: turbos add to a reserve (seconds) that decays; stacking turbos, pads, jump
   landings all feed it; it raises top speed above base (base ~22 m/s, boost cap ~30 m/s, "super"
-  (10 stars) raises base by ~8%).
+  (10 stars) raises base by 4% — was 8%, see **Balance**).
 - **Hang-time turbo**: landing from ≥0.5 s of air gives a small turbo, ≥1.0 s a medium one.
 - **Start boost**: press accelerate as "GO!" appears (window ~0.25 s around it) = turbo;
   mashing early = stall/spin briefly (CTR style; disabled on Easy).
@@ -124,7 +126,8 @@ Space so the page doesn't scroll. **Auto-accelerate** is a setting, default ON i
 ## Racers (characters agent)
 
 8 racers, all unlocked from the start (it's for a young kid). Stats 1–5 each for `speed`,
-`accel`, `turn`, summing to 9 (balanced) — physics maps them to small (±6%) deltas, never large.
+`accel`, `turn`, summing to 9 (balanced) — physics maps them to small deltas worth about the same race
+time per point (**Balance** has the mapping and the measurements).
 Family first: **Orion** (the hero kid — match his look in SO2 `src/player.js`/`art.js`),
 **Sootie** (the family's black cat — SO2 `art.js` SYMBOL.life: near-black #2b2431 with mint-green
 eyes), **King Dad** (bald, short black beard, crown, TV remote — SO2 `world.js` king), **Mum**
@@ -204,7 +207,8 @@ at a time; one warp star in the air at a time.
 
 **Stars ⭐ = Wumpa fruit.** `track.starRows` (instanced, 1 draw call incl. spilled ones; pickup
 radius 1.7 m; a collected star respawns after 14 s). `kart.stars` caps at 10; **10 = Super**:
-+8 % top speed (physics) and every item juiced. Getting hit spills the stars physics took
++4 % top speed (physics `T.STAR_BONUS`) and every item juiced. **A full kart (10) drives through stars
+without taking them** (`IT.FULL_PASS`), so they stay for the pack (**Balance**). Getting hit spills the stars physics took
 (flip 3, spin 1) as real stars that bounce out and can be grabbed by anyone (the victim after
 1.3 s, others after 0.45 s; they blink out after 9 s).
 
@@ -292,6 +296,75 @@ for the old item-less races. Screenshots: `node tools/shot-items.mjs [scenario�
 measured by toggling the item group), +~9k triangles; each live projectile/crate/puddle/bubble/
 explosion part adds 1. Sim cost ~33 µs per 60 Hz step for 8 karts in node.
 
+## Balance (balance agent — `ai.js`, tuning in `physics.js`/`items.js`, `tools/balance.js`)
+
+Everything here is measured with **`node tools/balance.js`** (N seeded headless 8-AI races per track per
+difficulty through the real modules, the real roster parsed from `racers.js`, a rotated shuffled grid so
+every racer starts from every slot; worker threads, ~0.4 s/race/core; `--kid`, `--wobbly`, `--regress`
+(race time per stat point from random stats), `--flat` (all 3/3/3 control), `--set T.X=…` experiments —
+header of the file). N=48 per track leaves ±5 % binomial noise per cell (±2 % on ALL): judge ALL and mean
+place, re-run a noisy cell with fresh `--seed0`.
+
+**Why it was broken.** Physics had no cost for cornering and the AI holds its line, so lap time was top
+speed + boosts: `speed` was worth ~4 s/race per point, `accel` and `turn` ~0 (`--regress`). And the
+leader took every star it drove through, reached 10 by lap 2 and kept a +8 % Super for good (only the
+winner was ever Super: 1st 59 % of the race, 4th 1 %). King Dad (5/2/2) won 55–62 % of all races on
+every difficulty, the 2-speed karts 0–2 %, and the field finished ~20 s apart.
+
+**Stat mapping** (`T.STAT_*`, per point away from 3; tuned so a point of any stat is worth about the same
+race time — `--regress` ≈ −0.6…−0.7 s/point each on Medium):
+| stat | effect | 1 ↔ 5 |
+|---|---|---|
+| speed | top speed and boost cap `STAT_SPEED` 0.0065 | ±1.3 % (21.7 ↔ 22.3 m/s) |
+| accel ("ZOOM") | acceleration `STAT_ACC` 0.13 (off the line, out of hits/spins/walls/sand), turbo/pad kick `STAT_KICK` 0.12, boost reserve seconds `STAT_BOOST` 0.12 | 0→90 % 2.4 s ↔ 1.4 s |
+| turn | slide top speed `STAT_DRIFT` 0.02 (× `DRIFT_SPEED` 0.97, capped at 1), corner-scrub reduction `STAT_GRIP` 0.4; turn RATE stays `STAT` 0.03 (feel) | slide 20.5 ↔ 22.0 m/s |
+
+**Corner scrub** (new, `T.CORNER`): outside a slide, lateral accel v·ω above 12 m/s² costs up to 7 % of top
+speed at 32 m/s² (full lock at full speed); turn 5 loses 20 % of that, turn 1 140 %. The CTR feel is
+untouched (slides/turbos/hops are the same numbers); it just means hauling the stick round a hairpin at
+full speed isn't free, so the slide and the TURN stat pay. `cornerF` on the kart; self-tested.
+
+**Star economy.** `T.STAR_BONUS` 0.08 → **0.04**, and **a kart at 10 stars drives through stars without
+taking them** (`IT.FULL_PASS`, also spilled ones), so they're left for the pack; the AI now detours for
+stars (below). Measured: Super time of the karts finishing 1st/4th/8th went 40/2/0 % → 42/9/2 % (Medium),
+winner still usually Super (it's the reward), field spread below.
+
+**AI** (`DIFFICULTY` in ai.js; the item brain is still `AI_ITEM` in items.js):
+| | easy | medium | hard |
+|---|---|---|---|
+| pace / P(slide) / P(turbo) | 0.86 / 0.45 / 0.4 | 0.94 / 0.8 / 0.72 | 1.0 / 1.0 / 0.93 |
+| rubber band vs the human (× pace at full effect) | ahead 0.86 by 65 m, behind 1.2 by 55 m | 0.95 / 1.05 over 120 / 150 m | 0.985 / 1.02 over 120 / 150 m |
+| `grab`: sideways detour for a ? box (empty slot) / star (< 10) | 2 m | 3.5 m | 5 m |
+| `dodge`: P(notices a puddle/TNT/Nitro ahead, or a bomb/bubble rolling back, and steers round) | 0.25 | 0.7 | 0.95 |
+- Slides end early when even full counter-steer would carry the kart into a wall / off a `fall` edge
+  within 0.5 s (road curvature included) — castle hard walls went 6.1 → 0.5 per kart per race, no slide
+  runs off Star Road. It swerves wider round a kart that's crashed/spinning/much slower (no pile-ups).
+- Hard AI: ~2.0–2.6 turbos per slide (castle's maze ~1.0), 0 reversing, 0 stuck, ~0.1 walls/kart.
+
+**Kid assist** (the player, `kart.assist` = Easy or KID HELPER; `ai.js kidAssist`, applied by race.js
+before physics so the bots get exactly what a kid gets): (1) a nudge back toward the road when the kart
+is predicted to leave it within 0.7 s (≤ 0.5 steer, never fights a kid already steering back harder);
+(2) toward a `fall` edge (1.0 s ahead; on a jump run-up/in the air 1.9 s, i.e. aim the landing) it blends
+up to 85 % of the stick toward the road — a firm hand; (3) sand/grass cost 70 % of their slowdown
+(`T.ASSIST_OFFROAD`, sand 0.64 → 0.75). Auto-accelerate stays the menu's setting (on in Easy).
+**Bots** (`tools/kidbots.js`): `kidBot` (the gate's kid: never slides, loose line) and `wobblyKid` (0.25 s
+late, wandering ±0.5 noise, a full-lock yank every ~5 s, hop mashing). The gate races the wobbly kid on
+Easy on every track: must finish, ≤ 1 fall, < 15 s behind the winner.
+
+**Measured** (balance.js, items on, N=48/track/diff; before = commit a3c1047, N=24):
+| | before | after |
+|---|---|---|
+| win share range, ALL tracks — easy / medium / hard | 0–55 % / 0–62 % / 0–57 % (King Dad) | 10–15 % / 7–17 % / 9–18 % |
+| mean place range (4.5 = fair) — medium | 1.5 (King Dad) … 6.4 | 4.3 … 4.8 |
+| AI field gap 1st→8th, mean — easy / medium / hard | 21 / 20 / 18 s | 8.9 / 8.5 / 8.7 s |
+| kid bot on Easy: wins, margin, AI within 5 s of it | 83–100 %, by 8–14 s, 0–0.5 | 98–100 %, by 1.7–2.5 s, 4.6–5.9 |
+| kid bot on Medium: wins / podium | 8–50 % / 50–88 % | 25–50 % / 58–79 % |
+| kid bot on Hard: wins / mean place | 0–8 % / 4.2–6.8 | 0 % / 6.5–7.8 |
+| wobbly kid on Easy: behind the winner, falls per race (Star Road) | 8–25 s, 5.3 | 1.9–2.9 s, 0.1 |
+Per-track cells still show 20–30 % outliers at N=48 (e.g. Grumbles 29 % on ice medium); re-run with fresh
+seeds at N=96 they come back 10–16 % — noise, not a racer. Castle stars are still collected less (its
+rows sit off the slide lines): 6.6/kart vs ~11–13 elsewhere.
+
 ## Tracks (tracks agents)
 
 Built from a closed spline of control points, each with `{x, y, z, w (road width), bank}`, plus
@@ -337,7 +410,8 @@ Super Orion worlds:
    helix below), glowing rails where the data says `rail: 'glow'` (physical wall `none`), chase-
    light studs on `fall` edges, planets, a ringed planet, an asteroid ring, shooting stars, the
    giant Sootie constellation (mint eyes), rainbow hoops and floating stars. 24 collectible stars
-   only: more and the leader's permanent 10-star Super split the easy field > 35 s. AI laps 43–67 s.
+   only: more and the leader's permanent 10-star Super split the easy field > 35 s (that was with the
+   old +8 % Super; see **Balance** for the star economy now). AI laps 43–67 s.
 
 A **lap** = crossing the start line after passing all checkpoints in order (the track defines
 them as `s` values). 3 laps. Race positions from `(lap, s)`. Offroad (grass/sand/snow) slows
@@ -434,7 +508,7 @@ shot: `node tools/shot.mjs 'track=<id>&skip=1&hud=0&cam=x,y,z,tx,ty,tz' shots/o.
 - Stacked levels need ≥ 8 m between decks (camera 2 m up + the deck's 1.6 m underside), and a
   walled spiral needs a gap between the inside rail and any tower wall: the chase cam sits on the
   chord behind the kart (~0.9 m inside at r 27) and ended up inside the stone.
-- Gate: the lap-time floor now allows the +8% of a 10-star Super leader when items run (the leader
+- Gate: the lap-time floor now allows the `T.STAR_BONUS` (was 8 %, now 4 %) of a 10-star Super leader when items run (the leader
   holds Super from lap 2 on every track; Star Road's legit laps tripped the old floor).
 
 **Terrain, sky and water extensions (added for Ice Cream Peaks / Taco Volcano — all opt-in):**
@@ -573,7 +647,9 @@ standard gamepad through `navigator.getGamepads`; `cup` and `tt` clear `otrSave`
   and pads on the road, checkpoints ordered), and runs a **headless 8-AI race on each track**
   through the real `physics.js`/`ai.js`/`race.js`: every AI finishes 3 laps within a time
   limit, nobody is stuck > 3 s, lap times are sane. Add your own checks to it.
-- `node src/physics.js` — physics self-test (slide/turbo timing, top speeds, hang-time boost).
+- `node src/physics.js` — physics self-test (slide/turbo timing, top speeds, hang-time boost, stat mapping).
+- `node tools/balance.js [--n 48] [--kid] [--wobbly]` — the balance table (**Balance**); ~10 min for
+  everything at N=48 on the hub, `--tracks`/`--diff` to narrow. Run it after any physics/AI/item tuning.
 - Visual: `node tools/shot.mjs '<url query>' <out.png>` screenshots through the **GPU headless
   Chrome on Unraid** (CDP `http://192.168.15.100:9333`, real WebGL on an Arc B60 — see memory
   `reference_gpu_headless_browser`). **Always close your page in a `finally`** — leaked tabs
@@ -680,7 +756,8 @@ lapsDone, place, finished, finishTime, racerId, isPlayer`. Units/meaning:
   (3 = purple flames).
 - hits: `hitT` = **seconds left** of a flip (`hitDur` total; main passes progress `1 − hitT/hitDur`
   to animateRacer), `spinT` seconds left of a spin-out, `slowT` wobble seconds, `stallT` start stall,
-  `shieldT`, `invincT` (super star: immune + knocks others aside + top speed), `stars` (≥10 = +8% top).
+  `shieldT`, `invincT` (super star: immune + knocks others aside + top speed), `stars` (≥10 = +`T.STAR_BONUS` top, 4 %), `cornerF` (corner scrub factor, 1 = none), `assist` (kid assist on:
+the player on Easy / KID HELPER).
 - track/race: `s`, `si` (sample hint), `lat`, `ground` (surface y under the kart), `nrm` (smoothed
   ground normal), `lap` (1-based current), `lapsDone`, `nextCp`, `progress` (m, for positions),
   `place`, `finished`, `finishPlace`, `finishTime`, `lapTimes[]`, `frozen` (grid), `respawnT` /
@@ -701,7 +778,8 @@ turbo3, fizzle, overheat, pad, ramp, hang1, hang2, wall (0..1), bump (0..1), res
 'fall'), respawned, hit (kind), stars_lost (n), shield_pop`.
 
 **`race.js`** (pure): `createRace({ track, entrants: [{racerId, stats}], playerIndex (−1 = all AI),
-difficulty, laps, seed, easyBoost, noStall })` → `race` with `karts, brains, player, phase
+difficulty, laps, seed, easyBoost, noStall, assist })` (`assist` = kid assist for the player, default
+`easyBoost ?? difficulty === 'easy'`) → `race` with `karts, brains, player, phase
 ('countdown'|'race'|'done'), t (s; negative during the countdown), order (by place), laps,
 stats[] (per-kart gate stats), autoPlayer (AI drives the player)`, `race.step(playerCtrl)`,
 `race.events` (this step: `{type:'count', n}`, `{type:'go'}`, `{type:'lap', kart, lap}`,
@@ -714,7 +792,9 @@ runs a whole race headless. Countdown = 3.6 s; start boost window −0.25..+0.1 
 called 20 s later (unfinished karts get estimated times).
 
 **`ai.js`** (pure): `DIFFICULTY` table (pace, P(slide), P(turbo), reaction, start boost, rubber
-band), `createBrain(kart, track, difficulty, seed)`, `drive(brain, race)` → control object.
+band + its ramp distances, line, wobble, grab, dodge — see **Balance**), `createBrain(kart, track, difficulty,
+seed)`, `drive(brain, race)` → control object, `kidAssist(kart, track, ctrl)` → the player's control with
+the kid-assist steering nudge (race.js applies it when `kart.assist`), `ASSIST` (its tuning).
 
 **`main.js`**: `setState(name)` / `onState(fn(state, prev))` — states `boot, title, countdown,
 race, finished, results` (menu.js runs every menu screen inside `title`; see **Modes and UI**).

@@ -33,10 +33,10 @@ export const T = {
   // Racer stats (1..5, 3 = neutral) → small deltas per point away from 3, tuned with tools/balance.js so a
   // point of any stat is worth about the same race time (DESIGN.md "Balance").
   STAT: 0.03,             // turn RATE per point (feel: how sharp the kart steers/slides; doesn't win races)
-  STAT_SPEED: 0.007,      // speed: top speed (and boost cap) per point
+  STAT_SPEED: 0.0065,     // speed: top speed (and boost cap) per point
   STAT_ACC: 0.13,         // accel ("ZOOM"): acceleration per point — off the line, out of hits/spins/walls/offroad
-  STAT_KICK: 0.11,        // accel: turbo/pad kick size per point
-  STAT_BOOST: 0.11,       // accel: boost reserve seconds per point (turbos, pads, items all last a bit longer)
+  STAT_KICK: 0.12,        // accel: turbo/pad kick size per point
+  STAT_BOOST: 0.12,       // accel: boost reserve seconds per point (turbos, pads, items all last a bit longer)
   STAT_DRIFT: 0.02,       // turn: slide top-speed factor per point (high turn = keeps more speed sliding)
   STAT_GRIP: 0.4,         // turn: corner-scrub reduction per point (high turn = carries more speed round corners)
   CORNER: { a0: 12, a1: 32, loss: 0.07 },   // steering scrub: top × (1 − loss·ramp(aLat: a0→a1 m/s²)), not in a slide

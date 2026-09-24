@@ -1,18 +1,28 @@
-// node tools/balance.js [--n 24] [--tracks beach,star] [--diff easy,medium,hard] [--noitems] [--kid] [--wobbly]
+// node tools/balance.js [--n 24] [--tracks beach,star] [--diff easy,medium,hard] [--noitems]
+//                       [--kid] [--wobbly] [--only-kid] [--regress] [--flat] [--set PATH=JSON …]
 //                       [--workers 3] [--seed0 1] [--json out.json]
 //
 // BALANCE TABLE (gameplay balance agent). Runs N seeded headless 8-AI races per track per difficulty
 // through the REAL race/physics/ai/items modules, with the real roster (stats parsed from racers.js,
-// which imports THREE and can't be loaded in node) on a SHUFFLED grid every race (so a stat isn't
-// credited with the pole), all AI on the same difficulty. Prints per difficulty:
-//   - win share + mean place per racer (overall and per track),
-//   - race spread: finish gap 1st→8th and 1st→4th (s), mean and p90,
-//   - star economy: share of race time the current LEADER is Super (10 stars), mean stars of the winner.
-// --kid    also races the gate's kid bot (never slides, sloppy line) in grid slot 6 with the real
-//          assists of its difficulty, N races per track, and prints its place distribution.
-// --wobbly the "wobbly kid" (random-ish steering noise, Easy assists): finishes? falls/respawns?
-// Targets (DESIGN.md "Balance"): each racer's win share 8–18 % (none > 20 %) on Medium, every track.
-// Races run in worker threads (default 3 — the hub has 4 cores and other agents).
+// which imports THREE and can't be loaded in node), all AI on the same difficulty. The grid is a seeded
+// shuffle per block of 8 races rotated one slot per race, so with N a multiple of 8 every racer starts
+// from every slot equally often. Prints per difficulty:
+//   - win share + mean place per racer (per track and ALL),
+//   - race spread: finish gap 1st→8th (mean/p90) and 1st→4th (s),
+//   - star economy: share of race time the current LEADER is Super (10 stars), Super time of the karts
+//     finishing 1st/4th/8th, stars of the winner, and boxes/stars/item hits per kart,
+//   - turbos and wall hits per kart (AI sanity).
+// --kid      also races tools/kidbots.js kidBot (never slides, sloppy line) in grid slot 6 with the real
+//            assists of each difficulty: place histogram, win margin / loss gap, AI within 5 s of it.
+// --wobbly   the wobbly kid (late, noisy, yanking, hop-mashing) on Easy: same table + falls per race.
+// --only-kid skip the AI-only field races.
+// --regress  every kart gets random stats 1..5 → least-squares race time per stat point (parity = equal).
+// --flat     every racer 3/3/3 (control: what the grid + items alone do).
+// --set      tuning experiment, e.g. --set T.STAR_BONUS=0.03 --set 'DIFFICULTY.easy.band=[0.9,1.1]'
+//            (roots: T physics, IT/AI_ITEM items, DIFFICULTY/ASSIST ai).
+// Target (DESIGN.md "Balance"): each racer's win share ~8–18 % on Medium. N=48 per track still has ±5 %
+// binomial noise per cell (±2 % on ALL): judge the ALL column and mean place, re-run noisy cells.
+// Races run in worker threads (default 3 — the hub has 4 cores and other agents). ~0.4 s per race per core.
 
 import { isMainThread, Worker, parentPort, workerData } from 'node:worker_threads';
 import { readFileSync, writeFileSync } from 'node:fs';
