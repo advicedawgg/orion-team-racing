@@ -6,7 +6,7 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"; WORK="$(cd "$HERE/../.." && pwd)/work"; MAXPOWA="${MAXPOWA:-xam88@maxpowa}"
 slug="$1"; tris="$2"
-src="$WORK/$slug/mesh-apose/${slug}_$tris.glb"
+src="$WORK/$slug/mesh-apose/${slug}_$tris.glb"; [ -f "$src" ] || src="$WORK/$slug/mesh-apose/${slug}$tris.glb"
 [ -f "$src" ] || { echo "FAIL rig: no mesh at $src"; exit 1; }
 mkdir -p "$WORK/$slug/rig"
 io="$slug-rig"; win="C:/Users/xam88/charfab-io/$io"
