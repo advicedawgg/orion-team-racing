@@ -37,7 +37,7 @@ const PERF_HOOK = () => {
     orig(s, c);
     const cpu = performance.now() - t0;
     if (q) gl.endQuery(ext.TIME_ELAPSED_EXT);
-    const f = { t: O.race ? O.race.t : -99, cpu, calls: r.info.render.calls, tris: r.info.render.triangles, gpu: null, state: O.state };
+    const f = { t: O.race ? O.race.t : -99, cpu, calls: r.info.render.calls, tris: r.info.render.triangles, gpu: null, state: O.state, progs: r.info.programs?.length, tex: r.info.memory.textures };
     S.frames.push(f);
     if (q) pend.push([q, f]);
     for (let i = pend.length - 1; i >= 0; i--) {
@@ -100,6 +100,7 @@ for (const id of TRACKS) {
       const mid = fr.filter(f => f.t > 10 && f.state === 'race');
       const first5 = fr.filter(f => f.t > -99 && f.t < 5);
       perf = { grid: summ(grid), mid: summ(mid), worstFirst5: +Math.max(...first5.map(f => f.cpu)).toFixed(1) };
+      if (flag('spikes')) { let pp = 0, pt = 0; for (const f of fr) { if (f.cpu > 12 || f.progs !== pp || f.tex !== pt) console.log('  spike/change', JSON.stringify({ t: +f.t.toFixed(2), cpu: +f.cpu.toFixed(1), gpu: f.gpu && +f.gpu.toFixed(1), progs: f.progs, tex: f.tex, state: f.state })); pp = f.progs; pt = f.tex; } }
       await fs.writeFile(path.join(dir, 'perf.json'), JSON.stringify({ perf, loadMs }, null, 1));
     }
     table.push({ id, loadMs, shots, perf, info, errs: errs.length });

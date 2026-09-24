@@ -54,12 +54,16 @@ if (mode === 'split') {
   // --lift DEG swings the tail up about its root (the frontmost tail vertex) around +X: a drooping tail
   // would reach through the kart seat and becomes the "seat contact"
   const lift = Number(arg('--lift', '0')) * Math.PI / 180, c = Math.cos(lift), sn = Math.sin(lift)
+  const swing = Number(arg('--swing', '0')) * Math.PI / 180, cw = Math.cos(swing), sw = Math.sin(swing)
   let ri = 0; for (let i = 0; i < nt; i++) if (tail.pos[i * 3 + 2] > tail.pos[ri * 3 + 2]) ri = i
   const ry = tail.pos[ri * 3 + 1], rz = tail.pos[ri * 3 + 2]
   const tp = new Float32Array(tail.pos.length)
   for (let i = 0; i < nt; i++) {
     const y = tail.pos[i * 3 + 1] - ry, z = tail.pos[i * 3 + 2] - rz
-    const q = [tail.pos[i * 3], ry + y * c - z * sn, rz + y * sn + z * c]
+    let q = [tail.pos[i * 3], ry + y * c - z * sn, rz + y * sn + z * c]
+    // --swing DEG then turns it about the vertical through the root, out to one side
+    const dx = q[0] - tail.pos[ri * 3], dz = q[2] - rz
+    q = [tail.pos[ri * 3] + dx * cw - dz * sw, q[1], rz + dx * sw + dz * cw]
     for (let k = 0; k < 3; k++) tp[i * 3 + k] = q[k] * s[k] + o[k]
   }
   const has = n => p.getAttribute(n)

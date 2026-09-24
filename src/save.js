@@ -7,7 +7,7 @@
 //     cupWins: { easy: 0, medium: 0, hard: 0 },   // Orion Cup wins per difficulty
 //     best: { <trackId>: { lap: s, race: s, racer } },   // Time Trial + every race count
 //     settings: { master, music, sfx (0..1), autoAccel: 'easy'|'on'|'off', kidAssist: bool,
-//                 hd: bool, difficulty: 'easy'|'medium'|'hard' },
+//                 hd: bool, difficulty: 'easy'|'medium'|'hard', quality: 'auto'|'high'|'low' },
 //     lastRacer, lastTrack,
 //   }
 //   localStorage['otrGhost:<trackId>'] = { v:1, racer, time, hz, d: [x,y,z,yaw, x,y,z,yaw, …] (dm / mrad ints) }
@@ -22,7 +22,7 @@ export const DEFAULTS = () => ({
   unlocked: { star: false },
   cupWins: { easy: 0, medium: 0, hard: 0 },
   best: {},
-  settings: { master: 0.9, music: 0.7, sfx: 1, autoAccel: 'easy', kidAssist: true, hd: false, difficulty: 'easy' },
+  settings: { master: 0.9, music: 0.7, sfx: 1, autoAccel: 'easy', kidAssist: true, hd: false, difficulty: 'easy', quality: 'auto' },
   lastRacer: 'orion', lastTrack: null,
 });
 

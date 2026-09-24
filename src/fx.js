@@ -80,13 +80,13 @@ export function createFx(scene) {
   const rnd = (a = 1) => (Math.random() - 0.5) * 2 * a;
 
   const fx = {
-    add, alp,
+    add, alp, q: 1,
     /** Emit per-kart effects. `near` = distance to camera; far karts emit less. */
     kart(k, rig, dt, camPos) {
       if (k.respawnT > 0) return;
       const dx = k.pos.x - camPos.x, dz = k.pos.z - camPos.z, d2 = dx * dx + dz * dz;
       if (d2 > 90 * 90) return;
-      const lod = d2 < 30 * 30 ? 1 : 0.4;
+      const lod = (d2 < 30 * 30 ? 1 : 0.4) * fx.q;   // fx.q: quality (main.js: 1 high, 0.5 low)
       const fx_ = Math.sin(k.yaw), fz_ = Math.cos(k.yaw);
       const vx = k.vel.x, vz = k.vel.z;
       // --- exhaust flames at the exhaust anchors

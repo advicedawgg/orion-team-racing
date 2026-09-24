@@ -30,6 +30,9 @@ function roster() {
   return out;
 }
 
+/** Integer hash (splitmix32-ish): nearby seeds → unrelated xorshift streams. */
+const mix = x => { x = (x + 0x9e3779b9) | 0; x = Math.imul(x ^ (x >>> 16), 0x85ebca6b); x = Math.imul(x ^ (x >>> 13), 0xc2b2ae35); return (x ^ (x >>> 16)) >>> 0; };
+
 /* ============================================================================ worker */
 async function workerMain() {
   const { TRACKS } = await import('../src/tracks/index.js');
@@ -55,10 +58,12 @@ async function workerMain() {
     // grid: a seeded shuffle per block of 8 races (and per track), rotated one slot per race, so every
     // racer starts from every grid slot equally often when N is a multiple of 8
     const tIdx = TRACKS.findIndex(t => t.id === job.track);
-    const r = rng(Math.floor((job.seed - 1) / 8) * 9973 + tIdx * 131 + 5);
+    const r = rng(mix(Math.floor((job.seed - 1) / 8) * 9973 + tIdx * 131 + 5));
     const shuf = R.slice();
     for (let i = shuf.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [shuf[i], shuf[j]] = [shuf[j], shuf[i]]; }
-    const order = shuf.map((_, i) => shuf[(i + job.seed) % shuf.length]);
+    let order = shuf.map((_, i) => shuf[(i + job.seed) % shuf.length]);
+    // --regress: every kart gets independent random stats 1..5 → fit race time per stat point
+    if (job.randStats) order = order.map(e => ({ racerId: e.racerId, stats: { speed: 1 + Math.floor(r() * 5), accel: 1 + Math.floor(r() * 5), turn: 1 + Math.floor(r() * 5) } }));
     const kidMode = job.mode === 'kid' || job.mode === 'wobbly';
     const race = createRace({ track: tr, entrants: order, playerIndex: kidMode ? 6 : -1, difficulty: job.diff, seed: job.seed });
     if (!job.noItems) createItems(race, { seed: job.seed });
@@ -85,6 +90,7 @@ async function workerMain() {
     out.push({
       track: job.track, diff: job.diff, mode: job.mode, seed: job.seed,
       places: res.map(x => x.racerId),
+      rows: (m => res.map(x => [x.time - m, x.kart.stats.speed, x.kart.stats.accel, x.kart.stats.turn]))(times.reduce((a, b) => a + b, 0) / times.length),   // demeaned per race
       spread8: times[times.length - 1] - times[0], spread4: times[3] - times[0],
       dnf: res.filter(x => x.estimated).length,
       superLead: raceSteps ? superLead / raceSteps : 0,
@@ -114,13 +120,14 @@ async function main() {
   if (args.includes('--wobbly')) modes.push('wobbly');
   if (args.includes('--only-kid')) modes.splice(0, modes.length, 'kid');
   const R = roster();
+  const randStats = args.includes('--regress');
   if (args.includes('--flat')) for (const r of R) r.stats = { speed: 3, accel: 3, turn: 3 };   // control: no stat differences
   const sets = [];
   args.forEach((a, i) => { if (a === '--set') { const [p, v] = args[i + 1].split('='); sets.push([p, v]); } });
   const jobs = [];
   for (const mode of modes) for (const diff of diffs) for (const track of tracks) {
     if (mode === 'wobbly' && diff !== 'easy') continue;
-    for (let i = 0; i < N; i++) jobs.push({ track, diff, mode, seed: seed0 + i, noItems });
+    for (let i = 0; i < N; i++) jobs.push({ track, diff, mode, seed: seed0 + i, noItems, randStats });
   }
   const t0 = Date.now();
   const chunks = Array.from({ length: WORKERS }, () => []);
@@ -168,6 +175,24 @@ async function main() {
     console.log(`  ${'-'.repeat(12 + 12 * (tracks.length + 1))}\n` + [l2, l3, l4, l7, l5, l6].map(l => l.replace(/^  (.{22}) ?/, (m, a) => '  ' + a.padEnd(23))).join('\n'));
     const dnf = rs.reduce((a, x) => a + x.dnf, 0);
     if (dnf) console.log(`  DNF (estimated) karts: ${dnf}`);
+  }
+  if (randStats) {
+    // least squares: time = c + bs·speed + ba·accel + bt·turn (per diff, per track). Parity = bs ≈ ba ≈ bt.
+    const fit = rows => {
+      const X = rows.map(r => [1, r[1], r[2], r[3]]), y = rows.map(r => r[0]);
+      const A = [0, 1, 2, 3].map(i => [0, 1, 2, 3].map(j => X.reduce((a, x) => a + x[i] * x[j], 0)));
+      const b = [0, 1, 2, 3].map(i => X.reduce((a, x, n) => a + x[i] * y[n], 0));
+      for (let i = 0; i < 4; i++) { for (let k = i + 1; k < 4; k++) { const f = A[k][i] / A[i][i]; for (let j = i; j < 4; j++) A[k][j] -= f * A[i][j]; b[k] -= f * b[i]; } }
+      const x = [0, 0, 0, 0]; for (let i = 3; i >= 0; i--) { let v = b[i]; for (let j = i + 1; j < 4; j++) v -= A[i][j] * x[j]; x[i] = v / A[i][i]; }
+      return x;
+    };
+    console.log('\n== REGRESSION: race time change per stat point (s; negative = faster). Parity = equal columns.');
+    for (const diff of diffs) for (const t of [...tracks, null]) {
+      const rows = results.filter(x => x.diff === diff && x.mode === 'field' && (!t || x.track === t)).flatMap(x => x.rows);
+      if (!rows.length) continue;
+      const [, bs, ba, bt] = fit(rows);
+      console.log(`  ${diff.padEnd(7)} ${(t || 'ALL').padEnd(8)} speed ${bs.toFixed(2).padStart(6)}  accel ${ba.toFixed(2).padStart(6)}  turn ${bt.toFixed(2).padStart(6)}   (n=${rows.length})`);
+    }
   }
   for (const mode of ['kid', 'wobbly']) for (const diff of diffs) {
     const rs = results.filter(x => x.diff === diff && x.mode === mode);

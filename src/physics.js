@@ -29,16 +29,17 @@ export const T = {
   HANG1: { air: 0.5, t: 0.45, tier: 1, kick: 2.5 }, HANG2: { air: 1.0, t: 0.8, tier: 2, kick: 3.5 },
   START: { t: 1.3, tier: 2, kick: 6 },
   BOOST_CAP_T: 3.0, BOOST_BASE: 0.14, BOOST_PER_S: 0.1,
-  STAR_BONUS: 0.08, STARS_SUPER: 10, STARS_MAX: 10,
+  STAR_BONUS: 0.04, STARS_SUPER: 10, STARS_MAX: 10,
   // Racer stats (1..5, 3 = neutral) → small deltas per point away from 3, tuned with tools/balance.js so a
   // point of any stat is worth about the same race time (DESIGN.md "Balance").
   STAT: 0.03,             // turn RATE per point (feel: how sharp the kart steers/slides; doesn't win races)
-  STAT_SPEED: 0.03,       // speed: top speed (and boost cap) per point
-  STAT_ACC: 0.03,         // accel ("ZOOM"): acceleration per point — off the line, out of hits/spins/walls/offroad
-  STAT_KICK: 0,           // accel: turbo/pad kick size per point
-  STAT_DRIFT: 0,          // turn: slide top-speed factor per point (high turn = keeps more speed sliding)
-  STAT_GRIP: 0,           // turn: corner-scrub reduction per point (high turn = carries more speed round corners)
-  CORNER: { a0: 12, a1: 32, loss: 0 },   // steering scrub: top × (1 − loss·ramp(aLat: a0→a1 m/s²)), not in a slide
+  STAT_SPEED: 0.0075,     // speed: top speed (and boost cap) per point
+  STAT_ACC: 0.1,          // accel ("ZOOM"): acceleration per point — off the line, out of hits/spins/walls/offroad
+  STAT_KICK: 0.1,         // accel: turbo/pad kick size per point
+  STAT_BOOST: 0.08,       // accel: boost reserve seconds per point (turbos, pads, items all last a bit longer)
+  STAT_DRIFT: 0.015,      // turn: slide top-speed factor per point (high turn = keeps more speed sliding)
+  STAT_GRIP: 0.35,        // turn: corner-scrub reduction per point (high turn = carries more speed round corners)
+  CORNER: { a0: 12, a1: 32, loss: 0.07 },   // steering scrub: top × (1 − loss·ramp(aLat: a0→a1 m/s²)), not in a slide
   KART_R: 0.8, WALL_E: 0.25, WALL_MIN_KEEP: 0.4,
   SNAP: 0.4, RESPAWN_T: 1.2, RESPAWN_DROP: 2.5,
   HIT: { flip: { t: 1.2, keep: 0.15, stars: 3 }, spin: { t: 1.0, keep: 0.45, stars: 1 }, wobble: { t: 3.0 } },
@@ -106,6 +107,7 @@ export function topSpeed(k) {
 /** Add to the boost reserve. tier 1..3 (3 = purple flames). Items/pads/turbos all come through here. */
 export function addBoost(k, secs, tier = 1, kick = 3) {
   const was = k.boostT;
+  secs *= statK(k.stats.accel, T.STAT_BOOST);
   k.boostT = Math.min(T.BOOST_CAP_T, k.boostT + secs);
   k.boostTier = was > 0 ? Math.max(tier, k.boostTier === 3 && was > 0.3 ? 3 : tier) : tier;
   if (tier >= k.boostTier) k.boostTier = tier;
@@ -476,7 +478,12 @@ async function selfTest() {
     check('0→90% in 1.5–2.5 s', t90 > 1.5 && t90 < 2.5, `t90=${t90?.toFixed(2)} s`);
     const kf = fresh({ stats: { speed: 5, accel: 2, turn: 2 } }); run(kf, 8, C());
     const ks = fresh({ stats: { speed: 1, accel: 4, turn: 4 } }); run(ks, 8, C());
-    check('stat spread ±6%', Math.abs(kf.speed / T.BASE_MAX - 1.06) < 0.005 && Math.abs(ks.speed / T.BASE_MAX - 0.94) < 0.005, `fast=${kf.speed.toFixed(2)} slow=${ks.speed.toFixed(2)}`);
+    const sp = 2 * T.STAT_SPEED;
+    check(`speed stat spread ±${(sp * 100).toFixed(1)}% (small, DESIGN ±6% max)`, sp <= 0.06 && Math.abs(kf.speed / T.BASE_MAX - (1 + sp)) < 0.005 && Math.abs(ks.speed / T.BASE_MAX - (1 - sp)) < 0.005, `fast=${kf.speed.toFixed(2)} slow=${ks.speed.toFixed(2)}`);
+    // accel stat: 0→90% time, ZOOM 5 vs 1
+    const tTo90 = st => { const k = fresh({ stats: { speed: 3, accel: st, turn: 3 } }); let t = 0; for (; t < 6 && k.speed < 0.9 * baseTop(k); t += DT) stepKart(k, C(), flat); return t; };
+    const [ta5, ta1] = [tTo90(5), tTo90(1)];
+    check('accel stat: ZOOM 5 reaches 90% sooner than ZOOM 1 (small)', ta5 < ta1 && ta1 / ta5 < 1.6, `0→90% ${ta5.toFixed(2)} s vs ${ta1.toFixed(2)} s`);
   }
   // helper: get to speed, hop+slide left, then press the other shoulder per a policy
   const slideRun = (policy, o = {}) => {

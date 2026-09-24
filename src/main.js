@@ -56,6 +56,35 @@ function resize() {
 }
 addEventListener('resize', resize); resize();
 
+/* ------------------------------------------------------------------ quality (Steam Deck) */
+// G.quality = 'auto' | 'high' | 'low' (Settings → GRAPHICS; URL ?q=). The effective level is
+// G.qLevel. 'low' = render scale 0.85, no real-time shadow (the player's kart gets a blob like
+// everyone else), half the particles, AI karts culled at 150 m instead of 230 m. 'auto' starts
+// high and drops to low for the session if the race runs slower than ~48 fps for 4 s (median
+// rAF interval over two 2 s windows) — never back up, so it can't oscillate. Pixel ratio and
+// particles change at once; shadows change at the next race start (toggling them recompiles
+// every shader, which startRace's compileAsync already pays for).
+const QUAL = { high: { scale: 1, shadows: true, fx: 1, far: 230 }, low: { scale: 0.85, shadows: false, fx: 0.5, far: 150 } };
+function applyQuality() {
+  const q = QUAL[G.qLevel] || QUAL.high;
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2) * q.scale); resize();
+  if (fx) fx.q = q.fx;
+}
+function setQuality(v) {
+  G.quality = v === 'high' || v === 'low' ? v : 'auto';
+  G.qLevel = G.quality === 'low' ? 'low' : G.quality === 'high' ? 'high' : (G.autoLow ? 'low' : 'high');
+  applyQuality();
+}
+const qWatch = { dts: [], bad: 0 };
+function watchQuality(dt) {
+  if (G.quality !== 'auto' || G.qLevel === 'low' || G.state !== 'race' || G.paused || document.hidden) { qWatch.dts.length = 0; return; }
+  qWatch.dts.push(dt);
+  if (qWatch.dts.length < 120) return;
+  const med = [...qWatch.dts].sort((a, b) => a - b)[60]; qWatch.dts.length = 0;
+  qWatch.bad = med > 0.0205 ? qWatch.bad + 1 : 0;
+  if (qWatch.bad >= 2) { G.autoLow = true; setQuality('auto'); console.info('[otr] auto quality: frame time', (med * 1000).toFixed(1), 'ms → low'); }
+}
+
 /* ------------------------------------------------------------------ game state */
 const hud = createHud($('hud'));
 const fx = Q.get('fx') === '0' ? null : createFx(scene);
@@ -69,6 +98,7 @@ const G = {
   slot: qn('slot', 6), laps: Q.has('laps') ? qn('laps', 3) : undefined, seed: qn('seed', 1),
   acc: 0, timeScale: 1, paused: false, override: null, pendA: false, pendB: false, t: 0, frames: 0,
   hd: Q.get('hd') === '1',
+  quality: 'auto', qLevel: 'high', autoLow: false,
 };
 export function setState(s) {
   const prev = G.state; G.state = s;
@@ -181,6 +211,13 @@ async function startRace() {
   for (const k of G.race.karts) audio.engineStart(k.index, k.isPlayer);
   audio.music(G.track.def.music || G.track.theme);
   G.acc = 0; G.t = 0;
+  // quality: shadows on/off only changes here, right before the warm-up compiles everything anyway
+  const wantSh = SHADOWS && (QUAL[G.qLevel] || QUAL.high).shadows;
+  if (renderer.shadowMap.enabled !== wantSh) {
+    renderer.shadowMap.enabled = wantSh; sun.castShadow = wantSh;
+    scene.traverse(o => { if (o.material) for (const m of [].concat(o.material)) m.needsUpdate = true; });
+  }
+  G.shadowsOn = wantSh;
   // warm every shader before the lights go green (three compiles per material × light count)
   try { await renderer.compileAsync(scene, camera); } catch { renderer.compile(scene, camera); }
   setState('countdown');
@@ -322,11 +359,12 @@ function drawKarts(alpha, dt) {
     root.quaternion.copy(_qa).multiply(_qy);
     v.ix = x; v.iy = y; v.iz = z; v.iyaw = k.yaw;
     // far karts: skip drawing (fog hides them anyway; saves ~12 draw calls each)
-    const far = (x - camera.position.x) ** 2 + (z - camera.position.z) ** 2 > 230 * 230;
+    const farD = (QUAL[G.qLevel] || QUAL.high).far;
+    const far = (x - camera.position.x) ** 2 + (z - camera.position.z) ** 2 > farD * farD;
     if (far) root.visible = false;
     // blob shadow on the ground under the kart (not for the player: it has a real one)
     const gy = isFinite(k.ground) ? k.ground : y;
-    const hgt = Math.max(0, y - gy), sc = root.visible && i !== race.playerIndex ? Math.max(0.35, 1 - hgt * 0.18) : 0;
+    const hgt = Math.max(0, y - gy), sc = root.visible && (i !== race.playerIndex || !G.shadowsOn) ? Math.max(0.35, 1 - hgt * 0.18) : 0;
     _bq.setFromAxisAngle(_Y, yaw); _bs.set(sc, 1, sc); _bp.set(x, gy + 0.15, z);   // 4 cm lost the depth fight with the road's polygonOffset at grazing angles
     blob.setMatrixAt(i, _bm.compose(_bp, _bq, _bs));
     if (v.rig && R.animateRacer) {
@@ -359,6 +397,7 @@ function frame(now) {
   if (!MENU && G.state === 'results' && (In.hit('confirm') || In.hit('hopA'))) { G.pendA = false; startRace(); }
   tick(dt);
   render(dt);
+  watchQuality((now - (frame.prev ?? now)) / 1000); frame.prev = now;
 }
 function tick(dt) {
   if (!G.race || G.paused || G.state === 'boot' || G.state === 'title') return;
@@ -435,10 +474,11 @@ window.__OTR = {
   render() { render(1 / 60); },
   info() { const i = renderer.info; return { calls: i.render.calls, triangles: i.render.triangles, geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length }; },
   setPaused(p) { G.paused = p; },
-  loadTrack, startRace, endRace, hud,
+  loadTrack, startRace, endRace, hud, setQuality,
 };
 
 /* ------------------------------------------------------------------ boot */
+setQuality(Q.get('q') || 'auto');   // menu.js re-applies the saved GRAPHICS setting (unless ?q=)
 In.initTouch();
 In.onGesture(() => { audio.init(); audio.unlock(); });
 setState('boot');
@@ -448,7 +488,7 @@ const SKIP = Q.get('skip') === '1' || Q.has('t') || Q.get('ai') === '1';
 if (MENU) {
   try {
     await MENU.initMenu({ G, Q, scene, camera, renderer, audio, hud, In, R, loadTrack, startRace, endRace, setState, onState,
-      advance(s) { advance(s); render(0); } }, { skip: SKIP });
+      advance(s) { advance(s); render(0); }, setQuality }, { skip: SKIP });
   } catch (e) { console.error('[otr] menu.js init failed, placeholder title', e); MENU = null; }
 }
 if (SKIP) {

@@ -6,16 +6,16 @@ Enabled by the **FANCY RACERS** setting (`settings.hd`) or `?hd=1`.
 
 | file | racer | kind | tris | size | notes |
 |---|---|---|---|---|---|
-| `orion.glb`    | Orion    | rig (mixamorig, 23 bones) | 29,129 | 0.89 MB | |
+| `orion.glb`    | Orion    | rig (mixamorig, 23 bones) | 29,129 | 0.95 MB | recoloured to SO2 (texrecolor): hands, skin #f0c39a, hair #3a2a1c |
 | `kingdad.glb`  | King Dad | rig | 29,704 | 1.26 MB | back-of-head hair repainted to skin (texpaint) |
-| `mum.glb`      | Mum      | rig | 29,285 | 1.17 MB | |
-| `sootie.glb`   | Sootie   | rig | 28,013 | 1.09 MB | tail cut before rigging, grafted back on Hips, lifted 85° |
+| `mum.glb`      | Mum      | rig | 29,285 | 1.24 MB | recoloured to SO1 Gemma (texrecolor): hair #5a3518, skin #ffd9b3 |
+| `sootie.glb`   | Sootie   | rig | 28,013 | 1.09 MB | tail cut before rigging, grafted back on Hips (`--lift 25 --swing 60`: curls out to one side, reads as a tail and not a stick from the chase cam) |
 | `grumblin.glb` | Grumbles | static | 14,665 | 0.53 MB | generated already sitting |
 | `jelly.glb`    | Wibble   | static | 14,985 | 0.35 MB | |
 | `zapdrone.glb` | Zappy    | static | 14,093 | 0.44 MB | yaw -1.6 in HD_MODELS (eye to +Z) |
 | `prickle.glb`  | Prickles | static | 14,193 | 0.52 MB | |
 
-Total 6.0 MB. Every file: one mesh, one material, one 1024² WebP base-colour texture, meshopt-compressed
+Total 6.4 MB. Every file: one mesh, one material, one 1024² WebP base-colour texture, meshopt-compressed
 (`EXT_meshopt_compression`, needs `GLTFLoader.setMeshoptDecoder`). No metallic-roughness map (dropped; the
 loader renders a flat soft plastic, metalness 0 / roughness 0.72).
 
@@ -48,6 +48,15 @@ distance.
 - `tailsplit.mjs split|graft`: for non-humanoid appendages that confuse MIA (Sootie's tail).
 - `texpaint.mjs --where "<xyz predicate>"`: recolours dark (hair) texels to sampled skin in a region.
 - `inpaint.mjs`: masked Krea img2img touch-up of a render.
+- `texrecolor.mjs --class "<rgb predicate>" [--where xyz] --to #hex [--mode mul|lum] [--ramp lo,hi] [--strength s]`:
+  moves one colour class of the texture onto the procedural/SO palette. Krea rendered Mum tan with near-black
+  hair, and Orion with black hair and orange skin; the procedural tier uses SO1/SO2 colours. Order matters:
+  hair must go AFTER skin (recoloured brown hair would otherwise match the skin class). Exact commands:
+  - mum: hair `--class "l<85 && r>=b && r>g-4" --where "y>0.1 && (z<0.08 || y>0.62)" --to #5a3518 --mode lum`,
+    then skin `--class "r>g+15 && g>b+5 && b>r*0.3" --to #ffd9b3 --strength 0.8 --ramp 55,95`
+  - orion: hands `--class "r>g+10 && r>90" --where "Math.abs(x)>0.36 && y<-0.05" --to #d9a075 --mode lum` (TRELLIS
+    baked them red-orange), skin `--class "r>g+15 && g>b+5 && b>r*0.18" --to #f0c39a --strength 0.75 --ramp 50,95`,
+    hair `--class "l<60 && r>=b-4" --where "y>0.3" --to #3a2a1c --mode lum`
 - `comfy-up.ps1` / `comfy-down.ps1` (via `psrun.sh`): start/stop ComfyUI on maxpowa. Run one GPU stage at a time.
 
 Shared style suffix: *"3D CGI character render like a modern family animated movie, stylized chunky kid-friendly
@@ -83,7 +92,7 @@ Rig traps found here (in addition to DAWG ARENA's neutral_bone and quantize trap
 - Big cartoon heads put the MIA head joint well in front of the hips. Standing the rig up by hips→head then
   reclines the body, so `HD_MODELS.sootie.up = 'legs'` (feet→thighs is up).
 - A long tail made MIA predict a tilted skeleton, and when grafted back it drooped through the seat and became
-  the "seat contact". Hence split before rigging, graft onto Hips, and lift the tail 85°.
+  the "seat contact". Hence split before rigging, graft onto Hips, then lift 25° and swing 60° to the side (a tail lifted straight up read as a stick from the chase cam).
 - Sootie's jacket shell stretches if her arms go straight up: `armsUp: 0.4`.
 
 Viewer: `hd.html?ids=orion,mum&poses=idle,left,slideL,hit,cheer&views=chase,front,close`, and

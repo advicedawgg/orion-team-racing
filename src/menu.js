@@ -760,6 +760,7 @@ function resume(silent) {
 
 /* ---------------------------------------------------------------- settings + controls */
 const AUTO_LBL = { easy: 'EASY ONLY', on: 'ALWAYS', off: 'OFF' };
+const QUAL_LBL = { auto: 'AUTO', high: 'FANCY', low: 'FAST' };   // qa agent: main.js setQuality()
 function showSettings() {
   const s = S.settings();
   const hdAny = !!HDM && Object.keys(HDM.HD_MODELS || {}).length > 0;
@@ -775,6 +776,7 @@ function showSettings() {
         ${tog('autoAccel', 'AUTO-GO', AUTO_LBL[s.autoAccel] || 'EASY ONLY', 'kart drives forward by itself')}
         ${tog('kidAssist', 'KID HELPER', s.kidAssist ? 'ON' : 'OFF', 'easy turbos, no overheating')}
         ${hdAny ? tog('hd', 'FANCY RACERS', s.hd ? 'ON' : 'OFF', 'detailed 3D models') : ''}
+        ${tog('quality', 'GRAPHICS', QUAL_LBL[s.quality] || 'AUTO', 'FAST = smoother on small computers')}
       </div>
       <div class="res-btns"><button class="mbtn" data-nav data-act="controls" data-key="controls">CONTROLS</button><button class="mbtn big" data-nav data-act="back" data-key="back">◀ BACK</button></div>
     </div>`, {
@@ -804,6 +806,7 @@ function showSettings() {
     const k = row.dataset.k, s2 = S.settings();
     if (k === 'master' || k === 'music' || k === 'sfx') { setVal(k, s2[k] + d * 0.1); sfx(k === 'music' ? 'menu_move' : 'star'); return; }
     if (k === 'autoAccel') { const o = ['easy', 'on', 'off']; const v = o[(o.indexOf(s2.autoAccel) + d + 3) % 3]; S.setSetting(k, v); row.querySelector('.val').textContent = AUTO_LBL[v]; }
+    else if (k === 'quality') { const o = ['auto', 'high', 'low']; const v = o[(Math.max(0, o.indexOf(s2.quality)) + d + 3) % 3]; S.setSetting(k, v); row.querySelector('.val').textContent = QUAL_LBL[v]; if (!api.Q.has('q')) api.setQuality?.(v); }
     else { const v = !s2[k]; S.setSetting(k, v); row.querySelector('.val').textContent = v ? 'ON' : 'OFF'; if (k === 'hd' && !api.Q.has('hd')) api.G.hd = v; }
     sfx('menu_move');
   }
@@ -967,6 +970,7 @@ export async function initMenu(a, { skip = false } = {}) {
   api.hud.menuOwnsResults = true;
   const s = S.settings();
   try { api.audio.setVolumes({ master: s.master, music: s.music, sfx: s.sfx }); } catch { /* */ }
+  if (!skip && !api.Q.has('q')) api.setQuality?.(s.quality || 'auto');
   M.track = api.G.track?.id || api.G.trackId || TRACKS[0].id;
   if (skip) {
     // ?skip=1 / ?t= / ?ai=1 (other agents' tests): the race is exactly what the URL says — core's
