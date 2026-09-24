@@ -13,6 +13,13 @@
 // an ARRAY of control objects, one per player in `pn` order. The rubber band pulls the AI toward
 // the nearest human; the race is called AFTER_PLAYER s after the LAST human finishes (or
 // MP_WAIT s after the first one, so a stuck straggler can't hold everyone forever).
+//
+// Online (DESIGN.md "Online"): a kart with `remote = true` is simulated somewhere else — race.step
+// skips its physics, start boost and ev reset (whoever owns it sets its state and ev before the
+// step). The game server marks the humans remote (their own devices simulate them); a client marks
+// every kart but its own remote and sets `race.netClient = true`, which also skips laps, positions,
+// the rubber band and the end of the race (the server's are mirrored in). `race.starHit(victim, by)`,
+// if set, replaces the super-star bump's applyHit (physics collideKarts).
 
 import { DT, createKart, placeKart, stepKart, collideKarts, addBoost, T } from './physics.js';
 import { createBrain, drive, DIFFICULTY, kidAssist } from './ai.js';
@@ -91,13 +98,15 @@ function stepRace(race, playerCtrl = NOCTRL) {
       emit(race, 'go', null);
       for (const k of karts) {
         k.frozen = false; k.lapStartT = 0;
+        if (k.remote) continue;          // online: its owner does its start boost
         if (k.isPlayer && !race.autoPlayer) {
           if (k._thrPrev > 0.5 && k._thrEdge >= START_WINDOW[0]) startBoost(race, k);
           else if (k._thrPrev > 0.5 && k._thrEdge > -COUNTDOWN + 0.01 && !race.noStall) { k.stallT = T.STALL_T; emit(race, 'stall', k); }
         } else if (brains[k.index].r() < race.cfg.start || (k.isPlayer && race.autoPlayer)) startBoost(race, k);
       }
     } else {
-      for (const k of karts) { k.ev.length = 0; stepKart(k, k.isPlayer ? { ...NOCTRL, throttle: ctrlOf(playerCtrl, k).throttle } : NOCTRL, track); }
+      for (const k of karts) { if (k.remote) continue; k.ev.length = 0; stepKart(k, k.isPlayer ? { ...NOCTRL, throttle: ctrlOf(playerCtrl, k).throttle } : NOCTRL, track); }
+      if (race.netClient) return;   // online client: the server's grid order is mirrored in
       // grid order until the lights go green
       for (const k of karts) k.progress = k.s > track.length / 2 ? k.s - track.length : k.s;
       race.order.sort((a, b) => b.progress - a.progress); race.order.forEach((k, i) => { k.place = i + 1; });
@@ -106,7 +115,7 @@ function stepRace(race, playerCtrl = NOCTRL) {
   }
   // late start boost: a clean press just after GO still counts
   if (t <= START_WINDOW[1] && !race.autoPlayer) for (const k of race.humans) {
-    if (k._sb) continue;
+    if (k._sb || k.remote) continue;
     const thr = ctrlOf(playerCtrl, k).throttle;
     if (thr > 0.5 && k._thrPrev <= 0.5 && k.stallT <= 0) startBoost(race, k);
     k._thrPrev = thr;
@@ -119,7 +128,7 @@ function stepRace(race, playerCtrl = NOCTRL) {
   // "dad" on Easy): kid's mean place 6.1 vs 7.5 with a nearest-human band; 1P wobbly kid ~5.6.
   let hLo = Infinity, hHi = -Infinity;
   for (const h of race.humans) { if (h.progress < hLo) hLo = h.progress; if (h.progress > hHi) hHi = h.progress; }
-  if (race.humans.length) for (const k of karts) {
+  if (race.humans.length && !race.netClient) for (const k of karts) {
     if (k.isPlayer) continue;
     const d = k.progress > hHi ? k.progress - hHi : k.progress - hLo;   // + = AI ahead
     const [ahead, behind] = race.cfg.band, [dA, dB] = race.cfg.bandD || [120, 150];   // full effect at dA m ahead / dB m behind
@@ -129,6 +138,7 @@ function stepRace(race, playerCtrl = NOCTRL) {
 
   // ---------------------------------------------------------------- drive
   for (const k of karts) {
+    if (k.remote) continue;             // online: simulated by its owner (state + ev set before this step)
     k.ev.length = 0;
     const b = brains[k.index];
     const useAI = !k.isPlayer || race.autoPlayer || k.finished;
@@ -137,7 +147,7 @@ function stepRace(race, playerCtrl = NOCTRL) {
     k.ctrl = c;
     stepKart(k, c, track);
   }
-  collideKarts(karts);
+  collideKarts(karts, race.starHit);
   for (const fn of race.systems) fn(race, DT);
 
   // ---------------------------------------------------------------- laps
@@ -151,6 +161,7 @@ function stepRace(race, playerCtrl = NOCTRL) {
       else if (name.startsWith('turbo')) st.turbos++; else if (name === 'fizzle') st.fizzles++;
       else if (name === 'overheat') st.overheats++; else if (name === 'pad') st.pads++; else if (name === 'ramp') st.jumps++;
     }
+    if (race.netClient) continue;       // online client: laps come from the server
     if (k.respawnT > 0) { k._prevS = k.s; continue; }
     const prev = k._prevS ?? k.s;
     k._prevS = k.s;
@@ -183,6 +194,7 @@ function stepRace(race, playerCtrl = NOCTRL) {
     else st.stuck = 0;
   }
 
+  if (race.netClient) return;          // online client: positions + the end of the race are the server's
   // ---------------------------------------------------------------- positions
   race.order.sort((a, b) => {
     if (a.finished || b.finished) {

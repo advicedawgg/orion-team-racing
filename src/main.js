@@ -14,6 +14,11 @@
 // URL: players=2, racer2=<id>, dev1/dev2=auto|kb|kbL|kbR|pad:N, auto2=0|1 (P2 auto-accelerate),
 // helper1/helper2=0|1 (per-player kid helper). In 2P shadows are off and FAST-style particles/culling
 // apply whatever the GRAPHICS setting (QUAL_MP).
+//
+// Online (DESIGN.md "Online"; online.js owns it): while G.net is set, the race is a network race —
+// entrantsFor() takes the server's grid (G.netGrid), and G.net.setup(race) / preStep() / postStep() /
+// frame(dt) hook in around race.step (my kart simulated here, everything else mirrored from the server).
+// G.net is null in every offline mode, so none of this runs there.
 import * as THREE from 'three';
 import * as In from './input.js';
 import { DT, T, redStart, baseTop } from './physics.js';
@@ -172,6 +177,7 @@ async function loadTrack(id) {
 
 /* ------------------------------------------------------------------ racers */
 function entrantsFor(playerId) {
+  if (G.netGrid) return { ids: G.netGrid.ids.slice(), slot: G.netGrid.slot };   // online: the server's grid (my slot, or the kart a spectator watches)
   if (G.solo) return { ids: [playerId], slot: 0 };          // Time Trial (menu.js sets G.solo)
   const all = R.RACERS.map(r => r.id);
   if (G.players === 2) {
@@ -261,6 +267,7 @@ async function startRace() {
   G.slotIndex = slot;
   buildVisuals(ids);
   IV.attach(G.race);                         // items: before compileAsync so item shaders are warmed too
+  G.net?.setup(G.race);                      // online: remote karts, mirrored items, synced clock (online.js)
   for (const [i, k] of G.race.karts.entries()) snapVisual(i, k);
   chase.snap(G.race.player);
   if (two) chase2.snap(G.race.humans[1]);
@@ -326,7 +333,9 @@ function player2Ctrl() {
 function stepSim() {
   const race = G.race;
   for (const [i, k] of race.karts.entries()) { const v = G.visuals[i]; v.px = k.pos.x; v.py = k.pos.y; v.pz = k.pos.z; v.pyaw = k.yaw + k.drift * k.driftAngle; }
+  G.net?.preStep(race);                       // online: remote karts ← snapshot interpolation, server events queued
   race.step(G.mp ? [playerCtrl(), player2Ctrl()] : playerCtrl());
+  G.net?.postStep(race);                      // online: my kart → the server, item button → USE
   G.pendA = G.pendB = G.pendI = false; G.pend2.A = G.pend2.B = G.pend2.I = false;
   handleEvents(race.events);
   IV.step(race.events, G.ff);
@@ -505,6 +514,7 @@ function frame(now) {
     if (In.hit('hopB')) G.pendB = true;
     if (In.hit('item')) G.pendI = true;
   }
+  G.net?.frame(dt);                           // online: clock discipline, spectator input, connection bar
   if (In.hit('mute')) audio.toggleMute();
   if (In.hit('fullscreen')) { if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {}); else document.exitFullscreen?.(); }
   // with menu.js loaded it owns pause / title / results input (its own keyboard + pad reading)

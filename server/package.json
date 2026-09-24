@@ -1,0 +1,20 @@
+{
+  "name": "otr-server",
+  "private": true,
+  "type": "module",
+  "description": "Orion Team Racing online lobbies: geckos.io (WebRTC, one UDP port) + WebSocket fallback. Imports the pure game modules from ../src.",
+  "scripts": {
+    "start": "node index.js",
+    "selftest": "node selftest.js",
+    "bundle-client": "node ../tools/build-geckos.mjs"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@geckos.io/server": "3.1.0",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@geckos.io/client": "3.1.0",
+    "esbuild": "^0.28.2"
+  }
+}

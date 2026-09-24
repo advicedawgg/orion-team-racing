@@ -53,6 +53,17 @@ tools/slide-test.mjs  scripted power slide in the real browser, 3 turbos + shots
 tools/ui-test.mjs     menu/HUD browser driver: screens, key/pad/tap flows, cup, time trial (ui agent)
 tools/twoplayer-test.mjs  2P split screen end to end: fake pads, keyboard split, join, cup (multiplayer agent)
 tools/shot-2p.mjs     2P screenshots per track: grid / mid-race items / results                (multiplayer agent)
+src/protocol.js       PURE wire contract: version, lobbies, rotation, messages, binary snapshot/state codecs (online agent)
+src/netgame.js        PURE client half of an online race (interpolation, mirror, events)  (online agent)
+src/net.js            client transport: geckos.io WebRTC + WebSocket fallback, clock sync (online agent)
+src/online.js         ONLINE mode in the browser: screens, main.js hooks, markers, bars    (online agent)
+vendor/geckos.client.js  the geckos.io browser client, one ESM bundle (tools/build-geckos.mjs)
+server/               the game server: node ESM, imports ../src pure modules; own package.json (online agent)
+tools/netbot.mjs      headless online player over the real transport                       (online agent)
+tools/online-test.mjs ONLINE end to end: own server + 3 netbots + the GPU browser            (online agent)
+tools/net-jitter.mjs  server-side reconstruction jitter of a remote human (in-process, bad-network knobs) (online agent)
+tools/net-interp.mjs  client-side interpolation jitter of remote karts (offline snapshot stream)         (online agent)
+tools/build-geckos.mjs  rebuilds vendor/geckos.client.js from server/node_modules                        (online agent)
 assets/tex|ui|sfx|audio|models   generated assets
 ```
 
@@ -731,6 +742,146 @@ probe (15 races, wobbly kid P1 + a medium-AI "dad" P2, Easy): kid's mean place 6
 trailing-human band vs 7.5 with a nearest-human band (1P wobbly kid ≈ 5.6); dad 1.0. Perf: README
 "Performance" (2P table). Browser: `node tools/twoplayer-test.mjs` → TWO PLAYER TEST: PASS.
 
+## Online (online agent — `src/protocol.js`, `src/netgame.js`, `src/net.js`, `src/online.js`, `server/`)
+
+Three permanent public lobbies, **EASY 🙂 / MEDIUM 😎 / HARD 🔥** (the menu's faces; the difficulty
+drives the bots and the item mercy). Each is an 8-kart grid: up to **4 humans** (one per device, no
+split screen online) and bots in every other slot. No accounts, no chat, no names. Players are
+shown by their racer, with a cyan **P** (a floating marker over the kart, a ring in the rank list,
+minimap and results) and a gold **YOU** for yourself.
+
+**Lobby lifecycle** (`server/lobby.js`):
+1. **idle.** No timer, no simulation.
+2. The first human joins → **waiting**. Once the first racer has picked, a 12 s countdown
+   (`NET.WAIT_S`) starts. It drops to 3 s when all 4 are in and picked.
+3. → **starting.** START is sent `LOAD_S` (4 s) before the 3.6 s countdown, so every client has
+   time to load and warm up. The countdown runs on the synced clock.
+4. → **racing** → **results.** Results stay up for 10 s, and the race keeps running behind them.
+5. → the next track in `ROTATION` (beach → ice → volcano → castle → **star**; Star Road is in, since
+   online racing is its own reward).
+
+Humans who join mid-race pick a racer and then **spectate**. The camera starts on the leader and
+◀ ▶ (keys, pad or touch arrows) cycle through the karts. They race in the next one. **A human
+leaving mid-race hands their kart to a bot** (same kart and place, the lobby's difficulty, no P
+badge any more). If no human is left in the race, it is called at once. **The last human leaving
+from any phase resets the lobby**: the race is dropped, the timer stops and it goes back to idle
+(measured 0–0.4 % CPU). A member silent for 12 s is dropped, and a race is capped at laps × 100 +
+75 s so an AFK kid can't hold a lobby.
+
+**Authority** (Mario Kart style, the local feel is single player's):
+- **Your own kart runs on your device** with the exact physics. It is created by the normal
+  `createRace` for the server's grid and stepped by the normal `race.step` in main.js. It has zero
+  input lag and is never corrected. The client sends its kart state 30 Hz, unreliable, 61 bytes.
+- **The server owns everything else**, running the pure modules headlessly at 60 Hz: bots, items
+  (boxes, stars, the roulette RNG, projectiles, hazards, hits, spills), laps and checkpoints,
+  positions, the finish and the results.
+  - Humans are `remote` karts there. Each report is brought forward to the step's time along an arc
+    (the yaw rate comes from the last two reports), eased in (25 % of the error per step), and dead-
+    reckoned between reports (≤ 0.5 s, so a hidden tab's kart waits).
+  - A jump over 60 m with no respawn is refused, and speed is clamped at 45 m/s. That's loose on
+    purpose: this is a family game, not anti-cheat.
+- **Hits on a human.** The server decides the collision against the reconstructed position. The
+  item `hit` event goes to everyone, and the victim's device applies `applyHit` to its own kart
+  (clearing its mirrored shield/star first, because the server already decided). A super-star bump on
+  a human goes through `items.hitKart` too (`race.starHit`), so the victim hears about it.
+- **Items used by a human.** Pressing the item button sends `USE`, and the server fires the item.
+  Self-effects come back as events the owner applies locally: Turbo Rocket → `addBoost`, Super Star
+  → `invincT`, Bubble Shield. The TNT's hops are counted from a hop counter in the reports.
+- **Kart-kart bumps.** Your device bumps your kart off the interpolated others (the normal
+  `collideKarts`). The server bumps bots off the humans' reconstructed positions.
+
+**Client** (`src/netgame.js`, PURE, shared by the browser and `tools/netbot.mjs`): `NetRace.attach(race)`
+sets `race.netClient` and marks every other kart `remote`. It also sets `items.W.mirror`, which
+stops the items world being simulated; it's filled from snapshots instead. It puts an injector first
+in `race.systems`. Then:
+- `preStep()`, before every step, sets remote karts from **snapshot interpolation**:
+  - The view sits ~100 ms (`NET.INTERP`) behind the snapshot stream. The latency offset is the fastest
+    (recv − t) over 3 s, slewed ≤ 1 ms per snapshot.
+  - The view advances with the local sim clock, exactly DT per step. A wall-clock render time made
+    frames that run 0 or 2 steps hitch every remote kart by ~35 cm.
+  - x/z use a cubic Hermite through both snapshots' velocities. It extrapolates ≤ 250 ms when
+    snapshots stop.
+  - The snapshot carries every `animateRacer` field (drift, driftAngle, charge, boost, air, hit/spin,
+    respawn), so leans, flames, flips and the rescue cloud show on remote karts.
+  - It also mirrors your kart's server-owned fields (stars, item, roulette, shield, star, TNT, lap,
+    place) and releases server events. Events about you go at once. Everyone else's wait until the
+    view reaches them.
+- The injector pushes those events into `race.events` inside the step, so main.js, hud.js and
+  itemviews.js react exactly as offline.
+- `postStep()` collects your cosmetic kart events and hops, and edge-detects the item button → USE.
+- `correctClock(acc)` keeps `race.t` on the server's clock. It jumps when off by more than 0.25 s,
+  and otherwise slews 2 ms per frame. This is how GO, the start boost and the race timer line up
+  across devices.
+
+**Hooks in shared files** (all small and commented; offline behaviour unchanged, all gates PASS):
+- **race.js:** `kart.remote` skips physics, the start boost and the ev reset. `race.netClient` skips
+  laps, positions, the rubber band and the end of the race. `race.starHit`.
+- **physics.js:** `collideKarts(karts, starHit)`.
+- **items.js:** `W.mirror` makes step() return early.
+- **main.js:** `G.netGrid` (the server's grid in `entrantsFor`) and `G.net` = online.js's
+  `{ setup(race) (after IV.attach), preStep, postStep, frame(dt) }`. `G.net` is null offline.
+- **menu.js:** ONLINE under 2 PLAYERS; online.js is imported lazily so it can never break the offline
+  game. `menuKit()` (the screen framework for online.js), the online pause, and the results buttons.
+- **hud.js:** `k.netHuman` → `.hx-rank.net` and a cyan minimap ring.
+- **ui.css:** the "ONLINE" section at the end. The main menu buttons shrank 3.8 → 3.25 vmin to fit
+  6 buttons.
+
+**Screens** (`src/online.js`, built with menu.js's framework, so keyboard, pad and touch work like
+every other menu):
+- **Lobby list.** Three cards: face, name, 4 human slots (portraits, `?` = choosing), and a state
+  line: "EMPTY — BE THE FIRST!" / "STARTING IN 8" / "RACING · LAP 2/3 · Taco Volcano" / "FULL!".
+  Live at 1 Hz.
+- **Racer select.** The normal select look. Racers another human has are greyed with a P and can't be
+  picked; the server refuses a race for one with `taken` too.
+- **Waiting room.** "RACE STARTS IN 7", player cards (YOU / P / BOT), and the first/next track card.
+  ▶ I'M READY! is a harmless focused button, and LEAVE is next to it.
+- **Race / spectate.** A "WATCHING <racer> ◀ ▶ · YOU'RE IN THE NEXT RACE!" strip.
+- **Online pause.** Esc / Start / ❚❚: "the race keeps going". KEEP RACING (focused), SETTINGS, LEAVE.
+- **Results.** Other humans are ringed with P, you get YOU. "NEXT RACE IN 9" with **▶ NEXT RACE!
+  focused** (a kid mashing A must never leave by accident) and LEAVE.
+- **Connection pill.** Top-right on menus, bottom-left in a race: `ONLINE · 23 ms` (`· ws` on the
+  fallback), `CONNECTING`, `OFFLINE`, `PLEASE REFRESH`. It's hidden in a touch race while healthy.
+- **Problems.** An unreachable server gives "The online track is closed right now…" with auto-retry
+  every 4 s and TRY AGAIN. A drop mid-race goes back to the lobby list with "Oops! We lost the
+  connection…" and reconnects by itself. A protocol mismatch shows "please refresh the page!" with
+  REFRESH.
+
+**Wire** (`src/protocol.js`, `PROTOCOL_VERSION` 1, checked at HELLO):
+- JSON messages `{t, …}` go over geckos `emit('m')`, where reliable = resent 4× every 50 ms, or over
+  WebSocket text.
+- The two hot paths are binary frames: SNAPSHOT at 20 Hz, unreliable, ~490 B for 8 karts plus items;
+  and STATE at 30 Hz, unreliable, 61 B.
+- Events (item events + lap/final_lap/finish/race_done) are batched per snapshot, reliable, with kart
+  references as indexes.
+- Transport is DAWG ARENA's: geckos.io v3, ICE mux on ONE UDP port, with a WebSocket fallback. The
+  client picks WebRTC first (5 s timeout).
+- Clock: a ping every second; the offset comes from the lowest-RTT of the last 12 and is slewed
+  ≤ 1 ms per ping. A jumping offset moved each client's reported kart by v × jump on the server.
+- Server URL: `?server=` wins; a private-IP page → same host :8955; anything else → `PROD_SERVER`
+  (`https://orion3-net.advicedawg.com`). Ops and env: `server/README.md`.
+
+**Measured** (`tools/online-test.mjs`: its own server + 3 netbots, 2 over WebRTC and 1 over WS, + the
+GPU browser over WebRTC; 1-lap races):
+- **Drawn-position jitter per rendered frame** (cm; distance from the time-weighted midpoint of the
+  neighbouring frames):
+
+  | network | remote humans p95 / max | bots p95 | your own kart p95 |
+  |---|---|---|---|
+  | LAN | 0.5–3.2 / ≤ 4.4 | 0.6–1.6 | 0.2–0.3 |
+  | 100 ± 30 ms each way, 5 % loss | 1.1–2.8 / ≤ 5 | ≤ 1.9 | 0.2–0.4 |
+
+  These are ranges across the final runs. A kart covers ~37 cm per frame at 22 m/s. Before the fixes
+  it was 6–18 cm p95 on the LAN.
+- **Snapshots:** 20.0 Hz, gap p95 54 ms on the LAN. On the bad network: 18.8 Hz, p95 97 ms, 6 % of
+  steps extrapolated.
+- **Items and hits resolve:** 9 netbot races had 9 hits on the netbots and 8 items fired; the browser
+  saw 122 events in one race and 0 were released late.
+- **Server:** 3 humans + 5 bots use 6–10 % of one core (the lobby's step is 0.3–0.4 ms at 60 Hz).
+  Idle is 0–0.4 %.
+- Gates: `node server/selftest.js` (in-process lifecycle + codecs + hits + real NetRace clients →
+  SELFTEST: PASS) and `node tools/online-test.mjs [--lag 100 --jitter 30 --loss 0.05]` → ONLINE TEST:
+  PASS.
+
 ## Verification (every agent)
 
 - `node tools/check.js` — the gate. Must print PASS. It builds every track through the real
@@ -880,7 +1031,8 @@ stats[] (per-kart gate stats), autoPlayer (AI drives the player)`, `race.step(pl
 `{type:'final_lap', kart}`, `{type:'finish', kart, place}`, `{type:'race_done'}`, `{type:'stall',
 kart}`, `{type:'kart', kart, e, v}` for every kart event incl. `start_boost`),
 `race.addSystem(fn(race, dt))` (**items agent: hook item logic here** — runs every step after
-physics and kart bumping, before laps), `race.results()`. `simulate(race, {maxT, playerCtrl, onStep})`
+physics and kart bumping, before laps), `race.results()`. Online: `kart.remote`, `race.netClient`,
+`race.starHit(victim, by)` (see **Online**). `simulate(race, {maxT, playerCtrl, onStep})`
 runs a whole race headless. Countdown = 3.6 s; start boost window −0.25..+0.1 s around GO
 (early mash = stall, not on Easy). After the player finishes the AI drives their kart; the race is
 called 20 s later (unfinished karts get estimated times).

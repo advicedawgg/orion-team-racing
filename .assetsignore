@@ -6,6 +6,7 @@
 wrangler.jsonc
 node_modules
 tools
+server
 work
 shots
 _scratch

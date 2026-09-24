@@ -25,6 +25,9 @@ node tools/twoplayer-test.mjs  # 2P split screen: pads, keyboard split, join, cu
 node tools/leakcheck.mjs 2   # geometries/textures flat across 10 track switches (--query players=2)
 node tools/playtest.mjs castle --perf   # chase shots + draw calls / CPU / GPU ms (--query players=2 for 2P)
 node tools/shot-2p.mjs beach castle     # 2P screenshots: grid / mid-race items / results → shots/mp/
+node server/selftest.js      # online, in-process (every protocol / lobby / netgame change) → SELFTEST: PASS
+node tools/online-test.mjs   # online end to end: own server + 3 netbots + the browser → ONLINE TEST: PASS
+                             #   (add --lag 100 --jitter 30 --loss 0.05 for the bad-network run)
 ```
 
 A visual change isn't done until you've looked at the screenshot (Read the PNG). Use the contact
@@ -118,6 +121,32 @@ sheet `shots/qa/<track>-sheet.jpg` from `playtest.mjs`.
 - Opus is the primary format; MP3 is for browsers without it, and SO2's tracks are the last
   fallback.
 - Fast-forward (`advance`, `?t=`) is silent.
+
+**Online** (DESIGN.md "Online", `server/README.md`)
+- **Bump `PROTOCOL_VERSION` (src/protocol.js) on any wire change.** Old clients then get "please
+  refresh" instead of misreading bytes. The server and the static site deploy separately.
+- **The pure modules run on the server too.** `server/` imports `../src/*.js`, so a THREE or DOM
+  import in race/physics/ai/items/track/protocol/netgame breaks the game server as well as the gate.
+- **Offline must not change.** Every online hook is inert unless set: `kart.remote`,
+  `race.netClient`, `race.starHit`, `W.mirror`, `G.net`, `G.netGrid`. menu.js imports online.js
+  lazily. After touching them, run check.js, realflow, input-test and twoplayer-test.
+- **Remote karts move on the SIM clock.** netgame.js advances the interpolation time by exactly DT per
+  step. Deriving it from the wall clock made main.js's 0-step/2-step frames hitch every remote kart by
+  ~35 cm. Keep the Hermite x/z interpolation too: linear left a kink every snapshot.
+- **The server must be able to rewind a report.** A client frame that runs 2 steps sends a report
+  "from the future". Clamping its lag at 0 jittered that kart ~18 cm/step
+  (`node tools/net-jitter.mjs 10 burst 100 30 0.05`: in-process Lobby + NetRace + delayed reports;
+  `tools/net-interp.mjs` is the client-side twin).
+- **Measure smoothness per rendered frame from `G.visuals[i].ix/iz` with the rAF timestamp**, as
+  distance from the time-weighted midpoint of the neighbouring frames. Per-frame speed change is
+  dominated by frame timing and made bots look as bad as humans.
+- **START's `t` field is the message type.** A spread `{...startMsg, t: now}` silently turned START
+  into an unknown message. Server times go in `st`.
+- **A kid mashing A must never leave.** The online results and waiting room focus a harmless button
+  (▶ NEXT RACE! / ▶ I'M READY!), and LEAVE sits beside it.
+- **Test on your own port.** `tools/online-test.mjs` starts its own server on 8975/8976, so the dev
+  server (8955/8956, `server/dev.sh`) keeps running. Restart the dev server with `server/dev.sh` only:
+  it's pidfile-scoped, never `pkill -f`.
 
 ## House rules
 

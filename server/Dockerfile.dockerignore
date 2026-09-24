@@ -1,0 +1,7 @@
+# BuildKit reads <Dockerfile>.dockerignore for `docker build -f server/Dockerfile .` (context = repo root)
+**
+!src/**
+!server/package.json
+!server/package-lock.json
+!server/*.js
+server/node_modules

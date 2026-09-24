@@ -400,8 +400,10 @@ export function placeAtRespawn(k, track) {
   ev(k, 'respawned');
 }
 
-/** Circle-circle bumping between all karts. Mass from racer stats. */
-export function collideKarts(karts) {
+/** Circle-circle bumping between all karts. Mass from racer stats. `starHit(victim, by)` (optional,
+ *  online) replaces the super-star bump's applyHit(victim, 'spin') — the game server routes hits on
+ *  humans through items.hitKart so the victim's own device hears about it; a client skips them. */
+export function collideKarts(karts, starHit = null) {
   const R2 = T.KART_R * 2;
   for (let i = 0; i < karts.length; i++) {
     const a = karts[i];
@@ -426,8 +428,8 @@ export function collideKarts(karts) {
         if (-rv > 2 && b.bumpT <= 0) { ev(b, ['bump', Math.min(1, -rv / 12)]); b.bumpT = 0.3; }
       }
       // a super-star kart knocks others aside
-      if (a.invincT > 0 && b.invincT <= 0) applyHit(b, 'spin');
-      else if (b.invincT > 0 && a.invincT <= 0) applyHit(a, 'spin');
+      if (a.invincT > 0 && b.invincT <= 0) { if (starHit) starHit(b, a); else applyHit(b, 'spin'); }
+      else if (b.invincT > 0 && a.invincT <= 0) { if (starHit) starHit(a, b); else applyHit(a, 'spin'); }
     }
   }
 }

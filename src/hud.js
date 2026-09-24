@@ -110,7 +110,7 @@ export function createHud(root, { pn = 0 } = {}) {
     const me = meOf(race);
     rankRows = race.karts.map(k => {
       const d = document.createElement('div');
-      d.className = 'hx-rank' + (k === me ? ' me' : k.isPlayer ? ' mate pn' + (k.pn + 1) : '');
+      d.className = 'hx-rank' + (k === me ? ' me' : k.isPlayer ? ' mate pn' + (k.pn + 1) : k.netHuman ? ' net' : '');   // net: another human online
       d.innerHTML = `<span class="n"></span><img alt="">`;
       const img = d.querySelector('img'); img.src = portraitURL(k.racerId, 96);
       if (!R) rp.then(() => { purls.delete(k.racerId + ':96'); img.src = portraitURL(k.racerId, 96); });
@@ -166,7 +166,7 @@ export function createHud(root, { pn = 0 } = {}) {
     for (const k of race.order.slice().reverse()) {
       if (k.isPlayer) { hum.push(k); continue; }
       const [x, y] = mapCache.P(k.pos.x, k.pos.z);
-      g.fillStyle = racerColor(k.racerId); g.strokeStyle = '#0b1020'; g.lineWidth = 2.5;
+      g.fillStyle = racerColor(k.racerId); g.strokeStyle = k.netHuman ? '#4ec5f1' : '#0b1020'; g.lineWidth = k.netHuman ? 3.5 : 2.5;   // online humans ringed cyan
       g.beginPath(); g.arc(x, y, 6.5, 0, 7); g.fill(); g.stroke();
     }
     // humans on top (2P: both, each ringed in their player colour; this HUD's own kart last)

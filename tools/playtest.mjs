@@ -86,7 +86,7 @@ for (const id of TRACKS) {
   const errs = [];
   page.on('pageerror', e => errs.push('pageerror: ' + e.message.slice(0, 300)));
   page.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') errs.push(m.type() + ': ' + m.text().slice(0, 300)); });
-  page.on('requestfailed', r => errs.push('requestfailed: ' + r.url()));
+  page.on('requestfailed', r => { if (/ERR_ABORTED/.test(r.failure()?.errorText || '')) return; errs.push('requestfailed: ' + r.url()); });
   const dir = path.join(OUT, id);
   await fs.mkdir(dir, { recursive: true });
   try {

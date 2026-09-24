@@ -3,7 +3,7 @@
 A Crash Team Racing-style kart racer for Orion (a young kid) and his family: the third Super
 Orion game, after Super Orion 1 (2D platformer) and Super Orion 2 (3D platformer). Eight
 racers, five tracks, the CTR power slide with 3-stage turbos, a full set of silly items, the
-Orion Cup, Time Trial with ghosts, 2-player split screen, and an announcer. No reading is needed to play: title,
+Orion Cup, Time Trial with ghosts, 2-player split screen, online lobbies, and an announcer. No reading is needed to play: title,
 Quick Race, racer, track is four presses of A.
 
 It is plain ES modules and three.js r185 (vendored), with no build step. The repo is the
@@ -80,6 +80,14 @@ Start on either pad pauses. The join screen shows which device each player has.
   podium mark both players with P1 (gold) and P2 (cyan) badges. On Easy the AI goes easy on both
   players. The race waits for the second player, for up to 90 s after the first one finishes.
   Time Trial is 1-player only.
+- **Online**: three public lobbies (EASY / MEDIUM / HARD), up to 4 players each on an 8-kart grid with
+  bots in the other slots. Pick a lobby, then a racer (racers another player has are greyed with a
+  **P**). The race starts about 12 s after the first player is ready, and after the results the next
+  track starts by itself. Join mid-race and you watch until the next one (◀ ▶ to watch someone
+  else). No names, no chat: other players show as their racer with a cyan **P**, and you are **YOU**.
+  The race can't pause (Esc / Start / ❚❚ = keep racing or LEAVE). A lobby goes back to sleep when the
+  last player leaves. The game server is `server/` (see `server/README.md`). Until it's deployed,
+  ONLINE says the online track is closed.
 - **Settings**:
   - volumes
   - AUTO-GO (drive forward by itself: on in Easy by default)
@@ -133,6 +141,12 @@ node tools/twoplayer-test.mjs    # 2P: two fake pads through the menus (join, P1
                                  # each pad drives only its own kart, per-player HUD, results; one keyboard split in
                                  # half; Enter-to-join; a whole 2P Orion Cup; 2P → 1P cleanup → TWO PLAYER TEST: PASS
 node tools/shot-2p.mjs [tracks]  # 2P screenshots per track: start grid, mid-race with items, results → shots/mp/
+node server/selftest.js          # ONLINE gate, in-process: lobby lifecycle, codecs, hits on reported humans, real NetRace clients → SELFTEST: PASS
+node tools/online-test.mjs [--lag 100 --jitter 30 --loss 0.05]
+                                 # ONLINE end to end: own server (:8975/udp 8976) + 3 netbots + the GPU browser: lobbies, taken
+                                 # racers, lobby full, race, smoothness, results, rotation, pause, spectate, reconnect, idle reset,
+                                 # CPU → shots/online/ → ONLINE TEST: PASS
+node tools/netbot.mjs --server http://127.0.0.1:8955 [--lobby medium] [--net rtc|ws] [--races N]   # one headless online player
 node tools/leakcheck.mjs 2       # switch through all 5 tracks twice: geometries/textures must stay flat (--query players=2)
 node tools/playtest.mjs [tracks] [--perf] [--throttle 4] [--query q=low]
                                  # AI-driven live race per track: chase shots every 4 s + contact sheet,
@@ -205,7 +219,10 @@ src/tracks/*.js       track data (one file each) + index.js registry
 src/racers.js         8 procedural racers + animation         src/hdracers.js  optional HD driver models
 src/hud.js src/itemhud.js src/menu.js src/save.js    HUD, menus, save (localStorage)
 src/audio.js          SFX, VO, music, synthesised engines
-vendor/               three.js r185 (+ GLTFLoader, meshopt)
+src/protocol.js       online wire contract (PURE)            src/netgame.js   online race, client half (PURE)
+src/net.js            geckos.io WebRTC + WebSocket fallback  src/online.js    ONLINE screens + main.js hooks
+server/               the online game server (node, imports the pure src/ modules; own package.json, Dockerfile, README)
+vendor/               three.js r185 (+ GLTFLoader, meshopt), geckos.io client bundle (tools/build-geckos.mjs)
 assets/               tex/ sfx/ audio/ ui/ models/ (generated art, sound, music, HD models)
 tools/                gates, browser drivers, asset generators (not shipped)
 DESIGN.md             the contract between modules: read it before changing an interface

@@ -305,6 +305,7 @@ function endProj(W, p, boom) {
 function step(W, dt) {
   const race = W.race;
   if (race.phase !== 'race' && race.phase !== 'done' || race.noItems) return;   // noItems: Time Trial (menu.js)
+  if (W.mirror) return;   // online client: boxes/stars/projectiles/hazards are the server's, mirrored in by netgame.js
   W.t += dt;
   const karts = race.karts, tr = W.track;
 

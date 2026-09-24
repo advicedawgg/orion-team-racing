@@ -27,7 +27,7 @@ page.on('console', m => {
   if (m.type() === 'error') errs.push('console: ' + t.slice(0, 300));
   else if (m.type() === 'warning' && !/KHR_parallel_shader_compile|AudioContext was not allowed/.test(t)) warns.push(t.slice(0, 200));
 });
-page.on('requestfailed', r => { if (!r.url().startsWith('blob:')) errs.push('requestfailed: ' + r.url() + ' ' + (r.failure()?.errorText || '')); });
+page.on('requestfailed', r => { if (/ERR_ABORTED/.test(r.failure()?.errorText || '')) return; /* page moved on mid-download (HD GLBs load in menus) */ if (!r.url().startsWith('blob:')) errs.push('requestfailed: ' + r.url() + ' ' + (r.failure()?.errorText || '')); });
 page.on('response', r => { if (r.status() >= 400) errs.push(`http ${r.status()}: ${r.url()}`); });
 let bytes = 0, reqs = 0;
 page.on('response', async r => { try { const b = await r.body(); bytes += b.length; reqs++; } catch { /* redirects / blobs */ } });

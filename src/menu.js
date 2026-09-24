@@ -20,6 +20,10 @@
 // select for P1, then P2 (P1's racer is taken) → tracks / cup → a split-screen race (main.js). Results,
 // cup standings and the podium mark both players with P1 (gold) / P2 (cyan) badges. Time Trial is 1P.
 // M.players (1|2), M.racer2, M.devs ([P1, P2] input.js device ids), M.mp = { auto: [b,b], helper: [b,b] }.
+//
+// ONLINE (online agent): main menu ONLINE (under 2 PLAYERS) → online.js, loaded lazily so a problem
+// there can never break the offline game. It builds its screens with this module's framework through
+// menuKit(); while an online race is up (api.G.net) the pause menu and the results buttons are its own.
 import * as THREE from 'three';
 import * as S from './save.js';
 import { portraitURL, racerName, racerColor, clock, ordSuffix, racersReady, PN_COL } from './hud.js';
@@ -52,6 +56,7 @@ const ICON = {
   gear: `<svg viewBox="0 0 64 64"><path d="M27 4h10l1.6 7.6 5.4 2.3 6.5-4.3 7 7-4.3 6.5 2.3 5.4L63 30v10l-7.6 1.6-2.3 5.4 4.3 6.5-7 7-6.5-4.3-5.4 2.3L37 66H27l-1.6-7.6-5.4-2.3-6.5 4.3-7-7 4.3-6.5-2.3-5.4L1 40V30l7.6-1.6 2.3-5.4-4.3-6.5 7-7 6.5 4.3 5.4-2.3z" transform="translate(0 -3)" fill="#b7c4ea" stroke="#3d4d8f" stroke-width="3"/><circle cx="32" cy="32" r="10" fill="#232e5c"/></svg>`,
   lock: `<svg viewBox="0 0 64 64"><path d="M20 28v-8a12 12 0 0 1 24 0v8" fill="none" stroke="#dce6ff" stroke-width="7"/><rect x="12" y="27" width="40" height="31" rx="7" fill="#ffd23f" stroke="#8a5a00" stroke-width="3"/><circle cx="32" cy="40" r="4.5" fill="#5a3a00"/><path d="M32 42v8" stroke="#5a3a00" stroke-width="4.5" stroke-linecap="round"/></svg>`,
   ghost: `<svg viewBox="0 0 64 64"><path d="M12 58V30a20 20 0 0 1 40 0v28l-7-6-6 6-7-6-7 6-6-6z" fill="#dff4ff" opacity=".9"/><circle cx="25" cy="30" r="4" fill="#233"/><circle cx="39" cy="30" r="4" fill="#233"/></svg>`,
+  globe: `<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="26" fill="#4ec5f1" stroke="#15506a" stroke-width="4"/><path d="M14 22q7 3 9 10t-3 12q-3 3-1 7M34 7q-4 6 1 10t10 1q6-2 9 4M40 57q-2-8 4-12t9-10" fill="none" stroke="#7ed957" stroke-width="7" stroke-linecap="round"/><path d="M6 32h52M32 6q-13 12-13 26t13 26M32 6q13 12 13 26T32 58" fill="none" stroke="#e8f8ff" stroke-width="2" opacity=".55"/><circle cx="32" cy="32" r="26" fill="none" stroke="#15506a" stroke-width="4"/></svg>`,
   two: `<svg viewBox="0 0 64 64"><rect x="3" y="12" width="32" height="21" rx="10.5" fill="#ffd23f" stroke="#7a5200" stroke-width="3"/><path d="M10 22.5h8M14 18.5v8" stroke="#7a5200" stroke-width="3" stroke-linecap="round"/><circle cx="26" cy="20" r="2.4" fill="#7a5200"/><circle cx="29.5" cy="25.5" r="2.4" fill="#7a5200"/><rect x="29" y="31" width="32" height="21" rx="10.5" fill="#4ec5f1" stroke="#15506a" stroke-width="3"/><path d="M36 41.5h8M40 37.5v8" stroke="#15506a" stroke-width="3" stroke-linecap="round"/><circle cx="52" cy="39" r="2.4" fill="#15506a"/><circle cx="55.5" cy="44.5" r="2.4" fill="#15506a"/></svg>`,
   pad: c => `<svg viewBox="0 0 64 40"><rect x="2" y="4" width="60" height="32" rx="16" fill="${c}" stroke="#0b1020" stroke-width="3"/><path d="M13 20h12M19 14v12" stroke="#0b1020" stroke-width="4" stroke-linecap="round"/><circle cx="44" cy="16" r="3.4" fill="#0b1020"/><circle cx="51" cy="23" r="3.4" fill="#0b1020"/></svg>`,
   kb: (c, half) => `<svg viewBox="0 0 64 40"><rect x="2" y="6" width="60" height="28" rx="5" fill="#232e5c" stroke="${c}" stroke-width="3"/>${[0, 1, 2].map(r => [0, 1, 2, 3, 4, 5, 6].map(i => `<rect x="${7 + i * 7.3}" y="${11 + r * 7}" width="5.3" height="5" rx="1" fill="${(half === 'L' && i < 3) || (half === 'R' && i > 3) || !half ? c : '#556'}"/>`).join('')).join('')}</svg>`,
@@ -464,6 +469,7 @@ function showMenu(focusKey) {
       <button class="mbtn" data-nav data-act="cup" data-key="cup"><i>${ICON.cup}</i><span>ORION CUP</span><em class="trophies">${trophies}</em></button>
       <button class="mbtn" data-nav data-act="tt" data-key="tt"><i>${ICON.clock}</i><span>TIME TRIAL</span></button>
       <button class="mbtn" data-nav data-act="two" data-key="two"><i>${ICON.two}</i><span>2 PLAYERS</span></button>
+      <button class="mbtn" data-nav data-act="online" data-key="online"><i>${ICON.globe}</i><span>ONLINE</span></button>
       <button class="mbtn" data-nav data-act="settings" data-key="settings"><i>${ICON.gear}</i><span>SETTINGS</span></button>
     </div>
     <div class="diffs">
@@ -473,6 +479,7 @@ function showMenu(focusKey) {
     acts: {
       quick() { M.players = 1; M.mode = 'quick'; showSelect(); },
       two() { showJoin(); },
+      online() { M.players = 1; openOnline(); },
       cup() { M.players = 1; M.mode = 'cup'; showSelect(); },
       tt() { M.players = 1; M.mode = 'tt'; showSelect(); },
       settings() { M.settingsFrom = 'menu'; showSettings(); },
@@ -786,7 +793,8 @@ function resultRows() {
   const race = api.G.race;
   if (!race) return [];
   const mp = (race.humans?.length || 1) > 1;
-  return race.order.map((k, i) => ({ place: i + 1, racerId: k.racerId, name: racerName(k.racerId), time: k.finishTime, finished: k.finished, estimated: !!k.estimated, isPlayer: k.isPlayer, pn: mp && k.isPlayer ? k.pn : -1, lapTimes: k.lapTimes }));
+  return race.order.map((k, i) => ({ place: i + 1, racerId: k.racerId, name: racerName(k.racerId), time: k.finishTime, finished: k.finished, estimated: !!k.estimated, isPlayer: k.isPlayer, pn: mp && k.isPlayer ? k.pn : -1, lapTimes: k.lapTimes,
+    net: !!api.G.net && !!k.netHuman && !k.isPlayer }));   // online: another human
 }
 function showResults() {
   const race = api.G.race; if (!race) return;
@@ -812,7 +820,9 @@ function showResults() {
   else if (place === 3) { title = '3rd PLACE!'; sub = 'On the podium! Awesome!'; }
   else { title = 'GREAT RACE!'; sub = `You came ${place}${ordSuffix(place)} — ${pick(cheers)}`; }
   const b = S.best(M.track);
-  const btns = cup
+  const online = !!api.G.net && ON;
+  if (online && ON.spectating()) { title = 'RACE OVER!'; sub = 'What a race! You\'re in the next one!'; cls = 'p2'; }
+  const btns = online ? ON.resultButtons() : cup
     ? `<button class="mbtn big" data-nav data-act="cont" data-key="cont">CONTINUE ▶</button>`
     : `<button class="mbtn" data-nav data-act="retry" data-key="retry">${tt ? 'TRY AGAIN' : 'RACE AGAIN'}</button>
        <button class="mbtn big" data-nav data-act="next" data-key="next">NEXT TRACK ▶</button>
@@ -829,8 +839,10 @@ function showResults() {
       : `<ol class="rlist" id="resList"></ol>`}
       <div class="res-btns">${btns}</div>
     </div>`, {
-    cls: 'res', overlay: true, music: 'results', focus: cup ? '[data-key="cont"]' : '[data-key="next"]',
+    cls: 'res', overlay: true, music: 'results', focus: online ? '[data-key="stay"]' : cup ? '[data-key="cont"]' : '[data-key="next"]',
     acts: {
+      leave() { ON?.leave(); },
+      stay() { sfx('star'); },               // online: the next race starts by itself — this is the safe default button
       retry() { if (M.mode === 'cup') return; launch(M.track); },
       next() {
         const list = unlockedTracks(); const i = list.findIndex(t => t.id === M.track);
@@ -865,13 +877,14 @@ function paintResultRows(el = cur?.el) {
   if (sig === resSig && list.children.length) return;
   resSig = sig;
   const cup = M.mode === 'cup';
-  list.innerHTML = rows.map(r => `<li class="${r.isPlayer ? 'me' : ''}${r.pn === 1 ? ' mp2' : ''}${r.place <= 3 ? ' top' + r.place : ''}"><b class="pl">${r.place}<sup>${ordSuffix(r.place)}</sup></b><img src="${portraitURL(r.racerId, 96)}" alt="">
-    <span class="nm">${esc(r.name)}${r.pn >= 0 ? ` <b class="pbadge pb${r.pn + 1} sm">P${r.pn + 1}</b>` : ''}</span><span class="tm${r.estimated ? ' est' : ''}">${r.finished ? clock(r.time) : '<i class="racing">racing…</i>'}</span>${cup ? `<em class="gain">+${POINTS[r.place - 1] || 0}</em>` : ''}</li>`).join('');
+  list.innerHTML = rows.map(r => `<li class="${r.isPlayer ? 'me' : ''}${r.pn === 1 ? ' mp2' : ''}${r.net ? ' mpn' : ''}${r.place <= 3 ? ' top' + r.place : ''}"><b class="pl">${r.place}<sup>${ordSuffix(r.place)}</sup></b><img src="${portraitURL(r.racerId, 96)}" alt="">
+    <span class="nm">${esc(r.name)}${r.pn >= 0 ? ` <b class="pbadge pb${r.pn + 1} sm">P${r.pn + 1}</b>` : ''}${r.net ? ' <b class="pbadge pbn sm">P</b>' : ''}${r.isPlayer && api.G.net ? ' <b class="pbadge sm">YOU</b>' : ''}</span><span class="tm${r.estimated ? ' est' : ''}">${r.finished ? clock(r.time) : '<i class="racing">racing…</i>'}</span>${cup ? `<em class="gain">+${POINTS[r.place - 1] || 0}</em>` : ''}</li>`).join('');
 }
 
 /* ---------------------------------------------------------------- pause */
 function openPause() {
   const G = api.G; if (!G.race) return;
+  if (G.net && ON) { ON.openPause(); return; }       // online: the race can't pause (online.js's overlay)
   G.paused = true; api.audio.pause?.(true);
   clearTimeout(M.finishTimer);
   mount('pause', `
@@ -1096,6 +1109,7 @@ async function debugScreen(name) {
     case 'settings': M.settingsFrom = 'menu'; showSettings(); break;
     case 'controls': M.settingsFrom = 'menu'; showControls(); break;
     case 'join': showJoin(); break;
+    case 'online': openOnline(); break;
     case 'standings': fakeCup(+(api.Q.get('race') || 2)); showStandings(false); break;
     case 'podium': fakeCup(4); showPodium(); break;
     case 'unlock': M.pendingUnlock = true; showUnlock(); break;
@@ -1112,6 +1126,20 @@ async function debugScreen(name) {
     }
     default: showTitle();
   }
+}
+
+/* ================================================================== online (online.js, lazy) */
+let ON = null;
+/** The screen framework for online.js (it never imports this module: no cycle). */
+export function menuKit() {
+  return { api, M, mount, unmount, setFocus, sfx, vo, esc, FACE, ICON, DIFF_LABEL, trackCard, trackDef, stage, confetti, pick, cheers, statBars,
+    showMenu, showResults, showSettings: () => { M.settingsFrom = 'pause'; showSettings(); }, get cur() { return cur; }, racers };
+}
+async function openOnline() {
+  try {
+    if (!ON) { ON = await import('./online.js'); ON.init(menuKit()); }
+    ON.showLobbies();
+  } catch (e) { console.error('[menu] online.js failed', e); ON = null; showMenu('online'); }
 }
 
 /* ================================================================== init */
@@ -1142,7 +1170,7 @@ export async function initMenu(a, { skip = false } = {}) {
   document.querySelector('[data-btn="pause"]')?.addEventListener('pointerdown', () => { if (inRace()) openPause(); });
   api.onState(onState);
   requestAnimationFrame(loop);
-  window.__OTR && (window.__OTR.menu = { M, get screen() { return M.screen; }, show: debugScreen, action, launch, save: S, stage, confetti });
+  window.__OTR && (window.__OTR.menu = { M, get screen() { return M.screen; }, show: debugScreen, action, launch, save: S, stage, confetti, openOnline, get online() { return ON; } });
   if (!skip) {
     api.setState('title');
     const scr = api.Q.get('screen');
