@@ -71,7 +71,7 @@ export default function build(ctx) {
     const glow = [];
     const strip = (latF, h0, h1, c) => K.lofted(sA + 1, sB - 1, 1, (s, f) => { const W = Wof(f) - 0.05, l = latF * W; return [{ x: f.x + f.lx * l, y: f.y + h0, z: f.z + f.lz * l }, { x: f.x + f.lx * l, y: f.y + h1, z: f.z + f.lz * l }]; }, { flip: latF > 0 });
     glow.push(paint(strip(1, 0.25, 0.75, 0), 0xff8a1f), paint(strip(-1, 0.25, 0.75, 0), 0xff8a1f));
-    glow.push(paint(K.lofted(sA + 1, sB - 1, 1, (s, f) => [-0.5, 0.5].map(l => ({ x: f.x + f.lx * l, y: f.y + ARCH_TOP - 0.08, z: f.z + f.lz * l })), { flip: false }), 0xffd35a));
+    glow.push(paint(K.lofted(sA + 1, sB - 1, 1, (s, f) => [-0.28, 0.28].map(l => ({ x: f.x + f.lx * l, y: f.y + ARCH_TOP - 0.08, z: f.z + f.lz * l })), { flip: false }), 0xffd35a));
     for (let s = sA + 4, i = 0; s < sB - 3; s += 9, i++) {
       const f = track.frameAt(s), side = i % 2 ? 1 : -1, W = Wof(f) - 0.35, l = side * W;
       const lamp = new THREE.SphereGeometry(0.5, 10, 7);
@@ -289,7 +289,7 @@ export default function build(ctx) {
 
   // ------------------------------------------------ props
   // cacti (saguaro with a pink flower), chillies, nacho chips, boulders
-  const cacti = K.scatter({ step: 10, near: 3, far: 36, r: 1.8, chance: 0.6 }).map(c => ({ ...c, ry: rng() * 6.28, s: 0.8 + rng() * 0.7 }));
+  const cacti = K.scatter({ step: 10, near: 5.5, far: 36, r: 1.8, chance: 0.6 }).map(c => ({ ...c, ry: rng() * 6.28, s: 0.8 + rng() * 0.7 }));
   for (const c of K.scatterWide(90, 2, { margin: 10 })) cacti.push({ ...c, ry: rng() * 6.28, s: 1 + rng() * 0.9 });
   const chillies = K.scatter({ step: 19, near: 3, far: 26, r: 2.4, chance: 0.6 }).map(c => ({ x: c.x, y: c.y + 0.55 * 1.4, z: c.z, ry: rng() * 6.28, rz: Math.PI / 2 - 0.25, s: 1.2 + rng() * 0.8, color: pick([0xe8322a, 0xe8322a, 0x5cc43a, 0xffb020, 0xff6a1a]) }));
   const nachos = K.scatter({ step: 31, near: 6, far: 40, r: 4, chance: 0.55 }).map(c => ({ x: c.x, y: c.y - 0.6, z: c.z, ry: rng() * 6.28, rx: (rng() - 0.5) * 0.4, s: 1.4 + rng() * 1.4 }));

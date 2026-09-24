@@ -138,6 +138,10 @@ Two model tiers:
 2. **HD (optional, charfab)**: AI-generated textured GLBs in `assets/models/<id>.glb`, rigged
    (mixamorig) or static. If present and the `hd` setting is on, `buildRacer` uses it; otherwise
    falls back to procedural. The game must run perfectly with no GLBs at all.
+   `src/hdracers.js` (HD agent): `HD_MODELS`, `hasHD(id)`, `loadHDRacer(id, opts) → Promise<{root, rig}>`
+   (root origin = seat contact, +Z forward, parented to `rig.driver`), `animateHD(rig, s, dt)` (same state
+   as `animateRacer`), `preloadHD(ids)`. Only the DRIVER is swapped; the kart stays procedural.
+   Provenance, tri counts and the pipeline: `assets/models/README.md`; viewer `hd.html`, `tools/shot-hd.mjs`.
 
 ### Roster (as built — `src/racers.js` `RACERS`, order = menu order)
 

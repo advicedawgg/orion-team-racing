@@ -41,7 +41,11 @@ export const HD_MODELS = {
   orion:   { kind: 'rig', height: 1.50 },
   kingdad: { kind: 'rig', height: 1.62 },
   mum:     { kind: 'rig', height: 1.50 },
-  sootie:  { kind: 'rig', height: 1.20 },
+  grumblin: { kind: 'static', height: 0.9, dz: 0.02, yaw: -0.3 },
+  jelly:    { kind: 'static', height: 1.05, lift: 0.02, yaw: -0.12 },
+  zapdrone: { kind: 'static', height: 0.85, lift: 0.18, yaw: -1.6 },
+  prickle:  { kind: 'static', height: 0.95, dz: 0.02 },
+  sootie:  { kind: 'rig', height: 1.32, up: 'legs', armsUp: 0.4 },   // jacket shell stretches if the arms go right up
 };
 
 export function hasHD(id) { return Object.prototype.hasOwnProperty.call(HD_MODELS, id); }
@@ -71,10 +75,15 @@ function aimBone(bone, child, dir) {
 }
 
 /** the rig's own frame (left=+x, up=+y, forward=+z) from thighs, hips and head */
-function rigFrame(get) {
+function rigFrame(get, up = 'head') {
   const l = get(B('LeftUpLeg')).getWorldPosition(new THREE.Vector3());
   const r = get(B('RightUpLeg')).getWorldPosition(new THREE.Vector3());
-  const y = get(B('Head')).getWorldPosition(new THREE.Vector3()).sub(get(B('Hips')).getWorldPosition(new THREE.Vector3())).normalize();
+  const P = n => get(B(n)).getWorldPosition(new THREE.Vector3());
+  // 'head': hips -> head is up. 'legs': feet -> thighs is up — for huge cartoon heads whose head joint
+  // sits well in front of the hips, where 'head' would stand the body up reclining.
+  const y = up === 'legs'
+    ? P('LeftUpLeg').add(P('RightUpLeg')).sub(P('LeftFoot')).sub(P('RightFoot')).normalize()
+    : P('Head').sub(P('Hips')).normalize();
   const x = l.sub(r); x.addScaledVector(y, -x.dot(y)).normalize();
   const z = new THREE.Vector3().crossVectors(x, y).normalize();
   return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
@@ -144,7 +153,7 @@ function buildTemplate(id, gltf) {
   if (!get(B('Hips')) || !get(B('Head'))) throw new Error(`hd ${id}: no mixamorig skeleton`);
   // 1. stand up facing +Z (the exporter's armature transform is baked into the bind matrices)
   scene.updateMatrixWorld(true);
-  scene.quaternion.copy(rigFrame(get).invert());
+  scene.quaternion.copy(rigFrame(get, def.up).invert());
   scene.updateMatrixWorld(true);
   // 2. scale the skinned bind pose to the standing height
   const box = new THREE.Box3().setFromObject(scene, true);
@@ -343,7 +352,7 @@ export function animateHD(rig, s = {}, dt = 1 / 60) {
       _tb.set(sh.x + sx * L * (0.75 + wave * 0.15), sh.y + L * 1.1, sh.z + L * 0.1);   // a wide V: big heads, short arms
       const fl = _v4.set(sh.x + sx * L * (0.8 + Math.sin(t * 19 + sx * 2) * 0.2), sh.y + L * (0.3 + Math.sin(t * 23 + sx) * 0.5), sh.z + L * 0.2 * Math.cos(t * 15));
       _tb.lerp(fl, sp.arms / Math.max(1e-3, sp.arms + sp.cheer));
-      _ta.lerp(_tb, Math.min(1, sp.cheer + sp.arms));
+      _ta.lerp(_tb, Math.min(1, sp.cheer + sp.arms) * (rig.t.def.armsUp ?? 1));
     }
     rig.root.localToWorld(_ta);
     _pole.set(sx * 0.7, -0.75, -0.25).applyQuaternion(rootQ);

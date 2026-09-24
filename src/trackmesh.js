@@ -102,7 +102,10 @@ export const PROC = {
     for (let y = 0; y < h; y += sq) for (let x = 0; x < w; x += sq) { g.fillStyle = ((x + y) / sq) & 1 ? '#111' : '#fff'; g.fillRect(x, y, sq, sq); }
     g.fillStyle = '#ffd23f'; g.fillRect(64, 22, w - 128, h - 44);
     g.strokeStyle = '#c22532'; g.lineWidth = 6; g.strokeRect(64, 22, w - 128, h - 44);
-    g.fillStyle = '#c22532'; g.font = '900 54px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = '#c22532'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    // fit the text inside the yellow panel (a fixed 54px spilled 'O' and 'G' onto the checkers)
+    let fs = 54; g.font = `900 ${fs}px system-ui, sans-serif`;
+    while (fs > 20 && g.measureText('ORION RACING').width > w - 128 - 24) { fs -= 2; g.font = `900 ${fs}px system-ui, sans-serif`; }
     g.fillText('ORION RACING', w / 2, h / 2 + 3);
   }),
   startline: () => cv(128, 32, (g, w, h) => { const sq = 16; for (let y = 0; y < h; y += sq) for (let x = 0; x < w; x += sq) { g.fillStyle = ((x + y) / sq) & 1 ? '#111' : '#fff'; g.fillRect(x, y, sq, sq); } }),

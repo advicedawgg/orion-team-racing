@@ -37,6 +37,7 @@ export const IT = {
   BOX_R: 1.9, BOX_DY: 2.6, BOX_RESPAWN: 3,
   ROULETTE: 1.5,
   STAR_R: 1.7, STAR_DY: 2.4, STAR_RESPAWN: 14,
+  FULL_PASS: true,                                         // a kart at 10 stars drives through stars without taking them (balance)
   SPILL: { life: 9, grace: 0.45, ownerGrace: 1.3, v: 6, vy: 7 },
   HAZ_DY: 1.3,                                             // a jump clears a hazard, a hop doesn't
   BOMB: { speed: 36, overOwner: 10, back: 16, range: 170, life: 6, r: 1.4, blast: 4.5, blastSuper: 7.5, y: 0.5 },
@@ -341,7 +342,7 @@ function step(W, dt) {
   for (const st of W.stars) {
     if (!st.alive) { st.respawnT -= dt; if (st.respawnT <= 0) { st.alive = true; st.bornT = W.t; } continue; }
     for (const k of karts) {
-      if (k.respawnT > 0) continue;
+      if (k.respawnT > 0 || IT.FULL_PASS && k.stars >= PT.STARS_MAX) continue;   // full up: the star stays for the pack (balance)
       if (h2(k.pos, st) < IT.STAR_R * IT.STAR_R && Math.abs(k.pos.y - st.y) < IT.STAR_DY) {
         st.alive = false; st.respawnT = IT.STAR_RESPAWN;
         collectStar(W, k, st);
@@ -372,7 +373,7 @@ function step(W, dt) {
     }
     if (sp.t > sp.life) { W.spills.splice(i, 1); continue; }
     for (const k of karts) {
-      if (k.respawnT > 0 || sp.t < (k === sp.from ? IT.SPILL.ownerGrace : IT.SPILL.grace)) continue;
+      if (k.respawnT > 0 || sp.t < (k === sp.from ? IT.SPILL.ownerGrace : IT.SPILL.grace) || IT.FULL_PASS && k.stars >= PT.STARS_MAX) continue;
       if (h2(k.pos, sp) < IT.STAR_R * IT.STAR_R && Math.abs(k.pos.y - sp.y) < IT.STAR_DY) {
         W.spills.splice(i, 1); collectStar(W, k, sp); break;
       }

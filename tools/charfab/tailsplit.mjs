@@ -51,15 +51,37 @@ if (mode === 'split') {
   if (Math.max(...s) / Math.min(...s) > 1.03) throw new Error('non-uniform mapping: rigged space is not a uniform rescale of TRELLIS space')
   const n0 = pos.length / 3, nt = tail.pos.length / 3
   const cat = (acc, add, Ctor, w) => { const src = acc.getArray(), dst = new Ctor(src.length + nt * w); dst.set(src); dst.set(add, src.length); acc.setArray(dst) }
-  const tp = new Float32Array(tail.pos.length); for (let i = 0; i < nt; i++) for (let k = 0; k < 3; k++) tp[i * 3 + k] = tail.pos[i * 3 + k] * s[k] + o[k]
+  // --lift DEG swings the tail up about its root (the frontmost tail vertex) around +X: a drooping tail
+  // would reach through the kart seat and becomes the "seat contact"
+  const lift = Number(arg('--lift', '0')) * Math.PI / 180, c = Math.cos(lift), sn = Math.sin(lift)
+  let ri = 0; for (let i = 0; i < nt; i++) if (tail.pos[i * 3 + 2] > tail.pos[ri * 3 + 2]) ri = i
+  const ry = tail.pos[ri * 3 + 1], rz = tail.pos[ri * 3 + 2]
+  const tp = new Float32Array(tail.pos.length)
+  for (let i = 0; i < nt; i++) {
+    const y = tail.pos[i * 3 + 1] - ry, z = tail.pos[i * 3 + 2] - rz
+    const q = [tail.pos[i * 3], ry + y * c - z * sn, rz + y * sn + z * c]
+    for (let k = 0; k < 3; k++) tp[i * 3 + k] = q[k] * s[k] + o[k]
+  }
   const has = n => p.getAttribute(n)
   cat(has('POSITION'), tp, Float32Array, 3)
   if (has('TEXCOORD_0')) cat(has('TEXCOORD_0'), Float32Array.from(tail.uv), Float32Array, 2)
   if (has('NORMAL')) cat(has('NORMAL'), new Float32Array(nt * 3).fill(0).map((_, i) => i % 3 === 1 ? 1 : 0), Float32Array, 3)   // recomputed in pack
   const J = has('JOINTS_0'), jn = new (J.getArray().constructor)(nt * 4); for (let i = 0; i < nt; i++) jn[i * 4] = bi
   cat(J, jn, J.getArray().constructor, 4)
-  const W = has('WEIGHTS_0'), wt = new Float32Array(nt * 4); for (let i = 0; i < nt; i++) wt[i * 4] = 1
-  cat(W, wt, W.getArray().constructor, 4)
+  const W = has('WEIGHTS_0'), WC = W.getArray().constructor
+  const ONE = WC === Float32Array ? 1 : WC === Uint8Array ? 255 : 65535   // normalized integer weights: 1 is NOT 1.0
+  const wt = new WC(nt * 4); for (let i = 0; i < nt; i++) wt[i * 4] = ONE
+  // the tail ROOT stays on the body mesh and MIA binds it to a thigh, so it stretches when the legs bend:
+  // hand every body vertex in the tail's neighbourhood (mapped back to TRELLIS space) to the same bone
+  const zroot = Number(arg('--zroot', '-0.02')), xabs = Number(arg('--xabs', '0.12')), yr = tail.pos.filter((_, i) => i % 3 === 1)
+  const ylo = Math.min(...yr) - 0.03, yhi = Math.max(...yr) + 0.03
+  const JA = J.getArray(), WA = W.getArray(); let rooted = 0
+  for (let v = 0; v < n0; v++) {
+    const x = (pos[v * 3] - o[0]) / s[0], y = (pos[v * 3 + 1] - o[1]) / s[1], z = (pos[v * 3 + 2] - o[2]) / s[2]
+    if (z < zroot && Math.abs(x) < xabs && y > ylo && y < yhi) { JA[v * 4] = bi; WA[v * 4] = ONE; for (let k = 1; k < 4; k++) { JA[v * 4 + k] = 0; WA[v * 4 + k] = 0 } rooted++ }
+  }
+  J.setArray(JA); W.setArray(WA); console.log(`  tail root: ${rooted} body verts rebound to ${bone}`)
+  cat(W, wt, WC, 4)
   for (const sem of p.listSemantics()) if (!['POSITION', 'TEXCOORD_0', 'NORMAL', 'JOINTS_0', 'WEIGHTS_0'].includes(sem)) { const x = p.getAttribute(sem); p.setAttribute(sem, null); x.dispose() }
   const idx = p.getIndices().getArray(), ni = new Uint32Array(idx.length + nt); ni.set(idx); for (let i = 0; i < nt; i++) ni[idx.length + i] = n0 + i
   p.setIndices(doc.createAccessor().setType('SCALAR').setArray(ni).setBuffer(buf))

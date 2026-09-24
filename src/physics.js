@@ -30,7 +30,15 @@ export const T = {
   START: { t: 1.3, tier: 2, kick: 6 },
   BOOST_CAP_T: 3.0, BOOST_BASE: 0.14, BOOST_PER_S: 0.1,
   STAR_BONUS: 0.08, STARS_SUPER: 10, STARS_MAX: 10,
-  STAT: 0.03,             // per stat point from 3 → ±6% at 1 and 5
+  // Racer stats (1..5, 3 = neutral) → small deltas per point away from 3, tuned with tools/balance.js so a
+  // point of any stat is worth about the same race time (DESIGN.md "Balance").
+  STAT: 0.03,             // turn RATE per point (feel: how sharp the kart steers/slides; doesn't win races)
+  STAT_SPEED: 0.03,       // speed: top speed (and boost cap) per point
+  STAT_ACC: 0.03,         // accel ("ZOOM"): acceleration per point — off the line, out of hits/spins/walls/offroad
+  STAT_KICK: 0,           // accel: turbo/pad kick size per point
+  STAT_DRIFT: 0,          // turn: slide top-speed factor per point (high turn = keeps more speed sliding)
+  STAT_GRIP: 0,           // turn: corner-scrub reduction per point (high turn = carries more speed round corners)
+  CORNER: { a0: 12, a1: 32, loss: 0 },   // steering scrub: top × (1 − loss·ramp(aLat: a0→a1 m/s²)), not in a slide
   KART_R: 0.8, WALL_E: 0.25, WALL_MIN_KEEP: 0.4,
   SNAP: 0.4, RESPAWN_T: 1.2, RESPAWN_DROP: 2.5,
   HIT: { flip: { t: 1.2, keep: 0.15, stars: 3 }, spin: { t: 1.0, keep: 0.45, stars: 1 }, wobble: { t: 3.0 } },
@@ -55,7 +63,7 @@ export function createKart({ racerId = 'orion', stats = { speed: 3, accel: 3, tu
     air: false, airT: 0, landT: 9, hop: false, hopBtn: null, slideGraceT: 0,
     nrm: { x: 0, y: 1, z: 0 }, onRoad: true, surface: 'road', ground: 0,
     // slide
-    drift: 0, driftBtn: null, driftAngle: 0, charge: 0, turbos: 0, overheat: false, fizzleT: 0, inRed: false,
+    cornerF: 1, drift: 0, driftBtn: null, driftAngle: 0, charge: 0, turbos: 0, overheat: false, fizzleT: 0, inRed: false,
     // boost
     boostT: 0, boostTier: 0, boostMaxT: 0,
     // items / hits (items agent drives these through applyHit/addBoost)
@@ -69,26 +77,27 @@ export function createKart({ racerId = 'orion', stats = { speed: 3, accel: 3, tu
   };
 }
 
-/** Stat multiplier, ±6% across 1..5. */
-const statK = v => 1 + (clamp(v, 1, 5) - 3) * T.STAT;
+/** Stat multiplier: 1 + per·(stat − 3). */
+const statK = (v, per = T.STAT) => 1 + (clamp(v, 1, 5) - 3) * per;
 
 /** Base (un-boosted) top speed for this kart on tarmac. */
 export function baseTop(k) {
-  return T.BASE_MAX * statK(k.stats.speed) * (k.stars >= T.STARS_SUPER ? 1 + T.STAR_BONUS : 1) * k.pace;
+  return T.BASE_MAX * statK(k.stats.speed, T.STAT_SPEED) * (k.stars >= T.STARS_SUPER ? 1 + T.STAR_BONUS : 1) * k.pace;
 }
 /** Current top speed: base, raised by the boost reserve, reduced by surface/slide/wobble. */
 export function topSpeed(k) {
   const base = baseTop(k);
   let v = base;
   if (k.boostT > 0) {
-    const cap = T.BOOST_MAX * statK(k.stats.speed) * k.pace;
+    const cap = T.BOOST_MAX * statK(k.stats.speed, T.STAT_SPEED) * k.pace;
     v = Math.min(cap, base * (1 + T.BOOST_BASE + T.BOOST_PER_S * Math.min(k.boostT, 2.2)));
   }
   let surf = SURFACES[k.surface] ?? 0.65;
   if (k.surface === 'gap' || k.surface === 'void') surf = 1;
   if (k.boostT > 0) surf = Math.sqrt(surf);        // a turbo powers through sand, partly
   v *= surf;
-  if (k.drift) v *= T.DRIFT_SPEED;
+  if (k.drift) v *= Math.min(1, T.DRIFT_SPEED * statK(k.stats.turn, T.STAT_DRIFT));
+  else if (k.cornerF < 1) v *= k.cornerF;           // hard steering at speed scrubs a little (turn stat: less)
   if (k.slowT > 0) v *= 0.62;
   if (k.invincT > 0) v = Math.max(v, base * 1.18);  // super star: top speed
   return v;
@@ -102,6 +111,7 @@ export function addBoost(k, secs, tier = 1, kick = 3) {
   if (tier >= k.boostTier) k.boostTier = tier;
   k.boostMaxT = Math.max(k.boostT, k.boostMaxT);
   const cap = topSpeed(k);
+  kick *= statK(k.stats.accel, T.STAT_KICK);
   if (k.speed < cap) k.speed = Math.min(cap, Math.max(k.speed, baseTop(k) * (k.drift ? T.DRIFT_SPEED : 1)) + kick);
 }
 
@@ -207,7 +217,7 @@ export function stepKart(k, c, track, dt = DT) {
   // ---------------------------------------------------------------- speed
   const vmax = topSpeed(k);
   let thr = disabled || k.stallT > 0 ? 0 : c.throttle, brk = disabled ? 0 : c.brake;
-  const accK = statK(k.stats.accel);
+  const accK = statK(k.stats.accel, T.STAT_ACC);
   if (k.boostT > 0) { k.boostT = Math.max(0, k.boostT - dt); if (!k.boostT) { k.boostTier = 0; k.boostMaxT = 0; } }
   if (!k.air) {
     if (brk > 0.05 && !(k.boostT > 0 && thr > 0)) {
@@ -235,11 +245,17 @@ export function stepKart(k, c, track, dt = DT) {
     const rate = k.drift * (T.DRIFT_BASE + T.DRIFT_STEER * into) * turnK;
     k.yaw += rate * dt;
     k.driftAngle = approach(k.driftAngle, T.DRIFT_ANGLE + 0.12 * into, 3.2 * dt);
+    k.cornerF = 1;
   } else {
     const v = Math.abs(k.speed);
     const f = Math.min(1, v / T.TURN_FULL_V) * (1 - T.HIGH_V_TURN_LOSS * Math.min(1, v / 30));
-    k.yaw += k.steer * T.TURN * turnK * f * Math.sign(k.speed || 1) * (k.air ? T.AIR_TURN : 1) * dt;
+    const rate = k.steer * T.TURN * turnK * f * Math.sign(k.speed || 1) * (k.air ? T.AIR_TURN : 1);
+    k.yaw += rate * dt;
     k.driftAngle = approach(k.driftAngle, 0, 3.5 * dt);
+    // corner scrub (read by topSpeed next step): lateral accel v·ω past a0 costs up to `loss` of top speed
+    const C = T.CORNER, aLat = k.air ? 0 : v * Math.abs(rate);
+    const loss = C.loss * Math.max(0, 1 - (clamp(k.stats.turn, 1, 5) - 3) * T.STAT_GRIP);
+    k.cornerF = 1 - loss * clamp((aLat - C.a0) / (C.a1 - C.a0), 0, 1);
   }
   if (k.spinT > 0) k.yaw += 0;     // the visual spin is the renderer's (spinT); travel keeps its line
   k.yaw = wrapA(k.yaw);

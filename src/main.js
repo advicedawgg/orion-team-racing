@@ -77,8 +77,25 @@ export function setState(s) {
 export const onState = fn => { stateFns.add(fn); return () => stateFns.delete(fn); };
 
 /* ------------------------------------------------------------------ track */
+/** Free the GPU side of a track: geometries, materials and every texture they reference (maps and
+ *  shader uniforms). three re-uploads a disposed texture if it's drawn again, so trackmesh's
+ *  texture cache stays valid. Measured with tools/leakcheck.mjs: without this, textures grew by
+ *  ~20 per lap of the 5 tracks (canvas textures rebuilt per scenery build were never freed). */
+function disposeGroup(root) {
+  const mats = new Set(), texs = new Set();
+  root.traverse(o => {
+    o.geometry?.dispose?.();
+    if (o.material) for (const m of [].concat(o.material)) mats.add(m);
+  });
+  for (const m of mats) {
+    for (const v of Object.values(m)) if (v?.isTexture) texs.add(v);
+    if (m.uniforms) for (const u of Object.values(m.uniforms)) { const v = u?.value; if (v?.isTexture) texs.add(v); }
+    m.dispose();
+  }
+  for (const t of texs) t.dispose();
+}
 async function loadTrack(id) {
-  if (G.tm) { scene.remove(G.tm.group); G.tm.group.traverse(o => { o.geometry?.dispose?.(); }); }
+  if (G.tm) { scene.remove(G.tm.group); disposeGroup(G.tm.group); }
   const def = trackById(id);
   G.track = buildTrack(def);
   G.tm = await buildTrackMesh(G.track, { scene });

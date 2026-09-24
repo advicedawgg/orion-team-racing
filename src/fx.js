@@ -91,8 +91,10 @@ export function createFx(scene) {
       const vx = k.vel.x, vz = k.vel.z;
       // --- exhaust flames at the exhaust anchors
       let flameC = null, rate = 0, big = 0.35;
-      if (k.boostT > 0) { flameC = k.boostTier >= 3 ? FLAME.boost3 : k.boostTier === 2 ? FLAME.boost2 : FLAME.boost1; rate = 40; big = k.boostTier >= 3 ? 0.55 : 0.45; }
-      else if (k.drift && !k.overheat && k.turbos < 3) { flameC = k.inRed ? FLAME.red : FLAME.charging; rate = 28; big = 0.2 + 0.16 * k.charge; }
+      // sizes/alpha tuned so the flames stay vivid but never white-out the kart in the chase cam
+      // (additive quads stacked at the pipe tips used to saturate to a white blob over the driver)
+      if (k.boostT > 0) { flameC = k.boostTier >= 3 ? FLAME.boost3 : k.boostTier === 2 ? FLAME.boost2 : FLAME.boost1; rate = 34; big = k.boostTier >= 3 ? 0.4 : 0.34; }
+      else if (k.drift && !k.overheat && k.turbos < 3) { flameC = k.inRed ? FLAME.red : FLAME.charging; rate = 26; big = 0.17 + 0.13 * k.charge; }
       const ex = rig?.exhausts?.length ? rig.exhausts : null;
       const anchors = [];
       if (ex) for (const a of ex) { a.getWorldPosition(_v); anchors.push([_v.x, _v.y, _v.z]); }
@@ -101,7 +103,7 @@ export function createFx(scene) {
         const n = rate * dt * lod;
         for (const a of anchors) for (let i = 0; i < n + (Math.random() < n % 1 ? 1 : 0); i++) {
           spawn(add, { x: a[0], y: a[1], z: a[2], vx: vx * 0.6 - fx_ * 5 + rnd(0.8), vy: 0.6 + rnd(0.5), vz: vz * 0.6 - fz_ * 5 + rnd(0.8),
-            life: 0.14 + Math.random() * 0.07, s0: big, s1: 0.06, color: flameC, drag: 3, alpha: 0.85 });
+            life: 0.14 + Math.random() * 0.07, s0: big, s1: 0.05, color: flameC, drag: 3, alpha: 0.55 });
         }
       }
       if (k.overheat || k.fizzleT > 0) {
@@ -162,7 +164,7 @@ export function createFx(scene) {
         for (let i = 0; i < 28; i++) spawn(alp, { x: p.x + rnd(0.8), y: p.y, z: p.z + rnd(0.8), vx: rnd(3), vy: 5 + Math.random() * 6, vz: rnd(3), life: 0.9, s0: 0.45, s1: 0.2, color: 0xe8fbff, alpha: 0.9, grav: 22, drag: 0.5 });
       } else if (kind === 'turbo' || kind === 'pad') {
         const c = o.color ?? (kind === 'pad' ? 0xffc23a : FLAME.boost2);
-        for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2; spawn(add, { x: p.x, y: p.y + 0.5, z: p.z, vx: Math.cos(a) * 4 + (o.vx || 0) * 0.5, vy: 1 + Math.random() * 2, vz: Math.sin(a) * 4 + (o.vz || 0) * 0.5, life: 0.35, s0: 0.5, s1: 0.05, color: c, drag: 3 }); }
+        for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2; spawn(add, { x: p.x, y: p.y + 0.5, z: p.z, vx: Math.cos(a) * 4 + (o.vx || 0) * 0.5, vy: 1 + Math.random() * 2, vz: Math.sin(a) * 4 + (o.vz || 0) * 0.5, life: 0.35, s0: 0.36, s1: 0.05, color: c, drag: 3, alpha: 0.7 }); }
       } else if (kind === 'sparkle') {
         for (let i = 0; i < n; i++) spawn(add, { x: p.x + rnd(0.8), y: p.y + 0.5 + Math.random(), z: p.z + rnd(0.8), vx: rnd(1), vy: 1 + Math.random(), vz: rnd(1), life: 0.7, s0: 0.25, s1: 0.02, color: o.color ?? 0xfff3a0, drag: 1 });
       }
@@ -173,6 +175,7 @@ export function createFx(scene) {
     update(dt, camera) {
       const e = camera.matrixWorld.elements;
       const rx = e[0], ry = e[1], rz = e[2], ux = e[4], uy = e[5], uz = e[6];
+      const cx = e[12], cy = e[13], cz = e[14];
       for (const pool of [add, alp]) {
         const { pos, col, P } = pool;
         let live = 0;
@@ -185,8 +188,13 @@ export function createFx(scene) {
           p.vx *= dr; p.vz *= dr; p.vy = p.vy * dr - p.grav * dt;
           p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
           const t = 1 - Math.max(0, p.life) / p.max;
-          const s = p.s0 + (p.s1 - p.s0) * t;
-          const a = pool.additive ? p.a * (1 - t) : p.a * (1 - t * t);
+          let s = p.s0 + (p.s1 - p.s0) * t;
+          let a = pool.additive ? p.a * (1 - t) : p.a * (1 - t * t);
+          // near the camera: shrink (a quad never covers more than ~10% of the screen height) and,
+          // for glowing sprites, fade out — flames/sparks flying back past the lens were big white blobs
+          const dd = Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2 + (p.z - cz) ** 2);
+          if (s > dd * 0.075) s = dd * 0.075;
+          if (dd < 5) { const f = Math.max(0, (dd - 1.2) / 3.8); a *= pool.additive ? f * f * (3 - 2 * f) : 0.35 + 0.65 * f; }
           const Rx = rx * s, Ry = ry * s, Rz = rz * s, Ux = ux * s, Uy = uy * s, Uz = uz * s;
           pos[o3] = p.x - Rx - Ux; pos[o3 + 1] = p.y - Ry - Uy; pos[o3 + 2] = p.z - Rz - Uz;
           pos[o3 + 3] = p.x + Rx - Ux; pos[o3 + 4] = p.y + Ry - Uy; pos[o3 + 5] = p.z + Rz - Uz;
