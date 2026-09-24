@@ -7,6 +7,10 @@
 // (EXT_disjoint_timer_query_webgl2). The box is vsync-locked — rAF timing means nothing; these do.
 // Writes <out>/<track>/chase-tNNN.jpg + <out>/<track>/perf.json and prints a table. Contact
 // sheet per track: <out>/<track>-sheet.jpg (ImageMagick montage). Pages always closed in finally.
+// 2P split screen (`--query players=2`): render() runs once per view, so --perf sums the CPU ms of
+// the views of each game frame, and ONE GPU timer query spans both views (a query per view read
+// the second view ~3x too high — ANGLE's deferred submission lands in whichever query is open);
+// draw calls/triangles = the whole frame (main.js keeps renderer.info across both views).
 import { chromium } from 'playwright-core';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -30,15 +34,18 @@ const PERF_HOOK = () => {
   const ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');
   const orig = r.render.bind(r), pend = [];
   const S = window.__perf = { frames: [], gpuOK: !!ext };
+  let open = null, vi = 0;
   r.render = (s, c) => {
-    let q = null;
-    if (ext && pend.length < 8) { q = gl.createQuery(); gl.beginQuery(ext.TIME_ELAPSED_EXT, q); }
+    const nv = O.G.mp && O.race ? 2 : 1;          // views per game frame
+    if (vi === 0 && ext && pend.length < 8) { open = gl.createQuery(); gl.beginQuery(ext.TIME_ELAPSED_EXT, open); }
     const t0 = performance.now();
     orig(s, c);
     const cpu = performance.now() - t0;
-    if (q) gl.endQuery(ext.TIME_ELAPSED_EXT);
-    const f = { t: O.race ? O.race.t : -99, cpu, calls: r.info.render.calls, tris: r.info.render.triangles, gpu: null, state: O.state, progs: r.info.programs?.length, tex: r.info.memory.textures };
+    const f = { t: O.race ? O.race.t : -99, fr: O.G.frames, cpu, calls: r.info.render.calls, tris: r.info.render.triangles, gpu: null, state: O.state, progs: r.info.programs?.length, tex: r.info.memory.textures };
     S.frames.push(f);
+    vi++;
+    let q = null;
+    if (vi >= nv) { vi = 0; if (open) { gl.endQuery(ext.TIME_ELAPSED_EXT); q = open; open = null; } }
     if (q) pend.push([q, f]);
     for (let i = pend.length - 1; i >= 0; i--) {
       const [qq, ff] = pend[i];
@@ -50,6 +57,17 @@ const PERF_HOOK = () => {
   };
 };
 
+/** one entry per GAME frame: 2P renders twice per frame (views summed; info already holds the frame total) */
+const perFrame = calls => {
+  const out = [], by = new Map();
+  for (const f of calls) {
+    const g = by.get(f.fr);
+    if (!g) { const n = { ...f, views: 1 }; by.set(f.fr, n); out.push(n); continue; }
+    g.views++; g.cpu += f.cpu; g.calls = Math.max(g.calls, f.calls); g.tris = Math.max(g.tris, f.tris);
+    g.gpu = g.gpu ?? f.gpu;                        // one query spans the frame (it lands on the last view)
+  }
+  return out;
+};
 const pct = (a, p) => { if (!a.length) return NaN; const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
 const summ = fr => ({
   n: fr.length,
@@ -100,7 +118,7 @@ for (const id of TRACKS) {
     const info = await page.evaluate(() => window.__OTR.info());
     let perf = null;
     if (PERF) {
-      const fr = await page.evaluate(() => window.__perf.frames);
+      const fr = perFrame(await page.evaluate(() => window.__perf.frames));
       const grid = fr.filter(f => f.state === 'countdown' || (f.t > -99 && f.t < 0));
       const mid = fr.filter(f => f.t > 10 && f.state === 'race');
       const first5 = fr.filter(f => f.t > -99 && f.t < 5);

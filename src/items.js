@@ -650,7 +650,7 @@ function aiControl(W, b, c) {
       if (st.holdT > cfg.hold && roll(0.8)) return press();
       break;
     case 'remote': {
-      const P = race.player && human(race.player) ? Math.sqrt(cfg.mercy) : 1;
+      const P = (race.humans || [race.player]).some(o => o && human(o)) ? Math.sqrt(cfg.mercy) : 1;   // 2P: any human racing
       if (st.holdT > cfg.hold && roll(cfg.use * P)) return press();
       break;
     }

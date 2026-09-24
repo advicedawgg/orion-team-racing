@@ -19,6 +19,12 @@
 //     absent. `warn:true` entries call hud.warn(key, on ? text : null).
 //   hud.menuOwnsResults = true          — set by menu.js: hud.results() then only hides the stub panel.
 //   portraitURL(id, size)               — cached data-URL of racers.js renderPortrait (menus use it too).
+//
+// 2P split screen (multiplayer agent): createHud(root, { pn }) follows human `pn` (race.humans[pn];
+// default 0 = race.player). main.js makes one per half. The rank list rings the HUD's own kart
+// gold and the other human in their player colour; the minimap (shown by P1's HUD only, straddling
+// the split) rings both humans. `hud.drainsUi = false` on all but the last HUD so race.ui
+// entries reach every half before they're cleared.
 
 const ORD = n => n + (n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th');
 export const ordSuffix = n => (n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th');
@@ -61,8 +67,10 @@ const ip = import('./itemhud.js').then(m => { createItemHud = m.createItemHud ||
 const PLACE_COL = ['#ffd23f', '#e9f0ff', '#ffa24a', '#8fd3ff', '#8fd3ff', '#8fd3ff', '#8fd3ff', '#8fd3ff'];
 const POPS = { 1: ['TURBO!', 't1'], 2: ['SUPER TURBO!!', 't2'], 3: ['ULTRA TURBO!!!', 't3'] };
 
-export function createHud(root) {
+export const PN_COL = ['#ffd23f', '#4ec5f1'];   // P1 gold, P2 cyan (HUD rings, badges, menus)
+export function createHud(root, { pn = 0 } = {}) {
   root.innerHTML = `
+    <div class="hx-pn" id="hPn">P${pn + 1}</div>
     <div class="hx-tl">
       <div class="hx-lap"><small>LAP</small><b id="hLap">1</b><i id="hLaps">/3</i></div>
       <div class="hx-time" id="hTime">0:00.00</div>
@@ -94,13 +102,15 @@ export function createHud(root) {
   const warns = new Map();
   let itemHud = null, itemTried = false;
   let raceRef = null, rankRows = [], mapCache = null, wrongT = 0, prevK = null, lastNow = performance.now(), lastRaceT = null;
+  const meOf = race => race.humans?.[pn] || race.player;      // the kart this HUD follows
 
   /* ---------------- rank list (CTR: portraits down the side in current order) */
   function buildRanks(race) {
     el.ranks.innerHTML = '';
+    const me = meOf(race);
     rankRows = race.karts.map(k => {
       const d = document.createElement('div');
-      d.className = 'hx-rank' + (k.isPlayer ? ' me' : '');
+      d.className = 'hx-rank' + (k === me ? ' me' : k.isPlayer ? ' mate pn' + (k.pn + 1) : '');
       d.innerHTML = `<span class="n"></span><img alt="">`;
       const img = d.querySelector('img'); img.src = portraitURL(k.racerId, 96);
       if (!R) rp.then(() => { purls.delete(k.racerId + ':96'); img.src = portraitURL(k.racerId, 96); });
@@ -147,26 +157,30 @@ export function createHud(root) {
     const c = el.map, g = c.getContext('2d');
     g.clearRect(0, 0, c.width, c.height);
     g.drawImage(mapCache.bg, 0, 0);
-    let me = null;
+    const mine = meOf(race), hum = [];
     if (race.ghostPos) {   // Time Trial ghost (menu.js)
       const [x, y] = mapCache.P(race.ghostPos.x, race.ghostPos.z);
       g.fillStyle = 'rgba(223,244,255,.75)'; g.strokeStyle = 'rgba(11,16,32,.6)'; g.lineWidth = 2;
       g.beginPath(); g.arc(x, y, 6.5, 0, 7); g.fill(); g.stroke();
     }
     for (const k of race.order.slice().reverse()) {
-      if (k.isPlayer) { me = k; continue; }
+      if (k.isPlayer) { hum.push(k); continue; }
       const [x, y] = mapCache.P(k.pos.x, k.pos.z);
       g.fillStyle = racerColor(k.racerId); g.strokeStyle = '#0b1020'; g.lineWidth = 2.5;
       g.beginPath(); g.arc(x, y, 6.5, 0, 7); g.fill(); g.stroke();
     }
-    if (me) {
+    // humans on top (2P: both, each ringed in their player colour; this HUD's own kart last)
+    hum.sort((a, b) => (a === mine) - (b === mine));
+    const multi = hum.length > 1;
+    for (const me of hum) {
       const [x, y] = mapCache.P(me.pos.x, me.pos.z), r = 9 + Math.sin(t * 8) * 1.5;
-      g.fillStyle = 'rgba(255,210,63,.35)'; g.beginPath(); g.arc(x, y, r + 5, 0, 7); g.fill();
-      g.fillStyle = racerColor(me.racerId); g.strokeStyle = '#fff'; g.lineWidth = 3.5;
+      g.fillStyle = multi ? (me.pn ? 'rgba(78,197,241,.4)' : 'rgba(255,210,63,.4)') : 'rgba(255,210,63,.35)'; g.beginPath(); g.arc(x, y, r + 5, 0, 7); g.fill();
+      g.fillStyle = racerColor(me.racerId); g.strokeStyle = multi ? PN_COL[me.pn] || '#fff' : '#fff'; g.lineWidth = 3.5;
       g.beginPath(); g.arc(x, y, 8, 0, 7); g.fill(); g.stroke();
       // heading tick
       const hx2 = -Math.sin(me.yaw), hz2 = -Math.cos(me.yaw);
       g.strokeStyle = '#fff'; g.lineWidth = 3; g.beginPath(); g.moveTo(x + hx2 * 9, y + hz2 * 9); g.lineTo(x + hx2 * 16, y + hz2 * 16); g.stroke();
+      if (multi) { g.font = '900 13px system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = 3; g.strokeStyle = '#0b1020'; g.strokeText(me.pn + 1, x, y + 0.5); g.fillStyle = '#fff'; g.fillText(me.pn + 1, x, y + 0.5); }
     }
   }
 
@@ -178,13 +192,15 @@ export function createHud(root) {
     el.lapList.innerHTML = ''; last.lapN = -1;
     root.querySelector('#hBest').textContent = race.bestTime ? 'BEST ' + clock(race.bestTime) : '';
     root.classList.toggle('solo', race.karts.length === 1);
+    root.classList.toggle('mp', (race.humans?.length || 1) > 1);
     buildRanks(race);
     try { buildMap(race.track); el.map.hidden = false; } catch (e) { console.warn('[hud] minimap', e); el.map.hidden = true; mapCache = null; }
     if (!itemTried && createItemHud) { itemTried = true; try { itemHud = createItemHud(el.item); } catch (e) { console.warn('[hud] createItemHud failed', e); itemHud = null; } }
     // item events ({type:'item', e, kart, ...} from items.js) — collected every sim step so a
     // render frame that ran several steps doesn't drop any
     itemQ.length = 0;
-    if (race.addSystem && !race._hudSys) { race._hudSys = true; race.addSystem(r => { if (r !== raceRef) return; for (const e of r.events) if (e.type === 'item' && itemQ.length < 24) itemQ.push(e); }); }
+    const sysKey = '_hudSys' + pn;   // one collector per HUD (2P: two HUDs on one race)
+    if (race.addSystem && !race[sysKey]) { race[sysKey] = true; race.addSystem(r => { if (r !== raceRef) return; for (const e of r.events) if (e.type === 'item' && itemQ.length < 24) itemQ.push(e); }); }
   }
   const itemQ = [];
   function itemEvents(P) {
@@ -222,7 +238,7 @@ export function createHud(root) {
   }
 
   const api = {
-    menuOwnsResults: false,
+    menuOwnsResults: false, drainsUi: true, pn,
     show(on) { root.hidden = !on; if (!on) { api.warnClear(); } },
     update(v, race) {
       const now = performance.now(), dt = Math.min(0.1, (now - lastNow) / 1000); lastNow = now;
@@ -244,7 +260,7 @@ export function createHud(root) {
       el.boost.style.transform = `scaleX(${Math.min(1, (v.boostT || 0) / 3)})`;
       set('fin', !!v.finished, f => root.classList.toggle('fin', f));
       if (!race) return;
-      const P = race.player;
+      const P = meOf(race);
       if (P) {
         set('lapN', P.lapTimes?.length || 0, n => {
           el.lapList.innerHTML = (P.lapTimes || []).map((t, i) => `<li${t === Math.min(...P.lapTimes) && n > 1 ? ' class="best"' : ''}><small>L${i + 1}</small> ${clock(t)}</li>`).join('');
@@ -260,7 +276,7 @@ export function createHud(root) {
       updateRanks(race);
       if (mapCache) drawMap(race, now / 1000);
       if (race.ui && race.ui.length) {
-        const q = race.ui.splice(0, race.ui.length);
+        const q = api.drainsUi ? race.ui.splice(0, race.ui.length) : race.ui.slice();
         for (const u of q) {
           if (u.kart && u.kart !== P) continue;
           if (u.warn) api.warn(u.key || u.text, u.on === false ? null : u.text);

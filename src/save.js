@@ -7,7 +7,8 @@
 //     cupWins: { easy: 0, medium: 0, hard: 0 },   // Orion Cup wins per difficulty
 //     best: { <trackId>: { lap: s, race: s, racer } },   // Time Trial + every race count
 //     settings: { master, music, sfx (0..1), autoAccel: 'easy'|'on'|'off', kidAssist: bool,
-//                 hd: bool, difficulty: 'easy'|'medium'|'hard', quality: 'auto'|'high'|'low' },
+//                 hd: bool, difficulty: 'easy'|'medium'|'hard', quality: 'auto'|'high'|'low',
+//                 mpAuto: [p1, p2], mpHelper: [p1, p2] (2 PLAYERS join screen, per player; absent until toggled) },
 //     lastRacer, lastTrack,
 //   }
 //   localStorage['otrGhost:<trackId>'] = { v:1, racer, time, hz, d: [x,y,z,yaw, x,y,z,yaw, …] (dm / mrad ints) }

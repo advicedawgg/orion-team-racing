@@ -108,7 +108,7 @@ const S = {
   lis: { x: 0, y: 0, z: 0, fx: 0, fz: 1 },
   noise: null,
   karts: new Map(),         // id -> kart engine state
-  pool: [], playerVoice: null, lastAssign: 0,
+  pool: [], playerVoice: null, playerVoices: [], lastAssign: 0,
   decks: [], deck: -1, musicName: null, wantMusic: null, musicIndex: null,
   duckUntil: 0, paused: false, lastBark: 0, loading: null,
 };
@@ -806,10 +806,12 @@ export const audio = {
     }
     if (!S.ctx) return;
     if (k.isPlayer && !k.voice) {
-      // one player voice; a second "player" (split screen) would share it
-      if (!S.playerVoice) S.playerVoice = makeEngineVoice();
-      if (S.playerVoice.kart && S.playerVoice.kart !== k) S.playerVoice.kart.voice = null;
-      S.playerVoice.kart = k; k.voice = S.playerVoice;
+      // one voice per player kart: 2P split screen gives each player their own engine (multiplayer agent)
+      let v = S.playerVoices.find(x => !x.kart || !S.karts.has(x.kart.id));
+      if (!v) { v = makeEngineVoice(); S.playerVoices.push(v); }
+      if (v.kart && v.kart !== k) v.kart.voice = null;
+      v.kart = k; k.voice = v;
+      S.playerVoice = S.playerVoices[0];
     }
     if (!k.isPlayer) assignAIVoices();
     if (k.voice) driveVoice(k.voice, k);

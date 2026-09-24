@@ -21,8 +21,10 @@ Browser checks (GPU headless Chrome, CDP `http://192.168.15.100:9333`, dev serve
 ```sh
 node tools/realflow.mjs      # whole game in one page session, real keys → REALFLOW: PASS
 node tools/input-test.mjs    # pad + keyboard in a race                  → INPUT TEST: PASS
-node tools/leakcheck.mjs 2   # geometries/textures flat across 10 track switches
-node tools/playtest.mjs castle --perf   # chase shots + draw calls / CPU / GPU ms
+node tools/twoplayer-test.mjs  # 2P split screen: pads, keyboard split, join, cup → TWO PLAYER TEST: PASS
+node tools/leakcheck.mjs 2   # geometries/textures flat across 10 track switches (--query players=2)
+node tools/playtest.mjs castle --perf   # chase shots + draw calls / CPU / GPU ms (--query players=2 for 2P)
+node tools/shot-2p.mjs beach castle     # 2P screenshots: grid / mid-race items / results → shots/mp/
 ```
 
 A visual change isn't done until you've looked at the screenshot (Read the PNG). Use the contact
@@ -48,6 +50,15 @@ sheet `shots/qa/<track>-sheet.jpg` from `playtest.mjs`.
 - Arrow keys and Space are `preventDefault`-ed, so the page never scrolls.
 - Keys are released on window `blur`, so the Steam overlay or an alt-tab can't leave a key
   stuck.
+- **2P keeps the 1P paths intact.** `race.player` is still P1 and `In.controls` still merges
+  every device. Per-player input is `In.players[pn]`, and humans are `race.humans` / `kart.pn`.
+  Anything written for "the player" must ask whether it means P1 or every human (DESIGN.md "Two
+  players").
+- **The press that joins P2 must not click.** Enter or A on the join screen is both a join and a
+  menu 'ok'. input.js queues the join before menu.js sees the key, and the join screen's
+  `onAction` eats the 'ok'.
+- **Don't reorder the main menu.** 2 PLAYERS sits under TIME TRIAL, because realflow/ui-test and
+  the kid's muscle memory rely on ↓ = ORION CUP and ↓↓ = TIME TRIAL.
 
 **Rendering**
 - Warm-up before GO has three parts:
@@ -63,6 +74,12 @@ sheet `shots/qa/<track>-sheet.jpg` from `playtest.mjs`.
   shader-uniform textures included. Before that fix, textures grew by about 20 for every lap of
   the five tracks. three re-uploads a disposed texture if it's drawn again, so trackmesh's
   texture cache stays valid.
+- **2P draws the scene twice** (setViewport + setScissor). One GPU timer query must span both
+  views: a query per view read the second one about 3× too high. `renderer.info` isn't reset
+  between the views, so `info()` is the whole frame. The start grid in 2P is 266–291 calls,
+  because every racer is in both views. Shadows are always off in 2P.
+- **The 2P body class is `split2`, not `p2`.** ui.css uses `.p2` for "2nd place" on the results
+  panel.
 - **Draw calls are the Steam Deck's budget.** Stay at or under ~200.
   - Merge static scenery per material and instance repeated props.
   - An InstancedMesh's shadow pass draws every instance, so keep small props shadowless.

@@ -51,6 +51,8 @@ tools/kidbots.js      kidBot + wobblyKid: models of a young player for the gate 
 tools/shot.mjs        screenshot through the GPU headless Chrome                 (core)
 tools/slide-test.mjs  scripted power slide in the real browser, 3 turbos + shots (core)
 tools/ui-test.mjs     menu/HUD browser driver: screens, key/pad/tap flows, cup, time trial (ui agent)
+tools/twoplayer-test.mjs  2P split screen end to end: fake pads, keyboard split, join, cup (multiplayer agent)
+tools/shot-2p.mjs     2P screenshots per track: grid / mid-race items / results                (multiplayer agent)
 assets/tex|ui|sfx|audio|models   generated assets
 ```
 
@@ -122,6 +124,7 @@ you dead. Falling off the course (only possible on tracks that allow it) = a fri
 Either shoulder starts a slide and the *other* one boosts, so both hands work. **Never bind
 Ctrl** (Ctrl+W closes the tab — DAWG ARENA lost a week to it). `preventDefault` arrow keys and
 Space so the page doesn't scroll. **Auto-accelerate** is a setting, default ON in Easy.
+2P bindings (one keyboard split, own pads) are in **Two players**.
 
 ## Racers (characters agent)
 
@@ -268,7 +271,7 @@ and `lockedBy`/`tnt` into the flashing "ROCKET! WATCH OUT!" / "HOP! HOP! HOP!" w
 itemviews.js adds only the player's own hit callout (`BOOM!`, `ZAPPED!`, `SPLAT!` … via `race.ui`).
 
 **Browser wiring** (main.js, 7 marked lines): `IV = createItemViews({scene, fx, audio, chase,
-visuals})`; `IV.attach(race)` in startRace **before** `compileAsync` (it makes one of every item
+chaseFor (2P: kart → that player's ChaseCam), visuals})`; `IV.attach(race)` in startRace **before** `compileAsync` (it makes one of every item
 mesh visible for that call so no shader compiles mid-race); `IV.step(race.events, G.ff)` after
 each step; `IV.update(dt, alpha)` each rendered frame; `IV.detach()` in endRace; the player's
 control object gets `item: In item held || latched tap (G.pendI)` and `itemBack: brake > 0.3`.
@@ -581,7 +584,7 @@ instance — keep small props shadowless).
 
 **Screens** (`menu.js`, DOM in `#ui`, one at a time): `title` (key art `assets/ui/title.jpg` +
 `logo.png`, sparkles, "PRESS START!"; fallback = 3D line-up of all racers + CSS text logo) →
-`menu` → `select` (4×2 portrait grid + 3D turntable preview with hops, name, blurb, SPEED/ZOOM/TURN
+`menu` (→ `join` for 2 PLAYERS, see **Two players**) → `select` (4×2 portrait grid + 3D turntable preview with hops, name, blurb, SPEED/ZOOM/TURN
 bars; confirm = cheer + bark) → `tracks` (cards `assets/ui/track_<id>.jpg` read live from `TRACKS`;
 a `secret: true` / id `star` track shows as a locked "?????" until unlocked; TT shows ghost times)
 → `loading` → race → `results` (overlay; the race keeps running behind; appears 2.6 s after the
@@ -609,7 +612,7 @@ URL (never the saved racer/difficulty/assists) so tests stay deterministic.
 ```js
 localStorage.otrSave = { v: 1, unlocked: { star: false }, cupWins: { easy, medium, hard },
   best: { <trackId>: { lap, race, racer } },            // every finished race counts, TT or not
-  settings: { master, music, sfx, autoAccel: 'easy'|'on'|'off', kidAssist, hd, difficulty },
+  settings: { master, music, sfx, autoAccel: 'easy'|'on'|'off', kidAssist, hd, difficulty, quality, mpAuto?: [p1,p2], mpHelper?: [p1,p2] },
   lastRacer, lastTrack }
 localStorage['otrGhost:<trackId>'] = { v: 1, racer, time, hz: 10, d: [x,y,z,yaw …] }  // dm / mrad ints, ~20 KB
 ```
@@ -640,6 +643,94 @@ tools/ui-test.mjs screens|flow|cup|hud|tt|pad|tap [--size 844x390] [--touch] [--
 `shots/ui/*-<size>.png`; fails on page errors, console errors and failed requests. `pad` fakes a
 standard gamepad through `navigator.getGamepads`; `cup` and `tt` clear `otrSave` first.
 
+## Two players (split screen — multiplayer agent)
+
+Local 2P, CTR style: two humans + 6 AI on one screen, **top half P1, bottom half P2** (a
+horizontal split: at 1280×800 each view is 1280×400; left/right would be two 640×800 slits).
+Quick Race and the Orion Cup; Time Trial stays 1P.
+
+**Flow** (`menu.js`): main menu **2 PLAYERS** (under TIME TRIAL — the old positions are kept, the
+kid's muscle memory and realflow/ui-test's key paths depend on them) → **join** screen → QUICK
+RACE ▶ / ORION CUP ▶ (locked until P2 joins) → racer select for P1, then P2 (P1's racer is greyed
+with a P1 badge: one of each racer on the grid; default P2 = King Dad) → tracks / cup standings.
+RACE AGAIN / NEXT TRACK / START AGAIN stay 2P; picking QUICK RACE / ORION CUP / TIME TRIAL on the
+main menu is 1P again. `?screen=join`; `?players=2&screen=standings|podium|results` for the 2P
+versions.
+
+**Join screen.** P1 = the device that opened it (`In.deviceId()`: `pad:N` or `kb`; touch → kb).
+P2 joins with A/Start on another pad (`pad:M`), or a right-half key (Enter, Right Shift, `/`, `.`):
+if P1 is on the keyboard it splits (`kbL`/`kbR`), if P1 is on a pad P2 gets the whole keyboard
+(`kb`). A pad joining after a keyboard split gives P1 the whole keyboard back. The press that
+joins is **swallowed** — input.js queues it (`takeJoins()`) before menu.js sees the same key/button
+as 'ok', and the join screen's `onAction('ok')` consumes the queue first, so Enter/A never also
+clicks the focused button. Per player: **AUTO-GO** and **KID HELPER** toggles (saved as
+`settings.mpAuto` / `settings.mpHelper`; defaults P1 = the 1P settings, P2 = off — Orion gets
+help, Dad doesn't).
+
+**Input** (`input.js`): `players[0|1]` are per-player controllers (`controls`, `hit`, `down`,
+`autoAccel`, `device`) reading ONE device each; `multi(on)` switches their update on (startRace in
+2P), `setDevices(d1, d2)`. `'auto'` (URL tests): 2+ pads → pad order; 1 pad → pad + keyboard;
+none → `kbL` + `kbR`. The 1P `controls`/`hit` still merge every device exactly as before. Keyboard
+state is per `KeyboardEvent.code`:
+| | P1 left half (`kbL`) | P2 right half (`kbR`) |
+|---|---|---|
+| steer / go / brake | A D / W / S | ← → / ↑ / ↓ |
+| hop (shoulder A) | Space | Right Shift or `/` |
+| turbo (shoulder B) | Left Shift | `.` |
+| item | E | Enter (NumpadEnter) |
+Esc/P (and Start on any pad) pause for both — menu.js reads them as before. Never Ctrl.
+
+**Race** (`race.js`): `createRace({ players: [{ index, easyBoost, assist }, …] })` → both karts are
+`isPlayer` with `pn` 0/1; `race.player` = P1 (every 1P path keeps working), `race.humans` = both,
+`race.step([ctrlP1, ctrlP2])`. Start boosts / stalls per human. **Rubber band:** an AI ahead of
+every human is banded against the leading human, every other AI against the trailing one (the pack
+stays round the kid; measured below). The race is called 20 s after the LAST human finishes, or
+`MP_WAIT` 90 s after the first. main's `finished` state = every human home. **Items:** everything
+that was "the player" is now "a human": on Easy both get the mercy (never force-homing, 25 s
+break after a hit, weaker rockets), the remote's mercy counts any human; itemviews gives each human
+their own sounds, callouts, camera shake (`chaseFor(kart)`), roulette ticks and lock beeps; `give=`
+/ `stars=` go to both.
+
+**Rendering** (`main.js`): one scene, two cameras (`views[j] = { cam, chase, hud }`), drawn with
+`setViewport` + `setScissor` (three's viewport y is from the bottom: P1 at y = H/2). Per view:
+kart visibility (`cullKarts`: far cull, and the hide-within-2.4 m rule now also hides the OTHER
+player's kart from your lens), the sky dome follows that camera, and particles are re-billboarded
+for the second camera with `fx.update(0, cam2)` (dt 0 = no sim step). Blob shadows show if a kart
+is seen from either view. `renderer.info.autoReset` is off across the two views, so `info()` and
+the perf tools see the whole frame. **2P quality override** (`QUAL_MP`, whatever GRAPHICS says):
+no real-time shadow (every kart gets a blob), `fx.q` 0.5, AI karts culled at 120 m (~7 px tall in a
+400 px view — FAST's 150 m in 1P). Render scale still follows the setting (two half views = one
+full view of pixels). Camera: `ChaseCam.fovMul` 0.66 in 2P (1280×400 at 66° vertical is a 128°
+fisheye sideways; 0.66 keeps ~1P's horizontal FOV). `startRace` also renders one real split frame
+during the warm-up. `resize()` only runs when the split changes (setSize reallocates the buffer).
+
+**HUD** (`hud.js`, `.hx-*` + `body.split2` rules in ui.css): `createHud(root, { pn })` follows
+`race.humans[pn]`; `#hud` = the top half (P1), `#hud2` = the bottom half (P2), each laid out inside
+its half at ~80 % of the 1P size, with a P1 (gold) / P2 (cyan) badge bottom-left. Lap, time,
+place, rank list (own kart ringed in the player colour, the other human thin-ringed), stars, item
+slot + roulette (smaller), meter, pops, banners/events/warnings (below the item slot), wrong-way —
+all per half. **Shared:** the countdown (P1's, on the split line), the pause menu, and ONE minimap
+(P1's HUD, bottom-right of the top half — straddling the split it covered P2's place) that rings
+both humans with their number. `race.ui` entries reach both halves (`hud.drainsUi = false` on all
+but the last HUD); each HUD registers its own item-event collector (`_hudSys<pn>`). The body class
+is `split2`, NOT `p2`: ui.css already uses `.p2` for "2nd place" on the results panel.
+
+**Audio:** each human kart gets its own engine voice (`audio.js` `S.playerVoices`); the listener
+is the midpoint of the two cameras (P1's heading); each human's drift/offroad loops are their own.
+
+**Results / cup:** the results header shows both players (badge, portrait, place); the headline
+celebrates the better-placed one ("P1 WINS!" / "P2 ON THE PODIUM!" / "GREAT RACE!") and the sub-line
+cheers both; both rows are highlighted (P1 gold, P2 cyan) with badges. Best times record for both.
+`M.cup.humans = [p1Racer, p2Racer]`: standings highlight + badge both, ties list humans first, the
+podium names both players' places, both cheer on the floor (`stage.podium(order, [ids])`), and
+either one winning unlocks Star Road.
+
+**Measured:** gate (`tools/check.js`, 2P on Easy on every track: each control drives only its
+own kart, per-player assist, both finish, ≤ 5 flip/spin AI item hits each — measured 0–2). Band
+probe (15 races, wobbly kid P1 + a medium-AI "dad" P2, Easy): kid's mean place 6.1 with the
+trailing-human band vs 7.5 with a nearest-human band (1P wobbly kid ≈ 5.6); dad 1.0. Perf: README
+"Performance" (2P table). Browser: `node tools/twoplayer-test.mjs` → TWO PLAYER TEST: PASS.
+
 ## Verification (every agent)
 
 - `node tools/check.js` — the gate. Must print PASS. It builds every track through the real
@@ -660,7 +751,9 @@ standard gamepad through `navigator.getGamepads`; `cup` and `tt` clear `otrSave`
   into a race, `&cam=x,y,z,tx,ty,tz` pins the camera, `&t=12` fast-forwards the sim 12 s with AI
   driving the player, `&ai=1` lets AI drive the player, `&hud=0`. Also `&diff=easy|medium|hard`,
   `&slot=0..7` (player grid slot, default 6), `&laps=N`, `&seed=N`, `&touch=1` (force touch UI),
-  `&auto=1` (auto-accelerate), `&hd=1`, `&shadows=0`, `&fx=0`, `&q=low|high|auto` (quality). `window.__OTR` exposes game
+  `&auto=1` (auto-accelerate), `&hd=1`, `&shadows=0`, `&fx=0`, `&q=low|high|auto` (quality),
+  `&players=2` (split screen; `&racer2=`, `&dev1=`/`&dev2=` `auto|kb|kbL|kbR|pad:N`, `&auto2=0|1`,
+  `&helper1=`/`&helper2=0|1`). `window.__OTR` exposes game
   state for tests (see **Core runtime APIs**). UI: `?screen=<name>` opens a menu screen (see
   **Modes and UI**); `__OTR.menu` = `{ M, screen, show(name), action('up'|'ok'|'back'…), launch(trackId) }`.
 - `node tools/slide-test.mjs` drives the player through a real power slide in the browser
@@ -778,7 +871,8 @@ turbo3, fizzle, overheat, pad, ramp, hang1, hang2, wall (0..1), bump (0..1), res
 'fall'), respawned, hit (kind), stars_lost (n), shield_pop`.
 
 **`race.js`** (pure): `createRace({ track, entrants: [{racerId, stats}], playerIndex (−1 = all AI),
-difficulty, laps, seed, easyBoost, noStall, assist })` (`assist` = kid assist for the player, default
+players ([{ index, easyBoost, assist }] — 2P, see **Two players**; then `race.humans`, kart `pn`,
+`race.step([c1, c2])`), difficulty, laps, seed, easyBoost, noStall, assist })` (`assist` = kid assist for the player, default
 `easyBoost ?? difficulty === 'easy'`) → `race` with `karts, brains, player, phase
 ('countdown'|'race'|'done'), t (s; negative during the countdown), order (by place), laps,
 stats[] (per-kart gate stats), autoPlayer (AI drives the player)`, `race.step(playerCtrl)`,
@@ -798,13 +892,13 @@ the kid-assist steering nudge (race.js applies it when `kart.assist`), `ASSIST` 
 
 **`main.js`**: `setState(name)` / `onState(fn(state, prev))` — states `boot, title, countdown,
 race, finished, results` (menu.js runs every menu screen inside `title`; see **Modes and UI**).
-`window.__OTR`: `ready, state, race, track, player, G, scene, camera, renderer, chase, fx, audio,
-T, DT, override(ctrl|null)` (drive the player), `advance(secs)` (fast-forward, silent),
+`window.__OTR`: `ready, state, race, track, player, humans, G, scene, camera, renderer, chase, fx, audio,
+T, DT, In, camera2, chase2, hud2, views, override(ctrl|null, pn = 0)` (drive the player; pn 1 = P2), `advance(secs)` (fast-forward, silent),
 `script(n, fn(k,i) → ctrl, {draw})` (step n frames with scripted controls; returns the player's
 kart events), `hold(bool)` (freeze the live loop), `render()`, `info()` (`renderer.info` calls/
 triangles), `loadTrack(id)`, `startRace()`, `endRace()`, `hud`, `menu`.
 
-**`hud.js`** (UI agent): `createHud(el)` → `{ show(bool), update(view, race), count(n|'GO!'|null),
+**`hud.js`** (UI agent): `createHud(el, { pn = 0 })` (pn: which human it follows, 2P) → `{ show(bool), update(view, race), count(n|'GO!'|null),
 banner(text, ms, cls), event(text, {ms, cls, icon}), warn(key, text|null), pop(text, cls),
 results(rows|null) }`; `view` = `{lap, laps, place, speed, charge, redStart, inRed, drift,
 overheat, turbos, boostT, boostMaxT, stars, finished, raceTime, wrongWay}`; `race` feeds the rank
@@ -815,6 +909,9 @@ results panel off. Also exports `portraitURL(id, size)` (cached data URL of `ren
 **`input.js`**: `update()` once per frame; `controls` (same shape as the control object + `item`),
 `hit(name)` edges (`hopA hopB item pause mute fullscreen confirm back up down left right`),
 `settings.autoAccel`, `initTouch()` wires `[data-btn]` elements, `onGesture(fn)` (audio unlock).
+2P: `players[0|1]` (`controls`, `hit`, `down`, `autoAccel`, `device`), `multi(on)`,
+`setDevices(d1, d2)`, `autoDevices()`, `takeJoins()`, `deviceId()`, `deviceLabel(d)`,
+`padIndices()`, `KEYMAP_L` / `KEYMAP_R` (see **Two players**).
 
 **`trackmesh.js`**: `buildTrackMesh(track)` → `{ group, env, sky, groundAt, isClear, aboveWater,
 update(dt,t) }`; `loadTex(name, fallback, opts)` (instant procedural canvas, upgrades to
@@ -822,7 +919,7 @@ update(dt,t) }`; `loadTex(name, fallback, opts)` (instant procedural canvas, upg
 `mergeGeos(geos)`.
 
 **`fx.js`**: `createFx(scene)` → `{ kart(k, rig, dt, camPos), burst(kind, pos, opts), update(dt, camera),
-clearSkids() }`; burst kinds `land poof fizzle overheat wall splash turbo pad sparkle`; `FLAME`
+clearSkids() }` (`update(0, cam)` re-billboards for another camera without stepping — 2P's second view); burst kinds `land poof fizzle overheat wall splash turbo pad sparkle`; `FLAME`
 colours. Two particle draw calls + one skid-mark mesh; no lights.
 
 ## Audio (audio agent)

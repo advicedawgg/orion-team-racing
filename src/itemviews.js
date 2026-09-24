@@ -11,6 +11,9 @@
 // (each projectile/crate/puddle/bubble/explosion is one merged mesh). No lights, ever.
 // URL debug params: items=0 (off), give=<id> (player gets it at GO), refill=1 (…every time the
 // slot empties), stars=N (player starts with N stars). See DESIGN.md "Items".
+// 2P split screen: every human (race.humans) is a "me" — own sounds, own callouts, own camera shake
+// (`chaseFor(kart)` → that player's ChaseCam), own roulette ticks / lock beeps; debug give/stars go
+// to every human.
 import * as THREE from 'three';
 import { createItems, IT, ITEMS } from './items.js';
 import { rbox } from './racerart.js';
@@ -219,11 +222,13 @@ void main(){
 }`;
 
 /* ============================================================================ the views */
-export function createItemViews({ scene, fx = null, audio = null, chase = null, visuals = () => [] }) {
+export function createItemViews({ scene, fx = null, audio = null, chase = null, chaseFor = null, visuals = () => [] }) {
   const T_ = textures();
   const au = audio || { play: () => ({ stop() {}, set() {} }), bark() {} };
   const root = new THREE.Group(); root.name = 'items'; scene.add(root);
-  let W = null, race = null, P = null, t = 0;
+  let W = null, race = null, P = null, t = 0, H = [];
+  const isMe = k => !!k && H.includes(k);
+  const shake = (k, a) => (chaseFor?.(k) || chase)?.shake(a);
 
   // ---------------------------------------------------------------- materials (shared)
   const M = {
@@ -399,9 +404,9 @@ export function createItemViews({ scene, fx = null, audio = null, chase = null, 
   }
 
   // ---------------------------------------------------------------- attach
-  let bombSnd = new Map(), lockT = 0, roulT = 0, lastLock = 0, lastTnt = false, debugGive = null, refill = false;
+  let bombSnd = new Map(), lockT = [0, 0], roulT = [0, 0], lastLock = 0, lastTnt = false, debugGive = null, refill = false;
   function attach(r) {
-    race = r; P = r.player; t = 0;
+    race = r; P = r.player; t = 0; H = r.humans?.length ? r.humans : P ? [P] : [];
     for (const [, h] of bombSnd) h.stop?.(0.05);
     bombSnd = new Map(); flyers.length = 0; lastLock = 0; lastTnt = false;
     if (Q.get('items') === '0') { W = null; buildInstances(); buildPerKart(0); return null; }
@@ -409,7 +414,7 @@ export function createItemViews({ scene, fx = null, audio = null, chase = null, 
     r.ui = r.ui || [];
     buildInstances();
     buildPerKart(r.karts.length);
-    if (Q.has('stars') && P) P.stars = Math.max(0, Math.min(10, +Q.get('stars') | 0));
+    if (Q.has('stars')) for (const h of H) h.stars = Math.max(0, Math.min(10, +Q.get('stars') | 0));
     debugGive = Q.get('give'); refill = Q.get('refill') === '1';
     if (typeof window !== 'undefined' && window.__OTR) { window.__OTR.items = W; window.__OTR.itemViews = api; }
     // warm-up: make one of everything visible so renderer.compileAsync() compiles every item
@@ -429,9 +434,9 @@ export function createItemViews({ scene, fx = null, audio = null, chase = null, 
       if (e.type === 'go' && debugGive && P) giveDebug();
       if (e.type !== 'item') continue;
       if (ff) continue;
-      const k = e.kart, me = k && k === P;
+      const k = e.kart, me = isMe(k);
       const at = e.pos || (k && !me ? k.pos : null);
-      const near = !at || !P || (at.x - P.pos.x) ** 2 + (at.z - P.pos.z) ** 2 < 90 * 90;
+      const near = !at || !H.length || H.some(h => (at.x - h.pos.x) ** 2 + (at.z - h.pos.z) ** 2 < 90 * 90);
       if (!near) continue;
       const vol = me ? 1 : 0.6;
       switch (e.e) {
@@ -449,11 +454,11 @@ export function createItemViews({ scene, fx = null, audio = null, chase = null, 
         case 'use': useFx(e, me, vol); break;
         case 'hit':
           if (me) {
-            chase?.shake(e.kind === 'flip' ? 0.6 : e.kind === 'spin' ? 0.3 : 0.15);
-            if (e.item !== 'remote') push({ text: HIT_TEXT[e.item] || 'OUCH!', cls: 'bad', ms: 1200, kart: P });
+            shake(k, e.kind === 'flip' ? 0.6 : e.kind === 'spin' ? 0.3 : 0.15);
+            if (e.item !== 'remote') push({ text: HIT_TEXT[e.item] || 'OUCH!', cls: 'bad', ms: 1200, kart: k });
             if (e.kind === 'flip') au.play('vo_ouch');
           }
-          if (e.by === P && !me && e.item !== 'remote') au.play('vo_nice_shot');                  // hud.js: "GOT 'EM!"
+          if (isMe(e.by) && e.by !== k && e.item !== 'remote') au.play('vo_nice_shot');                  // hud.js: "GOT 'EM!"
           if (e.kind !== 'wobble') au.bark?.(k.racerId, 'hit', { at: me ? null : k.pos });
           break;
         case 'blocked':
@@ -464,10 +469,10 @@ export function createItemViews({ scene, fx = null, audio = null, chase = null, 
           au.play(nitro ? 'nitro' : 'explode', { vol: 1, at: e.pos });
           if (e.item === 'rocket' || e.item === 'tnt' || e.r > 0) boom(e.pos, e.r > 0 ? e.r : 2.4, { item: e.item, big: e.big });
           else boom(e.pos, 2.4, { item: e.item });
-          if (P && e.pos) { const d = Math.hypot(e.pos.x - P.pos.x, e.pos.z - P.pos.z); if (d < 20) chase?.shake(0.55 * (1 - d / 20)); }
+          if (e.pos) for (const h of H) { const d = Math.hypot(e.pos.x - h.pos.x, e.pos.z - h.pos.z); if (d < 20) shake(h, 0.55 * (1 - d / 20)); }
           break;
         }
-        case 'lock': if (k === P) { au.play('rocket_lock'); lockT = 0; } break;
+        case 'lock': if (me) { au.play('rocket_lock'); lockT[k.pn > 0 ? 1 : 0] = 0; } break;
         case 'tnt_on': au.play('tnt_on_head', { vol, at: me ? null : k.pos }); if (me) au.bark?.(k.racerId, 'hit'); break;
         case 'tnt_tick': au.play('tnt_tick', { vol: me ? 1 : 0.5, at: me ? null : k.pos, rate: e.n === 1 ? 1.25 : 1 }); break;
         case 'tnt_hop': if (me) au.play('roulette', { rate: 0.6 + e.n * 0.15, vol: 0.8 }); break;
@@ -481,12 +486,12 @@ export function createItemViews({ scene, fx = null, audio = null, chase = null, 
         case 'remote':
           au.play('remote'); au.play('vo_kingdad_remote');
           // hud.js shows e.text ("KING DAD PRESSED PAUSE!") from the item event itself
-          chase?.shake(0.2);
+          for (const h of H) shake(h, 0.2);
           break;
         case 'splat':
           au.play('splat', { vol, at: me ? null : e.pos });
           if (fx) fx.burst('turbo', { x: e.pos.x, y: e.pos.y + 0.2, z: e.pos.z }, { n: 16, color: 0xff7eb6 });
-          if (me) chase?.shake(0.25);
+          if (me) shake(k, 0.25);
           break;
         case 'fizzle': fx?.burst('poof', e.pos, { n: 10 }); break;
         case 'warp_hit': fx?.burst('sparkle', e.pos, { n: 24, color: 0xb49bff }); au.play('explode', { vol: 0.6, at: e.pos }); break;
@@ -508,9 +513,11 @@ export function createItemViews({ scene, fx = null, audio = null, chase = null, 
       case 'warp': au.play('warp', { vol, at }); break;
     }
   }
-  function giveDebug() {
-    if (!W || !P || !debugGive) return;
-    if (debugGive === 'nitro') { P.stars = 10; W.give(P, 'tnt'); } else if (ITEMS[debugGive]) W.give(P, debugGive);
+  function giveDebug(only = null) {
+    if (!W || !debugGive) return;
+    for (const h of only ? [only] : H) {
+      if (debugGive === 'nitro') { h.stars = 10; W.give(h, 'tnt'); } else if (ITEMS[debugGive]) W.give(h, debugGive);
+    }
   }
 
   // ---------------------------------------------------------------- per-frame update
@@ -521,7 +528,7 @@ export function createItemViews({ scene, fx = null, audio = null, chase = null, 
     t += dt;
     const V = visuals();
     const lerp = (a, b) => a + (b - a) * alpha;
-    if (refill && debugGive && P && race.phase === 'race' && !P.item && P.roulT <= 0 && !(P.bomb && P.bomb.alive)) giveDebug();
+    if (refill && debugGive && race.phase === 'race') for (const h of H) if (!h.item && h.roulT <= 0 && !(h.bomb && h.bomb.alive)) giveDebug(h);
     updateInstances();
 
     // ---- projectiles
@@ -663,15 +670,16 @@ export function createItemViews({ scene, fx = null, audio = null, chase = null, 
     stepBooms(dt);
 
     // ---- player-facing: roulette ticks, lock-on beeps, HUD warnings
-    if (P) {
+    for (const [j, P] of H.entries()) {
+      if (j > 1) break;
       if (P.roulT > 0) {
-        roulT -= dt;
-        if (roulT <= 0) { au.play('roulette', { vol: 0.7 }); roulT = 0.07 + 0.12 * (1 - P.roulT / (P.roulDur || IT.ROULETTE)) ** 2; }
-      } else roulT = 0;
+        roulT[j] -= dt;
+        if (roulT[j] <= 0) { au.play('roulette', { vol: 0.7 }); roulT[j] = 0.07 + 0.12 * (1 - P.roulT / (P.roulDur || IT.ROULETTE)) ** 2; }
+      } else roulT[j] = 0;
       const lk = P.lockedBy > 0 && !P.finished;
       if (lk) {
-        lockT -= dt;
-        if (lockT <= 0) { au.play('rocket_lock', { vol: 0.8 }); lockT = Math.max(0.16, Math.min(0.7, (isFinite(P.lockDist) ? P.lockDist : 80) / 110)); }
+        lockT[j] -= dt;
+        if (lockT[j] <= 0) { au.play('rocket_lock', { vol: 0.8 }); lockT[j] = Math.max(0.16, Math.min(0.7, (isFinite(P.lockDist) ? P.lockDist : 80) / 110)); }
       }
       // (the flashing "ROCKET!" / "HOP! HOP!" warnings are hud.js's, from P.lockedBy / P.tnt)
     }
@@ -680,7 +688,7 @@ export function createItemViews({ scene, fx = null, audio = null, chase = null, 
   function detach() {
     for (const [, h] of bombSnd) h.stop?.(0.05);
     bombSnd = new Map(); flyers.length = 0;
-    W = null; race = null; P = null; root.visible = false;
+    W = null; race = null; P = null; H = []; root.visible = false;
   }
   const api = {
     attach, detach, step, update, boom,

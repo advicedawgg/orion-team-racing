@@ -206,6 +206,26 @@ for (const def of TRACKS) {
     ok('easy: a wobbly kid finishes, rarely falls off, stays near the pack', P.finished && !P.estimated && falls <= 1 && P.finishTime - first < 15,
       `place ${P.finishPlace}, ${f1(P.finishTime - first)} s behind the winner, falls ${falls}`);
   }
+  // 2P split screen (multiplayer agent): two humans through createRace({ players }). Each control object
+  // drives its own kart; on Easy BOTH humans get the kid's gentle treatment (assist per player: P1 on,
+  // P2 off here, like Orion + Dad); both finish; the race waits for the last human.
+  if (DIFFS.includes('easy')) {
+    const race = createRace({ track: tr, entrants: ENTRANTS, players: [{ index: 6, assist: true, easyBoost: true }, { index: 7, assist: false, easyBoost: false }], difficulty: 'easy', seed: SEED });
+    const [H1, H2] = race.humans;
+    const kid = wobblyKid(H1, tr, SEED + 99), dad = kidBot(H2, tr, SEED + 7);
+    if (ITEMS) createItems(race, { seed: SEED });
+    const hits = [0, 0];
+    let sepOK = null, sepInfo = '';
+    simulate(race, { maxT: 700, playerCtrl: r => {
+      if (r.t > 0 && r.t < 2) return [{ steer: 0, throttle: 0, brake: 0, hopA: false, hopB: false }, dad.drive(r)];   // P1 waits, P2 goes
+      if (sepOK == null && r.t >= 2) { sepOK = H1.speed < 1 && H2.speed > 10; sepInfo = `after 2 s P1 ${f1(H1.speed)} m/s (no input), P2 ${f1(H2.speed)} m/s`; }
+      return [kid.drive(r), dad.drive(r)];
+    }, onStep: r => { for (const e of r.events) if (e.type === 'item' && e.e === 'hit' && e.by && !e.by.isPlayer && e.kart.isPlayer && e.kind !== 'wobble') hits[e.kart.pn]++; } });
+    ok('2P: each player\'s controls drive only their own kart', sepOK === true, sepInfo);
+    ok('2P: both humans finish, per-player assist, race waits for the last one', H1.finished && !H1.estimated && H2.finished && !H2.estimated && H1.assist && !H2.assist && race.phase === 'done',
+      `P1 ${H1.finishPlace} (assist ${H1.assist}), P2 ${H2.finishPlace} (assist ${H2.assist}), AI item hits (not counting the remote's wobble) P1/P2 ${hits[0]}/${hits[1]}`);
+    ok('2P Easy: the AI is gentle with BOTH humans (≤ 5 flip/spin item hits each)', hits[0] <= 5 && hits[1] <= 5, `${hits[0]} / ${hits[1]}`);
+  }
   if (ITEMS) runItemChecks(tr, ok);
 }
 

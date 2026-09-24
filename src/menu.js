@@ -12,11 +12,17 @@
 // detection — input.js's `confirm` merges A/B/Enter/Space, and a menu needs B = back. Touch/mouse
 // = tap. Every focusable element has [data-nav]; arrows move spatially between them.
 //
-// URL: ?screen=title|menu|select|tracks|results|standings|podium|unlock|pause|settings|controls
+// URL: ?screen=title|menu|select|tracks|results|standings|podium|unlock|pause|settings|controls|join
 // jumps straight to a screen (screenshots). ?skip=1 etc. still go straight into a race.
+//
+// 2 PLAYERS (multiplayer agent): main menu → `join` (P2 presses A/Start on another pad or a key on
+// the keyboard's right half; per-player AUTO-GO + KID HELPER) → QUICK RACE or ORION CUP → racer
+// select for P1, then P2 (P1's racer is taken) → tracks / cup → a split-screen race (main.js). Results,
+// cup standings and the podium mark both players with P1 (gold) / P2 (cyan) badges. Time Trial is 1P.
+// M.players (1|2), M.racer2, M.devs ([P1, P2] input.js device ids), M.mp = { auto: [b,b], helper: [b,b] }.
 import * as THREE from 'three';
 import * as S from './save.js';
-import { portraitURL, racerName, racerColor, clock, ordSuffix, racersReady } from './hud.js';
+import { portraitURL, racerName, racerColor, clock, ordSuffix, racersReady, PN_COL } from './hud.js';
 import { TRACKS } from './tracks/index.js';
 
 let HDM = null;
@@ -46,6 +52,9 @@ const ICON = {
   gear: `<svg viewBox="0 0 64 64"><path d="M27 4h10l1.6 7.6 5.4 2.3 6.5-4.3 7 7-4.3 6.5 2.3 5.4L63 30v10l-7.6 1.6-2.3 5.4 4.3 6.5-7 7-6.5-4.3-5.4 2.3L37 66H27l-1.6-7.6-5.4-2.3-6.5 4.3-7-7 4.3-6.5-2.3-5.4L1 40V30l7.6-1.6 2.3-5.4-4.3-6.5 7-7 6.5 4.3 5.4-2.3z" transform="translate(0 -3)" fill="#b7c4ea" stroke="#3d4d8f" stroke-width="3"/><circle cx="32" cy="32" r="10" fill="#232e5c"/></svg>`,
   lock: `<svg viewBox="0 0 64 64"><path d="M20 28v-8a12 12 0 0 1 24 0v8" fill="none" stroke="#dce6ff" stroke-width="7"/><rect x="12" y="27" width="40" height="31" rx="7" fill="#ffd23f" stroke="#8a5a00" stroke-width="3"/><circle cx="32" cy="40" r="4.5" fill="#5a3a00"/><path d="M32 42v8" stroke="#5a3a00" stroke-width="4.5" stroke-linecap="round"/></svg>`,
   ghost: `<svg viewBox="0 0 64 64"><path d="M12 58V30a20 20 0 0 1 40 0v28l-7-6-6 6-7-6-7 6-6-6z" fill="#dff4ff" opacity=".9"/><circle cx="25" cy="30" r="4" fill="#233"/><circle cx="39" cy="30" r="4" fill="#233"/></svg>`,
+  two: `<svg viewBox="0 0 64 64"><rect x="3" y="12" width="32" height="21" rx="10.5" fill="#ffd23f" stroke="#7a5200" stroke-width="3"/><path d="M10 22.5h8M14 18.5v8" stroke="#7a5200" stroke-width="3" stroke-linecap="round"/><circle cx="26" cy="20" r="2.4" fill="#7a5200"/><circle cx="29.5" cy="25.5" r="2.4" fill="#7a5200"/><rect x="29" y="31" width="32" height="21" rx="10.5" fill="#4ec5f1" stroke="#15506a" stroke-width="3"/><path d="M36 41.5h8M40 37.5v8" stroke="#15506a" stroke-width="3" stroke-linecap="round"/><circle cx="52" cy="39" r="2.4" fill="#15506a"/><circle cx="55.5" cy="44.5" r="2.4" fill="#15506a"/></svg>`,
+  pad: c => `<svg viewBox="0 0 64 40"><rect x="2" y="4" width="60" height="32" rx="16" fill="${c}" stroke="#0b1020" stroke-width="3"/><path d="M13 20h12M19 14v12" stroke="#0b1020" stroke-width="4" stroke-linecap="round"/><circle cx="44" cy="16" r="3.4" fill="#0b1020"/><circle cx="51" cy="23" r="3.4" fill="#0b1020"/></svg>`,
+  kb: (c, half) => `<svg viewBox="0 0 64 40"><rect x="2" y="6" width="60" height="28" rx="5" fill="#232e5c" stroke="${c}" stroke-width="3"/>${[0, 1, 2].map(r => [0, 1, 2, 3, 4, 5, 6].map(i => `<rect x="${7 + i * 7.3}" y="${11 + r * 7}" width="5.3" height="5" rx="1" fill="${(half === 'L' && i < 3) || (half === 'R' && i > 3) || !half ? c : '#556'}"/>`).join('')).join('')}</svg>`,
 };
 // gamepad button glyph / keyboard key / touch glyph for the controls screen
 const PAD = (t, cls = '') => `<span class="pad ${cls}">${t}</span>`;
@@ -58,7 +67,9 @@ const M = {
   screen: null, mode: 'quick', diff: 'easy', racer: 'orion', track: 'beach',
   cup: null, lastResults: null, resultsShown: false, finishTimer: 0, ghost: null, rec: null, record: null,
   focusMem: {}, pauseFrom: null, settingsFrom: 'menu', pendingUnlock: false,
+  players: 1, racer2: null, devs: ['kb', null], mp: { auto: [true, false], helper: [true, false] },
 };
+const two = () => M.players === 2 && M.mode !== 'tt';
 
 /* ================================================================== stage (3D preview renderer) */
 const stage = (() => {
@@ -129,7 +140,8 @@ const stage = (() => {
       cam.fov = 30; cam.position.set(0, 1.9, 5.4); cam.lookAt(0, 0.7, 0); cam.userData.look = [0, 0.7, 0];
     },
     cheer() { const a = actors[0]; if (a) { a.cheerT = 2.4; } },
-    podium(order, playerId) {
+    podium(order, playerId) {   // playerId: the player's racer (2P: an array of both) — they always cheer
+      const isP = id => Array.isArray(playerId) ? playerId.includes(id) : id === playerId;
       if (!r) init();
       clear(); mode = 'podium';
       extra = new THREE.Group(); scene.add(extra);
@@ -147,7 +159,7 @@ const stage = (() => {
       rest.forEach((id, i) => {
         const side = i % 2 ? 1 : -1, k = (i >> 1);
         const x = side * (4.9 + k * 1.9), z = 0.9 + k * 0.5;
-        actor(id, x, 0, z, -side * 0.45, { cheer: id === playerId, sad: id !== playerId && i >= 3 });
+        actor(id, x, 0, z, -side * 0.45, { cheer: isP(id), sad: !isP(id) && i >= 3 });
       });
       cam.fov = 38; cam.position.set(0, 3.4, 14); cam.lookAt(0, 2.3, 0); cam.userData.look = [0, 2.3, 0];
     },
@@ -376,6 +388,13 @@ function applyRaceSettings() {
   G.solo = M.mode === 'tt';
   G.noItems = M.mode === 'tt';
   if (M.mode !== 'tt' && !api.Q.has('laps')) G.laps = undefined;
+  // 2P: both racers, both devices, per-player AUTO-GO + KID HELPER (join screen)
+  G.players = two() ? 2 : 1;
+  if (two()) {
+    G.racerId2 = M.racer2; G.devs = M.devs.map(d => d || 'auto');
+    G.autoAccel = !!M.mp.auto[0];
+    G.pcfg = [{ autoAccel: !!M.mp.auto[0], helper: !!M.mp.helper[0] }, { autoAccel: !!M.mp.auto[1], helper: !!M.mp.helper[1] }];
+  }
 }
 async function launch(trackId) {
   M.track = trackId;
@@ -444,6 +463,7 @@ function showMenu(focusKey) {
       <button class="mbtn big" data-nav data-act="quick" data-key="quick"><i>${ICON.flag}</i><span>QUICK RACE</span></button>
       <button class="mbtn" data-nav data-act="cup" data-key="cup"><i>${ICON.cup}</i><span>ORION CUP</span><em class="trophies">${trophies}</em></button>
       <button class="mbtn" data-nav data-act="tt" data-key="tt"><i>${ICON.clock}</i><span>TIME TRIAL</span></button>
+      <button class="mbtn" data-nav data-act="two" data-key="two"><i>${ICON.two}</i><span>2 PLAYERS</span></button>
       <button class="mbtn" data-nav data-act="settings" data-key="settings"><i>${ICON.gear}</i><span>SETTINGS</span></button>
     </div>
     <div class="diffs">
@@ -451,9 +471,10 @@ function showMenu(focusKey) {
     </div>`, {
     cls: 'bg-art', music: 'title', focus: focusKey ? `[data-key="${focusKey}"]` : null, wrap: true,
     acts: {
-      quick() { M.mode = 'quick'; showSelect(); },
-      cup() { M.mode = 'cup'; showSelect(); },
-      tt() { M.mode = 'tt'; showSelect(); },
+      quick() { M.players = 1; M.mode = 'quick'; showSelect(); },
+      two() { showJoin(); },
+      cup() { M.players = 1; M.mode = 'cup'; showSelect(); },
+      tt() { M.players = 1; M.mode = 'tt'; showSelect(); },
       settings() { M.settingsFrom = 'menu'; showSettings(); },
       diff(t) {
         M.diff = t.dataset.v; S.setSetting('difficulty', M.diff);
@@ -469,17 +490,23 @@ function statBars(st) {
   const row = (lbl, v, cls) => `<div class="stat ${cls}"><span>${lbl}</span><div class="bar">${[1, 2, 3, 4, 5].map(i => `<i class="${i <= v ? 'on' : ''}"></i>`).join('')}</div></div>`;
   return row('SPEED', st.speed, 'spd') + row('ZOOM', st.accel, 'acc') + row('TURN', st.turn, 'trn');
 }
-function showSelect() {
+function showSelect(pn = 0) {
   const list = racers();
   if (!list.find(r => r.id === M.racer)) M.racer = S.get().lastRacer || 'orion';
   if (!list.find(r => r.id === M.racer)) M.racer = list[0]?.id;
+  const mp = two();
+  // 2P: P1 picks, then P2 (P1's racer is taken — one of each racer on the grid)
+  const taken = mp && pn === 1 ? M.racer : null;
+  if (mp && pn === 1 && (!M.racer2 || M.racer2 === taken || !list.find(r => r.id === M.racer2))) M.racer2 = (list.find(r => r.id === 'kingdad' && r.id !== taken) || list.find(r => r.id !== taken))?.id;
+  const cur0 = pn === 1 ? M.racer2 : M.racer;
   const title = { quick: 'QUICK RACE', cup: 'ORION CUP', tt: 'TIME TRIAL' }[M.mode];
+  const who = mp ? `<b class="pbadge pb${pn + 1}">P${pn + 1}</b> ` : '';
   let el = null;
   el = mount('select', `
-    <div class="shead"><h2>CHOOSE YOUR RACER!</h2><small>${title} · ${FACE[M.diff]} ${DIFF_LABEL[M.diff]}</small></div>
+    <div class="shead"><h2>${who}CHOOSE YOUR RACER!</h2><small>${mp ? '2 PLAYERS · ' : ''}${title} · ${FACE[M.diff]} ${DIFF_LABEL[M.diff]}</small></div>
     <div class="sgrid">${list.map(r => `
-      <button class="rtile" data-nav data-act="pick" data-id="${r.id}" data-key="${r.id}" style="--rc:${racerColor(r.id)}">
-        <img src="${portraitURL(r.id, 128)}" alt=""><span>${esc(r.name)}</span></button>`).join('')}
+      <button class="rtile${r.id === taken ? ' locked taken' : ''}" data-nav data-act="pick" data-id="${r.id}" data-key="${r.id}" style="--rc:${racerColor(r.id)}">
+        <img src="${portraitURL(r.id, 128)}" alt=""><span>${esc(r.name)}</span>${r.id === taken ? '<b class="pbadge pb1">P1</b>' : ''}</button>`).join('')}
     </div>
     <div class="spanel">
       <div class="stage-slot" id="selStage"></div>
@@ -487,11 +514,11 @@ function showSelect() {
       <button class="gobtn" data-nav data-act="go" data-key="go">GO! ▶</button>
     </div>
     <button class="backbtn" data-nav data-act="back" data-key="back">◀ BACK</button>`, {
-    cls: 'bg-dark', music: 'title', focus: `[data-key="${M.racer}"]`,
+    cls: 'bg-dark' + (mp ? ' sel-p' + (pn + 1) : ''), music: 'title', focus: `[data-key="${cur0}"]`,
     onShow(el) {
       stage.mount(el.querySelector('#selStage'));
       racersReady.then(() => el.querySelectorAll('.rtile img').forEach((img, i) => { img.src = portraitURL(list[i].id, 128); }));
-      setTimeout(() => vo('vo_choose'), 250);
+      if (pn === 0) setTimeout(() => vo('vo_choose'), 250);
     },
     onFocus(t) { if (t.dataset.id) preview(t.dataset.id); },
     acts: {
@@ -499,13 +526,15 @@ function showSelect() {
       go() { choose(); },
       back() { goBack(); },
     },
-    back() { showMenu(M.mode === 'cup' ? 'cup' : M.mode === 'tt' ? 'tt' : 'quick'); },
+    back() { if (mp) { if (pn === 1) showSelect(0); else showJoin(true); } else showMenu(M.mode === 'cup' ? 'cup' : M.mode === 'tt' ? 'tt' : 'quick'); },
   });
-  preview(M.racer, true);
+  preview(cur0, true);
   function preview(id, force) {
     if (!el) return;
-    if (id === M.racer && !force && el.dataset.shown === id) return;
-    M.racer = id; el.dataset.shown = id;
+    if (id === taken) return;
+    if (id === (pn === 1 ? M.racer2 : M.racer) && !force && el.dataset.shown === id) return;
+    if (pn === 1) M.racer2 = id; else M.racer = id;
+    el.dataset.shown = id;
     const r = list.find(x => x.id === id) || list[0];
     el.querySelector('#sName').textContent = r.name;
     el.querySelector('#sName').style.color = racerColor(id);
@@ -518,11 +547,12 @@ function showSelect() {
   function choose() {
     if (chosen) return; chosen = true;
     stage.cheer();
-    try { api.audio.bark?.(M.racer, 'win', { force: true }); } catch { /* */ }
+    try { api.audio.bark?.(pn === 1 ? M.racer2 : M.racer, 'win', { force: true }); } catch { /* */ }
     el.classList.add('chosen');
     setTimeout(() => {
       if (M.screen !== 'select') return;
-      if (M.mode === 'cup') startCup();
+      if (mp && pn === 0) showSelect(1);
+      else if (M.mode === 'cup') startCup();
       else showTracks();
     }, 750);
   }
@@ -533,7 +563,7 @@ function showTracks() {
   let focus = `[data-key="t-${M.track}"]`;
   if (!vis.find(t => t.id === M.track && (!isSecret(t) || S.isUnlocked(t.id)))) focus = null;
   mount('tracks', `
-    <div class="shead"><h2>PICK A TRACK!</h2><small>${M.mode === 'tt' ? 'TIME TRIAL · race the clock' : 'QUICK RACE'} · <img src="${portraitURL(M.racer, 64)}" class="mini" alt=""> ${esc(racerName(M.racer))}</small></div>
+    <div class="shead"><h2>PICK A TRACK!</h2><small>${M.mode === 'tt' ? 'TIME TRIAL · race the clock' : two() ? '2 PLAYERS' : 'QUICK RACE'} · <img src="${portraitURL(M.racer, 64)}" class="mini" alt=""> ${esc(racerName(M.racer))}${two() ? ` <b class="pbadge pb1 sm">P1</b> · <img src="${portraitURL(M.racer2, 64)}" class="mini" alt=""> ${esc(racerName(M.racer2))} <b class="pbadge pb2 sm">P2</b>` : ''}</small></div>
     <div class="tgrid n${vis.length}">${vis.map(t => {
       const locked = isSecret(t) && !S.isUnlocked(t.id);
       const gh = M.mode === 'tt' && !locked && S.loadGhost(t.id);
@@ -546,21 +576,116 @@ function showTracks() {
       track(t) { launch(t.dataset.id); },
       back() { goBack(); },
     },
-    back() { showSelect(); },
+    back() { showSelect(two() ? 1 : 0); },
   });
+}
+
+/* ---------------------------------------------------------------- 2 PLAYERS: join screen */
+// P1 = the device that opened this screen (a pad, or the whole keyboard). P2 joins by pressing A /
+// Start on another pad, or Enter / Right Shift / '/' / '.' on the keyboard: with one keyboard it
+// splits into halves (P1 left: WASD, P2 right: arrows). A pad joining after a keyboard split gives the
+// keyboard back to P1. Settings per player: AUTO-GO and KID HELPER (saved as settings.mpAuto/mpHelper).
+const KEYS_OF = {
+  kb: () => `${KEY('←')}${KEY('→')} ${KEY('↑')} · ${KEY('SPACE')} hop · ${KEY('SHIFT')} turbo · ${KEY('E')} item`,
+  kbL: () => `${KEY('A')}${KEY('D')} ${KEY('W')} ${KEY('S')} · ${KEY('SPACE')} hop · ${KEY('L-SHIFT')} turbo · ${KEY('E')} item`,
+  kbR: () => `${KEY('←')}${KEY('→')} ${KEY('↑')} ${KEY('↓')} · ${KEY('R-SHIFT')} or ${KEY('/')} hop · ${KEY('.')} turbo · ${KEY('ENTER')} item`,
+  pad: () => `${PAD('L', 'stick')} steer · ${PAD('A', 'a')} go · ${PAD('RB', 'sh')} hop · ${PAD('LB', 'sh')} turbo · ${PAD('B', 'b')} item`,
+};
+const devIcon = (d, i) => d.startsWith('pad') ? ICON.pad(PN_COL[i]) : ICON.kb(PN_COL[i], d === 'kbL' ? 'L' : d === 'kbR' ? 'R' : '');
+const devLabel = d => api.In?.deviceLabel?.(d) || d;
+function mpDefaults() {
+  const s = S.settings();
+  const autoP1 = s.autoAccel === 'on' || (s.autoAccel === 'easy' && M.diff === 'easy');
+  M.mp.auto = Array.isArray(s.mpAuto) && s.mpAuto.length === 2 ? s.mpAuto.map(Boolean) : [autoP1, false];
+  M.mp.helper = Array.isArray(s.mpHelper) && s.mpHelper.length === 2 ? s.mpHelper.map(Boolean) : [s.kidAssist !== false, false];
+}
+function showJoin(keep = false) {
+  M.players = 2;
+  if (!keep || !M.devs[0]) {
+    let d1 = api.In?.deviceId?.() || 'kb'; if (d1 === 'touch') d1 = 'kb';
+    M.devs = [d1, null];
+    mpDefaults();
+  }
+  if (M.mode !== 'cup') M.mode = 'quick';
+  const tog = (i, k, lbl, hint) => `<div class="opt tog" data-nav data-adj data-act="tog" data-p="${i}" data-k="${k}" data-key="j${i}${k}"><span class="lbl">${lbl}<small>${hint}</small></span>
+      <button class="nudge" data-d="-1">◀</button><span class="val">${M.mp[k][i] ? 'ON' : 'OFF'}</span><button class="nudge" data-d="1">▶</button></div>`;
+  const panel = i => `<div class="jp jp${i + 1}" id="jp${i}"><b class="pbadge pb${i + 1} big">P${i + 1}</b><div class="jdev"></div><div class="jkeys"></div>
+      ${tog(i, 'auto', 'AUTO-GO', 'drives forward by itself')}${tog(i, 'helper', 'KID HELPER', 'easy turbos + steering help')}</div>`;
+  const el = mount('join', `
+    <div class="shead"><h2>2 PLAYERS</h2><small>RACE EACH OTHER ON ONE SCREEN!</small></div>
+    <div class="jcols">${panel(0)}${panel(1)}</div>
+    <div class="res-btns">
+      <button class="mbtn big" data-nav data-act="quick" data-key="j-quick"><i>${ICON.flag}</i><span>QUICK RACE ▶</span></button>
+      <button class="mbtn" data-nav data-act="cup" data-key="j-cup"><i>${ICON.cup}</i><span>ORION CUP ▶</span></button>
+    </div>
+    <button class="backbtn" data-nav data-act="back" data-key="back">◀ BACK</button>`, {
+    cls: 'bg-dark', music: 'title', focus: M.mode === 'cup' ? '[data-key="j-cup"]' : '[data-key="j-quick"]',
+    onShow() { api.In?.takeJoins?.(); },
+    tick() { for (const d of api.In?.takeJoins?.() || []) join(d); },
+    // the press that joins P2 (Enter, A on the new pad) must not also press the focused button
+    onAction(a) { if (a !== 'ok') return false; let sw = false; for (const d of api.In?.takeJoins?.() || []) if (join(d)) sw = true; return sw; },
+    adj(row, d) { flip(row); },
+    acts: {
+      tog(row) { flip(row); },
+      quick() { go('quick'); },
+      cup() { go('cup'); },
+      back() { goBack(); },
+    },
+    back() { M.players = 1; showMenu('two'); },
+  });
+  paint();
+  function paint() {
+    for (const i of [0, 1]) {
+      const p = el.querySelector('#jp' + i), d = M.devs[i];
+      p.classList.toggle('in', !!d); p.classList.toggle('wait', !d);
+      p.querySelector('.jdev').innerHTML = d ? `<i>${devIcon(d, i)}</i><span>${esc(devLabel(d))}</span>`
+        : `<span class="jpress">PRESS ${PAD('A', 'a')} ON ANOTHER PAD<br>or ${KEY('ENTER')} ON THE KEYBOARD</span>`;
+      p.querySelector('.jkeys').innerHTML = d ? (KEYS_OF[d.startsWith('pad') ? 'pad' : d] || KEYS_OF.kb)() : '';
+    }
+    el.querySelectorAll('[data-act="quick"],[data-act="cup"]').forEach(b => b.classList.toggle('locked', !M.devs[1]));
+  }
+  function join(d) {
+    const [p1, p2] = M.devs;
+    if (!d || d === p1 || d === p2) return false;
+    if (d.startsWith('kb')) {
+      if (p1.startsWith('kb')) { if (d !== 'kbR' || p2 === 'kbR') return false; M.devs = ['kbL', 'kbR']; }   // one keyboard: split it
+      else { if (p2 === 'kb') return false; M.devs = [p1, 'kb']; }                                            // P1 on a pad: P2 gets the keyboard
+    } else M.devs = p1.startsWith('kb') && p2 === 'kbR' ? ['kb', d] : [p1, d];                                // a pad: P2 (P1 gets the whole keyboard back)
+    sfx('menu_ok'); try { api.audio.bark?.('orion', 'win', { force: true }); } catch { /* */ }
+    paint();
+    const jp = el.querySelector('#jp1'); jp.classList.remove('pop'); void jp.offsetWidth; jp.classList.add('pop');
+    return true;
+  }
+  function flip(row) {
+    const i = +row.dataset.p, k = row.dataset.k;
+    M.mp[k][i] = !M.mp[k][i];
+    row.querySelector('.val').textContent = M.mp[k][i] ? 'ON' : 'OFF';
+    S.setSetting(k === 'auto' ? 'mpAuto' : 'mpHelper', M.mp[k].slice());
+    sfx('menu_move');
+  }
+  function go(mode) {
+    if (!M.devs[1]) return;
+    M.mode = mode;
+    showSelect(0);
+  }
 }
 
 /* ---------------------------------------------------------------- Orion Cup */
 function startCup() {
   const ids = cupTracks();
-  M.cup = { tracks: ids.length ? ids : [TRACKS[0].id], i: 0, points: Object.fromEntries(racers().map(r => [r.id, 0])), last: {}, prevOrder: null, diff: M.diff, racer: M.racer };
+  M.cup = { tracks: ids.length ? ids : [TRACKS[0].id], i: 0, points: Object.fromEntries(racers().map(r => [r.id, 0])), last: {}, prevOrder: null, diff: M.diff, racer: M.racer,
+    humans: two() ? [M.racer, M.racer2] : [M.racer] };   // 2P: both players' racers (badges, podium, unlock)
   vo('vo_orion_cup');
   showStandings(true);
 }
 function cupStandings() {
   const c = M.cup;
-  return Object.keys(c.points).sort((a, b) => (c.points[b] - c.points[a]) || ((c.last[b] || 0) - (c.last[a] || 0)) || (a === M.racer ? -1 : b === M.racer ? 1 : 0));
+  const hi = id => { const j = (c.humans || [c.racer]).indexOf(id); return j < 0 ? 9 : j; };   // ties: humans first (P1, P2)
+  return Object.keys(c.points).sort((a, b) => (c.points[b] - c.points[a]) || ((c.last[b] || 0) - (c.last[a] || 0)) || (hi(a) - hi(b)));
 }
+/** 2P: which player (0/1) races as this racer in the cup, else -1 */
+const cupPn = id => { const h = M.cup?.humans || []; return h.length > 1 ? h.indexOf(id) : -1; };
+const pBadge = (j, cls = '') => j >= 0 ? `<b class="pbadge pb${j + 1} ${cls}">P${j + 1}</b>` : '';
 function showStandings(intro = false) {
   const c = M.cup, done = c.i >= c.tracks.length;
   const order = cupStandings();
@@ -571,7 +696,7 @@ function showStandings(intro = false) {
     <div class="shead"><h2>ORION CUP</h2><small>${intro ? `${c.tracks.length} RACES · WIN THE MOST POINTS!` : done ? 'FINAL STANDINGS' : `AFTER RACE ${c.i} OF ${c.tracks.length}`}</small></div>
     <div class="cstrip">${strip}</div>
     <div class="stand"><ol id="standList">${prev.map((id, i) => `
-      <li class="${id === c.racer ? 'me' : ''}" data-id="${id}" style="--i:${i}"><b class="pl">${i + 1}</b><img src="${portraitURL(id, 96)}" alt=""><span class="nm">${esc(racerName(id))}</span>
+      <li class="${(c.humans || [c.racer]).includes(id) ? 'me' : ''}${cupPn(id) === 1 ? ' mp2' : ''}" data-id="${id}" style="--i:${i}"><b class="pl">${i + 1}</b><img src="${portraitURL(id, 96)}" alt=""><span class="nm">${esc(racerName(id))} ${pBadge(cupPn(id), 'sm')}</span>
       <em class="gain">${c.last[id] ? '+' + c.last[id] : ''}</em><span class="pts">${c.points[id] - (intro ? 0 : (c.last[id] || 0))}</span></li>`).join('')}</ol></div>
     <div class="res-btns">
       <button class="mbtn big" data-nav data-act="next" data-key="next">${done ? 'TO THE PODIUM! ▶' : intro ? `START! ▶` : 'NEXT RACE ▶'}</button>
@@ -615,7 +740,8 @@ function cupAddRace(results) {
 function showPodium() {
   const c = M.cup;
   const order = cupStandings();
-  const won = order[0] === c.racer;
+  const hs = c.humans || [c.racer], mpc = hs.length > 1;
+  const won = hs.includes(order[0]);
   const myPlace = order.indexOf(c.racer) + 1;
   if (won && !c.recorded) {
     c.recorded = true; S.addCupWin(c.diff);
@@ -624,11 +750,12 @@ function showPodium() {
   if (api.G.race) api.endRace();
   mount('podium', `
     <div class="stage-slot full" id="podStage"></div>
-    <div class="podtop"><h2>${won ? 'YOU WON THE ORION CUP!' : 'ORION CUP CHAMPION!'}</h2>
-      <p>${won ? `${esc(racerName(order[0]))} is the champion!` : `${esc(racerName(order[0]))} wins! You came ${myPlace}${ordSuffix(myPlace)} — ${pick(cheers)}`}</p></div>
+    <div class="podtop"><h2>${mpc ? (won ? `${pBadge(cupPn(order[0]))} WINS THE ORION CUP!` : 'ORION CUP CHAMPION!') : won ? 'YOU WON THE ORION CUP!' : 'ORION CUP CHAMPION!'}</h2>
+      <p>${mpc ? `${esc(racerName(order[0]))} is the champion! ${hs.map((id, j) => `${pBadge(j, 'sm')} ${esc(racerName(id))} ${order.indexOf(id) + 1}${ordSuffix(order.indexOf(id) + 1)}`).join(' · ')} — ${pick(cheers)}`
+        : won ? `${esc(racerName(order[0]))} is the champion!` : `${esc(racerName(order[0]))} wins! You came ${myPlace}${ordSuffix(myPlace)} — ${pick(cheers)}`}</p></div>
     <div class="res-btns bottom"><button class="mbtn big" data-nav data-act="ok" data-key="ok">${M.pendingUnlock ? 'WHAT\'S THIS?! ▶' : 'HOORAY! ▶'}</button></div>`, {
     cls: 'bg-podium', music: 'results',
-    onShow(el) { stage.mount(el.querySelector('#podStage')); stage.podium(order, c.racer); confetti.burst(160); confetti.rain(won ? 9 : 4); sfx('cheer'); setTimeout(() => { vo(`vo_${order[0]}_wins`); sfx('win'); }, 500); setTimeout(() => { try { api.audio.bark?.(order[0], 'win', { force: true }); } catch { /* */ } }, 2600); },
+    onShow(el) { stage.mount(el.querySelector('#podStage')); stage.podium(order, hs); confetti.burst(160); confetti.rain(won ? 9 : 4); sfx('cheer'); setTimeout(() => { vo(`vo_${order[0]}_wins`); sfx('win'); }, 500); setTimeout(() => { try { api.audio.bark?.(order[0], 'win', { force: true }); } catch { /* */ } }, 2600); },
     onHide() { confetti.stop(); },
     acts: { ok() { if (M.pendingUnlock) showUnlock(); else { M.cup = null; showMenu('cup'); } } },
     back() { cur.acts.ok(); },
@@ -656,18 +783,28 @@ function showUnlock() {
 function resultRows() {
   const race = api.G.race;
   if (!race) return [];
-  return race.order.map((k, i) => ({ place: i + 1, racerId: k.racerId, name: racerName(k.racerId), time: k.finishTime, finished: k.finished, estimated: !!k.estimated, isPlayer: k.isPlayer, lapTimes: k.lapTimes }));
+  const mp = (race.humans?.length || 1) > 1;
+  return race.order.map((k, i) => ({ place: i + 1, racerId: k.racerId, name: racerName(k.racerId), time: k.finishTime, finished: k.finished, estimated: !!k.estimated, isPlayer: k.isPlayer, pn: mp && k.isPlayer ? k.pn : -1, lapTimes: k.lapTimes }));
 }
 function showResults() {
   const race = api.G.race; if (!race) return;
   M.resultsShown = true; clearTimeout(M.finishTimer);
-  api.hud.show(false);
+  api.hud.show(false); api.hud2?.show(false);
   const P = race.player, place = P.finishPlace || P.place;
   const tt = M.mode === 'tt' || race.karts.length === 1;
   const cup = M.mode === 'cup' && M.cup;
   const rec = M.record || {};
+  const H = race.humans || [P], mp = H.length > 1;
+  const hPlace = k => k.finishPlace || k.place;
   let title, sub, cls = 'p' + Math.min(place, 4);
   if (tt) { title = rec.newRace ? 'NEW RECORD!' : 'FINISH!'; sub = rec.newRace ? 'Fastest ever on this track!' : pick(cheers); cls = rec.newRace ? 'p1' : 'p2'; }
+  else if (mp) {
+    // 2P: celebrate both — the better-placed human leads the headline, the other still gets a cheer
+    const best = H.slice().sort((a, b) => hPlace(a) - hPlace(b))[0], bp = hPlace(best);
+    cls = 'p' + Math.min(bp, 4) + ' mpres';
+    title = bp === 1 ? `P${best.pn + 1} WINS!` : bp <= 3 ? `P${best.pn + 1} ON THE PODIUM!` : 'GREAT RACE!';
+    sub = bp === 1 ? `${racerName(best.racerId)} is the champion! ${pick(cheers)}` : `Brilliant racing, both of you! ${pick(cheers)}`;
+  }
   else if (place === 1) { title = 'YOU WIN!'; sub = 'Champion driving!'; }
   else if (place === 2) { title = '2nd PLACE!'; sub = 'So close — brilliant racing!'; }
   else if (place === 3) { title = '3rd PLACE!'; sub = 'On the podium! Awesome!'; }
@@ -680,8 +817,10 @@ function showResults() {
        <button class="mbtn" data-nav data-act="menu" data-key="menu">MENU</button>`;
   const el = mount('results', `
     <div class="rpanel ${cls}">
-      <div class="rhead"><img class="rport" src="${portraitURL(P.racerId, 128)}" alt=""><div><h2>${title}</h2><p>${esc(sub)}</p></div>
-        ${tt ? '' : `<div class="rbadge"><b>${place}</b><sup>${ordSuffix(place)}</sup></div>`}</div>
+      ${mp ? `<div class="rhead mp"><div><h2>${title}</h2><p>${esc(sub)}</p></div>
+        <div class="rduo">${H.map((k, j) => `<div class="rone rp${j + 1} pl${Math.min(4, hPlace(k))}"><b class="pbadge pb${j + 1}">P${j + 1}</b><img class="rport" src="${portraitURL(k.racerId, 128)}" alt=""><div class="rbadge"><b>${hPlace(k)}</b><sup>${ordSuffix(hPlace(k))}</sup></div></div>`).join('')}</div></div>`
+      : `<div class="rhead"><img class="rport" src="${portraitURL(P.racerId, 128)}" alt=""><div><h2>${title}</h2><p>${esc(sub)}</p></div>
+        ${tt ? '' : `<div class="rbadge"><b>${place}</b><sup>${ordSuffix(place)}</sup></div>`}</div>`}
       ${tt ? `<div class="ttbox"><div class="big">${clock(P.finishTime)}</div>
           <ol class="ttlaps">${(P.lapTimes || []).map((t, i) => `<li${t === Math.min(...P.lapTimes) ? ' class="best"' : ''}><small>LAP ${i + 1}</small>${clock(t)}</li>`).join('')}</ol>
           <div class="ttbest"><span>BEST LAP <b>${clock(b.lap)}</b>${rec.newLap ? ' <em>NEW!</em>' : ''}</span><span>BEST RACE <b>${clock(b.race)}</b>${rec.newRace ? ' <em>NEW!</em>' : ''}</span></div></div>`
@@ -707,12 +846,13 @@ function showResults() {
     back() { },
   });
   if (!tt) paintResultRows(el);
-  if (!tt && place === 1) { confetti.burst(140); confetti.rain(3); }
+  const topPlace = mp ? Math.min(...H.map(hPlace)) : place;
+  if (!tt && topPlace === 1) { confetti.burst(140); confetti.rain(3); }
   if (tt && rec.newRace) { confetti.burst(120); vo('vo_new_record'); }
   else if (!tt) {
     const winner = race.order[0];
-    setTimeout(() => { if (place === 1) return; vo(place <= 3 ? 'vo_so_close' : 'vo_great_race'); }, 400);
-    if (winner && !winner.isPlayer) setTimeout(() => vo(`vo_${winner.racerId}_wins`), 1900);
+    setTimeout(() => { if (topPlace === 1) return; vo(topPlace <= 3 ? 'vo_so_close' : 'vo_great_race'); }, 400);
+    if (winner && (!winner.isPlayer || mp)) setTimeout(() => vo(`vo_${winner.racerId}_wins`), 1900);
   }
 }
 let resSig = '';
@@ -723,8 +863,8 @@ function paintResultRows(el = cur?.el) {
   if (sig === resSig && list.children.length) return;
   resSig = sig;
   const cup = M.mode === 'cup';
-  list.innerHTML = rows.map(r => `<li class="${r.isPlayer ? 'me' : ''}${r.place <= 3 ? ' top' + r.place : ''}"><b class="pl">${r.place}<sup>${ordSuffix(r.place)}</sup></b><img src="${portraitURL(r.racerId, 96)}" alt="">
-    <span class="nm">${esc(r.name)}</span><span class="tm${r.estimated ? ' est' : ''}">${r.finished ? clock(r.time) : '<i class="racing">racing…</i>'}</span>${cup ? `<em class="gain">+${POINTS[r.place - 1] || 0}</em>` : ''}</li>`).join('');
+  list.innerHTML = rows.map(r => `<li class="${r.isPlayer ? 'me' : ''}${r.pn === 1 ? ' mp2' : ''}${r.place <= 3 ? ' top' + r.place : ''}"><b class="pl">${r.place}<sup>${ordSuffix(r.place)}</sup></b><img src="${portraitURL(r.racerId, 96)}" alt="">
+    <span class="nm">${esc(r.name)}${r.pn >= 0 ? ` <b class="pbadge pb${r.pn + 1} sm">P${r.pn + 1}</b>` : ''}</span><span class="tm${r.estimated ? ' est' : ''}">${r.finished ? clock(r.time) : '<i class="racing">racing…</i>'}</span>${cup ? `<em class="gain">+${POINTS[r.place - 1] || 0}</em>` : ''}</li>`).join('');
 }
 
 /* ---------------------------------------------------------------- pause */
@@ -827,6 +967,11 @@ function showControls() {
       <tbody>${rows.map(r => `<tr><th>${r[0]}</th><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td></tr>`).join('')}</tbody></table>
       <div class="howto"><b>TURBO TRICK:</b> hold HOP to slide round a corner · when the bar goes
         <span class="redbar"><i></i></span> press TURBO! · do it 3 times for an <em>ULTRA TURBO!!!</em></div>
+      <h3 class="c2h">2 PLAYERS <small>each on their own pad (same buttons) — or share ONE keyboard:</small></h3>
+      <table class="ctab c2"><tbody>
+        <tr><th><b class="pbadge pb1 sm">P1</b> LEFT</th><td>${KEY('A')}${KEY('D')} steer · ${KEY('W')} go · ${KEY('S')} brake · ${KEY('SPACE')} hop · ${KEY('L-SHIFT')} turbo · ${KEY('E')} item</td></tr>
+        <tr><th><b class="pbadge pb2 sm">P2</b> RIGHT</th><td>${KEY('←')}${KEY('→')} steer · ${KEY('↑')} go · ${KEY('↓')} brake · ${KEY('R-SHIFT')} or ${KEY('/')} hop · ${KEY('.')} turbo · ${KEY('ENTER')} item</td></tr>
+      </tbody></table>
       <div class="res-btns"><button class="mbtn big" data-nav data-act="back" data-key="back">◀ BACK</button></div>
     </div>`, {
     cls: M.settingsFrom === 'pause' ? 'res' : 'bg-dark', overlay: M.settingsFrom === 'pause',
@@ -849,6 +994,7 @@ function onState(s, prev) {
     if (P) {
       const tid = G.track?.id || M.track;
       M.track = tid;
+      for (const h of G.race.humans || []) if (h !== P) S.recordRace(tid, { time: h.finishTime, lapTimes: h.lapTimes, racer: h.racerId });   // 2P: P2's times count too
       M.record = S.recordRace(tid, { time: P.finishTime, lapTimes: P.lapTimes, racer: P.racerId });
       if ((M.mode === 'tt' || G.race.karts.length === 1) && M.rec && M.record.newRace) {
         M.rec.time = P.finishTime; S.saveGhost(tid, M.rec);
@@ -921,6 +1067,7 @@ function loop(now) {
   requestAnimationFrame(loop);
   const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
   pollPad(dt);
+  cur?.tick?.(dt);
   stage.render(dt);
   confetti.update(dt);
   if (cur?.name === 'results') paintResultRows();
@@ -938,6 +1085,7 @@ async function debugScreen(name) {
     if (i >= 4) { M.cup.points[M.racer] = 40; }
     M.cup.i = Math.min(i, M.cup.tracks.length);
     M.cup.prevOrder = ids.slice().reverse();
+    if (api.Q.get('players') === '2') { M.players = 2; M.racer2 = api.Q.get('racer2') || (M.racer === 'kingdad' ? 'orion' : 'kingdad'); M.cup.humans = [M.racer, M.racer2]; if (i >= 4) M.cup.points[M.racer2] = 38; }
   };
   switch (name) {
     case 'menu': showMenu(); break;
@@ -945,11 +1093,13 @@ async function debugScreen(name) {
     case 'tracks': M.mode = api.Q.get('mode') || 'quick'; showTracks(); break;
     case 'settings': M.settingsFrom = 'menu'; showSettings(); break;
     case 'controls': M.settingsFrom = 'menu'; showControls(); break;
+    case 'join': showJoin(); break;
     case 'standings': fakeCup(+(api.Q.get('race') || 2)); showStandings(false); break;
     case 'podium': fakeCup(4); showPodium(); break;
     case 'unlock': M.pendingUnlock = true; showUnlock(); break;
     case 'results': case 'pause': {
       M.mode = api.Q.get('mode') || 'quick';
+      if (api.Q.get('players') === '2') { M.players = 2; M.racer2 = api.Q.get('racer2') || 'kingdad'; M.devs = [G.devs[0], G.devs[1]]; }
       applyRaceSettings();
       G.difficulty = M.diff;
       await api.startRace();
@@ -977,6 +1127,10 @@ export async function initMenu(a, { skip = false } = {}) {
     // defaults, never the saved racer/difficulty/assists (the test browser profile has a save too).
     // Saved settings only apply from the next race launched through the menus.
     M.mode = 'quick'; M.racer = api.G.racerId; M.diff = api.G.difficulty;
+    if (api.G.players === 2) {   // ?players=2 tests: RACE AGAIN / NEXT TRACK stay 2P with the URL's setup
+      M.players = 2; M.racer2 = api.G.racerId2; M.devs = api.G.devs.slice();
+      M.mp = { auto: [!!api.Q.get('auto') && api.Q.get('auto') === '1', api.G.pcfg[1].autoAccel ?? (api.Q.get('auto') === '1')], helper: [api.G.pcfg[0].helper ?? true, api.G.pcfg[1].helper ?? true] };
+    }
   } else {
     M.diff = api.Q.get('diff') || s.difficulty || 'easy';
     M.racer = api.Q.get('racer') || S.get().lastRacer || 'orion';

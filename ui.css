@@ -117,6 +117,48 @@ body.touch .hx-meter,body.touch .hx-boost{width:min(34vw,340px)}
   .hx-laps{display:none}
 }
 
+/* ---------- 2P split screen (multiplayer agent): #hud = top half (P1), #hud2 = bottom half (P2).
+   Each HUD is laid out inside its half; the countdown and the one minimap sit on the split line. */
+#hud2{font-size:clamp(14px,3.2vmin,34px);text-shadow:0 .1em 0 rgba(0,0,0,.55);color:#fff}
+#hud2[hidden]{display:none}
+#hud2 .hx-tl{position:absolute;left:2.5vmin;top:2vmin;line-height:1}
+#hud2.fin .hx-meter,#hud2.fin .hx-boost,#hud2.fin .hx-wrong{display:none}
+.hx-pn{display:none}
+body.split2 #hud{bottom:50%}
+body.split2 #hud2{top:50%}
+body.split2 #hud,body.split2 #hud2{font-size:clamp(12px,2.5vmin,26px)}
+body.split2 #touch{display:none!important}
+body.split2 .hx-pn{display:block;position:absolute;left:2.2vmin;bottom:2vmin;padding:.12em .5em;border-radius:.6em;font-weight:900;font-size:1.05em;
+  color:#1b1b2a;text-shadow:none;background:#ffd23f;box-shadow:0 0 0 .12em #fff,0 .15em 0 rgba(0,0,0,.4)}
+body.split2 #hud2 .hx-pn{background:#4ec5f1}
+body.split2 .hx-laps{display:none}
+body.split2 .hx-ranks{top:calc(2vmin + 3.9em)}
+body.split2 .hx-rank{height:1.3em;transform:translateY(calc(var(--i,0) * 1.3em))}
+body.split2 .hx-rank img{width:1.05em;height:1.05em}
+body.split2 .hx-rank.me img{width:1.22em;height:1.22em}
+body.split2 #hud2 .hx-rank.me img{box-shadow:0 0 0 .14em #4ec5f1,0 0 .6em rgba(78,197,241,.8)}
+body.split2 #hud2 .hx-rank.me .n{color:#4ec5f1}
+.hx-rank.mate img{box-shadow:0 0 0 .1em #ffd23f}
+.hx-rank.mate.pn2 img{box-shadow:0 0 0 .1em #4ec5f1}
+body.split2 .hx-place{font-size:2.9em}
+body.split2 .hx-meter{bottom:4.2vmin;width:min(30vw,300px)}
+body.split2 .hx-boost{bottom:2.2vmin;width:min(30vw,300px)}
+body.split2 .hx-pop{bottom:calc(4.2vmin + 1.8em)}
+body.split2 .ih{width:min(10vmin,84px);height:min(10vmin,84px)}
+body.split2 .hx-item{min-width:2.9em;min-height:2.9em}
+body.split2 .hx-banner{top:25%;font-size:clamp(22px,6vmin,60px)}
+body.split2 .hx-event{top:calc(25% + clamp(28px,7vmin,66px));font-size:clamp(14px,3.2vmin,32px)}
+body.split2 .hx-warn{top:calc(25% + clamp(50px,12.5vmin,120px))}
+body.split2 .hx-wrong{top:62%;font-size:clamp(18px,4.6vmin,46px)}
+/* one shared minimap (P1's HUD draws both players, ringed gold/cyan) in the top half's bottom-right
+   corner — straddling the split it covered P2's place number; one shared countdown on the split */
+body.split2 #hud .hx-map{bottom:1.5vmin;right:1.5vmin;width:clamp(96px,19vmin,190px);height:clamp(96px,19vmin,190px);z-index:3}
+body.split2 #hud2 .hx-map,body.split2 #hud2 .hx-count{display:none}
+body.split2 #hud .hx-count{top:100%;z-index:4}
+#split{position:fixed;left:0;right:0;top:50%;height:6px;margin-top:-3px;pointer-events:none;
+  background:linear-gradient(180deg,#0b1020,#26306a 50%,#0b1020);box-shadow:0 0 0 1px rgba(255,210,63,.35)}
+#split[hidden]{display:none}
+
 @keyframes hxBump{0%{transform:scale(1.5)}100%{transform:scale(1)}}
 @keyframes hxSpin{0%{transform:rotate(0) scale(1.4)}100%{transform:rotate(360deg) scale(1)}}
 @keyframes hxShake{0%{margin-left:-1px}50%{margin-left:1px}}
@@ -395,6 +437,45 @@ kbd{display:inline-block;background:#232e5c;border:2px solid #6a7bc0;border-bott
 .howto b{color:#ffd23f}.howto em{color:#e9b8ff;font-style:normal}
 .redbar{display:inline-block;width:4em;height:.7em;border-radius:.3em;background:#1a2350;vertical-align:middle;position:relative;overflow:hidden;box-shadow:inset 0 0 0 2px #ff3b2f}
 .redbar i{position:absolute;left:0;top:0;bottom:0;width:85%;background:linear-gradient(90deg,#8fe3ff,#6ff08f 45%,#ff9d2f 70%,#ff3b2f)}
+
+/* ---------- 2 PLAYERS (multiplayer agent): P badges, join screen, 2P results/standings */
+.pbadge{display:inline-grid;place-items:center;padding:.05em .38em;border-radius:.45em;font-weight:900;font-style:normal;font-size:.8em;line-height:1.15;letter-spacing:.02em;
+  color:#1b1b2a;-webkit-text-stroke:0;text-shadow:none;vertical-align:middle;background:#ffd23f;box-shadow:0 0 0 .1em #fff,0 .12em 0 rgba(0,0,0,.35)}
+.pbadge.pb2{background:#4ec5f1}
+.pbadge.sm{font-size:.62em}
+.pbadge.big{font-size:clamp(22px,5vmin,48px);padding:.08em .45em;border-radius:.35em}
+.scr-join{display:flex;flex-direction:column;align-items:center}
+.scr-join .shead{align-self:stretch}
+.jcols{display:grid;grid-template-columns:1fr 1fr;gap:3vmin;width:min(94vw,1100px)}
+.jp{position:relative;display:flex;flex-direction:column;gap:1.2vmin;padding:2.2vmin 2.4vmin;border-radius:1.1em;background:rgba(11,16,32,.72);
+  box-shadow:0 0 0 .16em rgba(255,210,63,.55);font-size:clamp(13px,2.4vmin,22px)}
+.jp2{box-shadow:0 0 0 .16em rgba(78,197,241,.6)}
+.jp.wait{box-shadow:0 0 0 .16em rgba(159,180,255,.28)}
+.jp .pbadge.big{align-self:flex-start}
+.jdev{display:flex;align-items:center;gap:.6em;min-height:3.2em;font-weight:900;font-size:1.25em;color:#fff}
+.jdev i{width:3.4em;height:2.1em;flex:none}.jdev i svg{width:100%;height:100%}
+.jpress{font-size:.8em;line-height:1.5;color:#dfe8ff;animation:pulse 1.1s ease-in-out infinite}
+.jkeys{min-height:2.4em;font-size:.72em;line-height:1.7;color:#cfdaff}
+.jp.wait .opt{opacity:.55}
+.jp.pop{animation:hxBump .5s cubic-bezier(.2,2,.4,1)}
+.mbtn.locked{opacity:.45;filter:saturate(.3)}
+.mbtn.locked.nope,.rtile.nope{animation:hxShake .12s linear 3}
+.scr-select.sel-p2 .shead h2{color:#4ec5f1;-webkit-text-stroke-color:#0a3a5a}
+.rtile.taken{opacity:.4;filter:grayscale(.8);position:relative}
+.rtile.taken .pbadge{position:absolute;right:.3em;top:.3em}
+.rhead.mp{justify-content:space-between;flex-wrap:wrap;row-gap:.6em}
+.rhead.mp>div:first-child{flex:1;min-width:14em}
+.rduo{display:flex;gap:1.1em;margin-right:.4em}
+.rone{display:flex;align-items:center;gap:.35em;position:relative}
+.rone .pbadge{position:absolute;left:-.3em;top:-.35em;z-index:1;font-size:clamp(12px,2.4vmin,22px)}
+.rone .rport{width:clamp(44px,10vmin,92px);height:clamp(44px,10vmin,92px)}
+.rone.rp2 .rport{box-shadow:0 0 0 .2em #4ec5f1}
+.rpanel.mpres .rone .rbadge{font-size:clamp(30px,7.5vmin,76px)}
+.rpanel.mpres .rone.pl1 .rbadge{color:#ffd23f}.rpanel.mpres .rone.pl2 .rbadge{color:#e9f0ff}.rpanel.mpres .rone.pl3 .rbadge{color:#ffa24a}.rpanel.mpres .rone.pl4 .rbadge{color:#8fd3ff}
+.rlist li.me.mp2,.stand li.me.mp2{background:linear-gradient(90deg,rgba(78,197,241,.55),rgba(47,111,220,.3));box-shadow:0 0 0 .1em #4ec5f1}
+.ctab.c2{font-size:clamp(10px,2vmin,18px)}
+.c2h{margin:2vmin 0 .6vmin;font-size:clamp(14px,2.6vmin,24px);color:#ffd23f}
+.c2h small{font-size:.65em;color:#9fb4ff;letter-spacing:.04em}
 
 /* ---------- small landscape phones */
 @media (max-height:520px){

@@ -3,7 +3,7 @@
 A Crash Team Racing-style kart racer for Orion (a young kid) and his family: the third Super
 Orion game, after Super Orion 1 (2D platformer) and Super Orion 2 (3D platformer). Eight
 racers, five tracks, the CTR power slide with 3-stage turbos, a full set of silly items, the
-Orion Cup, Time Trial with ghosts, and an announcer. No reading is needed to play: title,
+Orion Cup, Time Trial with ghosts, 2-player split screen, and an announcer. No reading is needed to play: title,
 Quick Race, racer, track is four presses of A.
 
 It is plain ES modules and three.js r185 (vendored), with no build step. The repo is the
@@ -26,6 +26,8 @@ Handy URLs:
 - `?track=castle&racer=kingdad&skip=1` jumps straight into a race.
 - `&diff=hard`, `&ai=1` (the AI drives you), `&t=30` (fast-forward), `&laps=1`, `&hud=0`.
 - `&q=low|high|auto` sets graphics quality. `&hd=1` turns on the HD racer models.
+- `&players=2` races two players split-screen (`&racer2=kingdad`, `&dev1=`/`&dev2=` `auto|kb|kbL|kbR|pad:N`,
+  `&auto2=1`, `&helper1=0|1`, `&helper2=0|1`).
 - `?screen=podium|select|tracks|settings|…` opens one menu screen.
 
 The full list is in DESIGN.md under "Verification".
@@ -47,6 +49,23 @@ Either shoulder starts a slide and the other one fires the turbo, so both hands 
 turbos per slide gives an ULTRA TURBO. Nothing is bound to Ctrl, and arrows and Space never
 scroll the page.
 
+**2 players.** Each player on their own pad uses the pad column above. On the join screen P1 is
+the device that opened it and P2 is whoever presses A or Start on another pad, so a Steam Deck
+plus one external pad works. If P1 is on a pad and P2 presses a key, P2 gets the whole keyboard.
+With one keyboard and no pads, the keyboard splits in half (`KeyboardEvent.code` tells the two
+Shift keys apart):
+
+| action | P1: left side | P2: right side |
+|---|---|---|
+| steer | A D | ← → |
+| go / brake | W / S | ↑ / ↓ |
+| hop + power slide | Space | Right Shift or / |
+| turbo | Left Shift | . |
+| use item | E | Enter |
+| pause (both) | Esc or P | Esc or P |
+
+Start on either pad pauses. The join screen shows which device each player has.
+
 ## Modes
 
 - **Quick Race**: pick a racer and a track, 8 karts, 3 laps. Easy, Medium or Hard is picked on
@@ -54,6 +73,13 @@ scroll the page.
 - **Orion Cup**: Bubbly Beach, Ice Cream Peaks, Taco Volcano, then King Dad's Castle. Points go
   10/8/6/5/4/3/2/1 and the cup ends on a 3D podium. Winning it unlocks **Star Road**.
 - **Time Trial**: you race alone with no items. Your best race is saved as a ghost.
+- **2 Players**: split screen, P1 on top and P2 below, plus 6 AI karts. On the join screen P2
+  presses A or Start on another pad, or Enter on the keyboard. Each player gets their own
+  **AUTO-GO** and **KID HELPER**, so Orion can have both while Dad has neither. Then pick Quick
+  Race or Orion Cup. P1 picks a racer, then P2 (one of each racer). Results, cup standings and the
+  podium mark both players with P1 (gold) and P2 (cyan) badges. On Easy the AI goes easy on both
+  players. The race waits for the second player, for up to 90 s after the first one finishes.
+  Time Trial is 1-player only.
 - **Settings**:
   - volumes
   - AUTO-GO (drive forward by itself: on in Easy by default)
@@ -103,7 +129,11 @@ node tools/realflow.mjs          # the whole game in ONE page session, driven by
                                  # (title → race → results → next → Orion Cup ×4 → podium → unlock → Star Road);
                                  # checks memory, engines, pause, compile hitches
 node tools/input-test.mjs        # fake Xbox pad + keyboard in a race: steer/slide/turbo/item/pause, no scroll, no Ctrl
-node tools/leakcheck.mjs 2       # switch through all 5 tracks twice: geometries/textures must stay flat
+node tools/twoplayer-test.mjs    # 2P: two fake pads through the menus (join, P1/P2 select) into a split-screen race,
+                                 # each pad drives only its own kart, per-player HUD, results; one keyboard split in
+                                 # half; Enter-to-join; a whole 2P Orion Cup; 2P → 1P cleanup → TWO PLAYER TEST: PASS
+node tools/shot-2p.mjs [tracks]  # 2P screenshots per track: start grid, mid-race with items, results → shots/mp/
+node tools/leakcheck.mjs 2       # switch through all 5 tracks twice: geometries/textures must stay flat (--query players=2)
 node tools/playtest.mjs [tracks] [--perf] [--throttle 4] [--query q=low]
                                  # AI-driven live race per track: chase shots every 4 s + contact sheet,
                                  # --perf = draw calls / tris / CPU ms in render() / GPU ms (timer query)
@@ -135,6 +165,26 @@ The whole game frame (input, sim, particles, HUD and render) takes 2–2.5 ms of
 - **AUTO** starts at FANCY and switches to FAST for the rest of the session if the median frame
   time stays above ~20 ms for 4 s of racing.
 
+**2 players** (`tools/playtest.mjs --perf --query players=2`, AI driving both players; same session
+as the 1P numbers above). Two views mean about twice the draw calls, so 2P always runs without
+the real-time shadow, with half the particles, and culls AI karts at 120 m. The GPU number is ONE
+timer query around both views. A query per view read the second view about 3× too high, because
+ANGLE's deferred submission lands in whichever query is open.
+
+| track | draw calls (start grid) | draw calls mid-race p50/max | ktris mid | render() CPU ms p50 (both views) | GPU ms p50 (frame) | whole frame CPU p50 |
+|---|---|---|---|---|---|---|
+| Bubbly Beach | 276 | 103 / 180 | 284 | 2.9 | 1.06 | 2.9 |
+| Ice Cream Peaks | 266 | 106 / 169 | 526 | 2.6 | 1.22 | 2.6 |
+| Taco Volcano | 272 | 113 / 196 | 374 | 2.9 | 1.19 | 2.9 |
+| King Dad's Castle | 291 | 119 / 214 | 411 | 3.3–4.0 | 1.23 | 3.3–3.8 |
+| Star Road | 268 | 113 / 237 | 255 | 3.8 | 1.01 | 3.4 |
+
+So 2P costs about 1.6× 1P's CPU and 1.5× its GPU mid-race. The start grid breaks the ~200-call
+guideline: every racer is in both views, and racers are 12–16 calls each. That only lasts for
+the 3.6 s countdown. With `--throttle 4` (a pessimistic stand-in for the Steam Deck) on the
+castle, 2P's whole frame is 12.9 / 34.7 ms (p50/p95), against 1P's 5.6 / 19.6. It hasn't been
+tried on a real Deck yet.
+
 A cold start downloads about 5 MB to reach the title screen and about 9 MB to reach the first
 race. Music is fetched per track, when it's needed.
 
@@ -147,7 +197,7 @@ src/main.js           boot, renderer, loop, state machine, quality, race start/t
 src/physics.js        PURE kart physics (+ self-test)       src/track.js     PURE track model
 src/race.js           PURE race manager                      src/ai.js        PURE AI driver
 src/items.js          PURE item sim + AI item brain          src/itemviews.js item meshes/fx/sounds
-src/input.js          keyboard + Gamepad API + touch         src/camera.js    chase camera (wall/tunnel clamp)
+src/input.js          keyboard + Gamepad API + touch, 2P per-player controllers   src/camera.js    chase camera (wall/tunnel clamp)
 src/fx.js             particles + skid marks (2+1 draw calls)
 src/trackmesh.js      track → road/walls/terrain/sky meshes, texture loader
 src/scenery/*.js      per-theme props (beach, ice, volcano, castle, star; kit.js/propkit.js helpers)

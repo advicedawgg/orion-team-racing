@@ -18,6 +18,7 @@ export class ChaseCam {
     this.yaw = 0; this.pos = new THREE.Vector3(); this.look = new THREE.Vector3();
     this.y = 0; this.fovK = 0; this.shakeA = 0; this.pinned = null; this.intro = 0;
     this._v = new THREE.Vector3(); this._q = { x: 0, y: 0, z: 0 }; this._pr = {}; this.push = 0;
+    this.fovMul = 1;   // 2P split screen: a half-height view keeps ~the 1P horizontal FOV with a smaller vertical one (main.js)
   }
   /** debug: pin the camera at [x,y,z,tx,ty,tz] (URL ?cam=) */
   pin(arr) { this.pinned = arr; }
@@ -32,7 +33,7 @@ export class ChaseCam {
     const c = this.cam;
     if (this.pinned) {
       const a = this.pinned; c.position.set(a[0], a[1], a[2]); c.lookAt(a[3], a[4], a[5]);
-      c.fov = CAM.fov; c.updateProjectionMatrix(); return;
+      c.fov = CAM.fov * this.fovMul; c.updateProjectionMatrix(); return;
     }
     // heading: travel yaw, nudged toward the road ahead so the view opens into the corner
     let target = yaw;
@@ -83,7 +84,7 @@ export class ChaseCam {
     // FOV: speed + boost kick
     const boost = k.boostT > 0 ? 1 : 0;
     this.fovK += (boost - this.fovK) * Math.min(1, (boost ? 6 : 2.2) * dt);
-    const fov = CAM.fov + CAM.fovBoost * this.fovK + CAM.fovSpeed * clamp(k.speed / 22, 0, 1.3);
+    const fov = (CAM.fov + CAM.fovBoost * this.fovK + CAM.fovSpeed * clamp(k.speed / 22, 0, 1.3)) * this.fovMul;
     if (Math.abs(c.fov - fov) > 0.01) { c.fov = fov; c.updateProjectionMatrix(); }
   }
 }
