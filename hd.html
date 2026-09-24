@@ -28,8 +28,10 @@ import { buildRacer, animateRacer } from './src/racers.js';
 import { hasHD, loadHDRacer, animateHD, HD_MODELS } from './src/hdracers.js';
 
 const Q = new URLSearchParams(location.search);
-// dev: &devurl=<glb>&devkind=rig|static&devh=1.4 loads that file as the first id's HD model
+// dev: &devurl=<glb>&devkind=rig|static&devh=1.4 loads that file as the first id's HD model;
+//      &dev=<id>:<kind>:<height>:<url>,... registers several (ids need not be racers: the kart falls back)
 if (Q.get('devurl')) HD_MODELS[(Q.get('ids') || 'orion').split(',')[0]] = { kind: Q.get('devkind') || 'rig', height: +(Q.get('devh') || 1.4), yaw: +(Q.get('devyaw') || 0), url: Q.get('devurl') };
+for (const spec of (Q.get('dev') || '').split(',').filter(Boolean)) { const [id, kind, h, ...u] = spec.split(':'); HD_MODELS[id] = { kind, height: +h, url: u.join(':') }; }
 const ids = (Q.get('ids') || Object.keys(HD_MODELS).join(',')).split(',').filter(Boolean);
 const poses = (Q.get('poses') || 'idle').split(',');
 const views = (Q.get('views') || 'chase,front').split(',');
@@ -84,27 +86,35 @@ const info = document.getElementById('info');
 const errs = [];
 window.addEventListener('error', e => errs.push(String(e.message)));
 
+const devIds = new Set((Q.get('dev') || '').split(',').filter(Boolean).map(x => x.split(':')[0]).concat(Q.get('devurl') ? [ids[0]] : []));
 async function makeRacer(id) {
-  const { root, rig } = buildRacer(id);
+  // real racers go through racers.js's own HD hook (buildRacer(id, {hd:true}) -> attachHD), so this
+  // viewer tests the integration the game uses; dev models are attached by hand
+  const real = !devIds.has(id);
+  const { root, rig } = buildRacer(id, { hd: useHD && real });
   let hd = null;
-  if (useHD && hasHD(id)) {
+  if (useHD && real && hasHD(id)) {
+    const t0 = performance.now();
+    while (!rig.hd && performance.now() - t0 < 60000) await new Promise(r => setTimeout(r, 50));
+    if (rig.hd) hd = { root: rig.hd.root, rig: rig.hd.rig, viaHook: true, loadMs: performance.now() - t0 };
+    else errs.push(`hd ${id}: hook never attached`);
+  } else if (useHD && hasHD(id)) {
     try {
-      const t0 = performance.now();
       hd = await loadHDRacer(id, { wheel: Q.get('nowheel') !== '1' });
-      hd.loadMs = performance.now() - t0;
       for (const c of [...rig.driver.children]) c.visible = false;   // hide the procedural driver
       rig.driver.add(hd.root);
-      if (Q.get('skel') === '1') scene.add(new THREE.SkeletonHelper(hd.root));
     } catch (e) { errs.push(`hd ${id}: ${e.message}`); }
   }
+  if (hd && Q.get('skel') === '1') scene.add(new THREE.SkeletonHelper(hd.root));
+  if (hd && Q.get('nokart') === '1') { rig.body.traverse(o => { if (o.isMesh && !hd.root.getObjectById(o.id)) o.visible = false; }); for (const w of rig.wheels) w.visible = false; }
   scene.add(root);
   return { id, root, rig, hd };
 }
 function setPose(r, name) {
   const s = { t: 0, ...(POSES[name] || POSES.idle) };
   r.root.rotation.set(0, s.driftAngle || 0, 0);
-  animateRacer(r.rig, s, 1);
-  if (r.hd) animateHD(r.hd.rig, s, 1);
+  animateRacer(r.rig, s, 1);                       // calls animateHD itself when the hook attached
+  if (r.hd && !r.hd.viaHook) animateHD(r.hd.rig, s, 1);
 }
 
 const racers = [];
@@ -151,7 +161,7 @@ if (!perf) {
   }
   cam.aspect = W / H; aim('chase', new THREE.Vector3(0, 0.8, -1.5));
   const gl = renderer.getContext(), px = new Uint8Array(4);
-  const frame = (i) => { for (const r of all) { if (r.hd) animateHD(r.hd.rig, { steer: Math.sin(i * 0.05), speed: 18, t: i / 60 }, 1 / 60); } renderer.render(scene, cam); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); };
+  const frame = (i) => { for (const r of all) { const st = { steer: Math.sin(i * 0.05), speed: 18, t: i / 60 }; animateRacer(r.rig, st, 1 / 60); if (r.hd && !r.hd.viaHook) animateHD(r.hd.rig, st, 1 / 60); } renderer.render(scene, cam); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); };
   for (let i = 0; i < 20; i++) frame(i);
   const N = 120, t0 = performance.now();
   for (let i = 0; i < N; i++) frame(i);

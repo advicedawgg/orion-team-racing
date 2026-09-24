@@ -139,5 +139,5 @@ export function drive(b, race) {
   // ---- speed control: lift/brake when way off the line
   if (Math.abs(err) > 1.1 && v > 10) { c.throttle = 0; c.brake = 0.6; }
   else if (Math.abs(err) > 0.7 && v > 18 && !k.drift) c.throttle = 0.4;
-  return c;
+  return race?.items ? race.items.aiControl(b, c) : c;   // items agent: item use + TNT shake-off (items.js)
 }

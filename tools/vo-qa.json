@@ -185,12 +185,6 @@
   "score": 10,
   "defects": ""
  },
- "vo_hardhat_wins": {
-  "heard": "Hard hat wins!",
-  "delivery": "energetic and celebratory",
-  "score": 10,
-  "defects": ""
- },
  "vo_kingdad_wins": {
   "heard": "King Dad wins!",
   "delivery": "cheerful and energetic announcer",
@@ -198,8 +192,8 @@
   "defects": ""
  },
  "vo_grumblin_wins": {
-  "heard": "Grumblin wins!",
-  "delivery": "gruff and enthusiastic character voice",
+  "heard": "Grumbles wins!",
+  "delivery": "Energetic and celebratory",
   "score": 10,
   "defects": ""
  },
@@ -216,8 +210,8 @@
   "defects": ""
  },
  "vo_jelly_wins": {
-  "heard": "Jelly wins!",
-  "delivery": "bright, energetic announcement",
+  "heard": "Wibble wins!",
+  "delivery": "Energetic and cartoonish",
   "score": 10,
   "defects": ""
  },
@@ -228,8 +222,8 @@
   "defects": ""
  },
  "vo_zapdrone_wins": {
-  "heard": "Zapdrone wins!",
-  "delivery": "energetic kart race announcer shout",
+  "heard": "Zappy wins!",
+  "delivery": "Energetic and cheerful announcer",
   "score": 10,
   "defects": ""
  },
@@ -293,12 +287,6 @@
   "score": 9,
   "defects": ""
  },
- "vo_hardhat_beep": {
-  "heard": "",
-  "delivery": "bright and comedic cartoon horn honks",
-  "score": 9,
-  "defects": ""
- },
  "vo_grumblin_grr": {
   "heard": "Grrr",
   "delivery": "grumpy cartoon growl",
@@ -309,6 +297,18 @@
   "heard": "[electric zap] beep-boop!",
   "delivery": "cheerful and cute robotic chirp",
   "score": 10,
+  "defects": ""
+ },
+ "vo_prickle_wins": {
+  "heard": "Prickles wins!",
+  "delivery": "cheerful and energetic announcer",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_prickle_huff": {
+  "heard": "Uh-oh!",
+  "delivery": "cute squeaky cartoon grunt",
+  "score": 9,
   "defects": ""
  }
 }

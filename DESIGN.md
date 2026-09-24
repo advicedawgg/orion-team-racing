@@ -362,10 +362,15 @@ export const audio = {
   unlock(),               // call on first user gesture (keydown/pointerdown/gamepad press)
   play(name, { vol=1, rate=1, pan=0, at=null /* {x,y,z} world pos for distance falloff */ } = {}),
   music(name | null),     // crossfade to a track by name ('title','beach','ice','volcano','castle','star','results'), null = stop
-  engineStart(id, isPlayer), engineUpdate(id, { speed, maxSpeed, throttle, drift, boost, air, pos }), engineStop(id),
+  engineStart(id, isPlayer, racerId?), engineUpdate(id, { speed, maxSpeed, throttle, drift, boost, air, pos,
+               /* optional: */ charge, offroad, racerId }), engineStop(id), enginesOff(),
   listener(pos, forward), // camera for distance falloff
   setVolumes({ master, music, sfx }), toggleMute(), muted,
+  // added by the audio agent (all optional, all safe): see "## Audio" at the end of this file
+  pause(on), bark(racerId, kind), preloadMusic(name), volumes, loaded,
 };
+// play() returns a handle { stop(fadeSec), set({ vol, rate, at, pan }), playing }; opts also take
+// loop:true (for drift_loop/offroad/bomb_roll) and delay (s).
 ```
 SFX names used by the game (audio agent provides all; unknown names are a silent no-op):
 `countdown, go, hop, land, drift_start, drift_loop, charge_red, turbo1, turbo2, turbo3, fizzle,
@@ -373,7 +378,7 @@ overheat, pad, start_boost, wall, bump, offroad, star, item_box, roulette, item_
 explode, rocket, rocket_lock, tnt_drop, tnt_on_head, tnt_tick, nitro, splat, spinout, shield_up,
 shield_pop, super_star, remote, warp, flip, lap, final_lap, finish, win, lose, menu_move,
 menu_ok, menu_back, respawn` plus announcer VO: `vo_3, vo_2, vo_1, vo_go, vo_final_lap,
-vo_you_win, vo_orion_wins …` (see audio.js for the full list once written).
+vo_you_win, vo_orion_wins …` — full lists in **## Audio** below.
 
 **`src/racers.js`** (characters agent owns):
 ```js
@@ -462,3 +467,111 @@ update(dt,t) }`; `loadTex(name, fallback, opts)` (instant procedural canvas, upg
 **`fx.js`**: `createFx(scene)` → `{ kart(k, rig, dt, camPos), burst(kind, pos, opts), update(dt, camera),
 clearSkids() }`; burst kinds `land poof fizzle overheat wall splash turbo pad sparkle`; `FLAME`
 colours. Two particle draw calls + one skid-mark mesh; no lights.
+
+## Audio (audio agent)
+
+Files: `src/audio.js` (runtime), `tools/gen-sfx.mjs` / `gen-vo.mjs` / `gen-music.mjs` (ElevenLabs,
+key read from `/home/ws/studio/.env`, never printed), `tools/audio-lib.mjs` (shared trim/normalise/
+index helpers), `tools/looppoints.mjs` (SO2's loop finder as a module), `tools/sfx-qa.mjs` (an
+audio model "listens" and scores each file vs its prompt), `tools/mixprobe.mjs` (decode gate + mix
+table), `audio-test.html` (button bench: every SFX/VO/music, engine sliders, 6 orbiting AI karts,
+auto-drive demo; shift-click = hear the synth fallback). Assets: `assets/sfx/*.mp3` +
+`assets/sfx/index.json`, `assets/audio/*.ogg|mp3` + `assets/audio/index.json`. Raw API responses in
+`tools/sfx-raw/` (music raws in `tools/sfx-raw/music/`) so `--force` re-processing is free; `--regen`
+re-bills and needs explicit names.
+
+**Graph** (DAWG ARENA's measured lessons): one-shots, engines and VO → `sfxBus` (user SFX fader) →
+`sfxOut` (master) → 4x-oversampled tanh **soft clipper** (linear below 0.72) → out. Music: `<audio>`
+decks → `musicDuck` → `musicBus` (user music fader) → `musicOut` (master) → out — its own path, never
+through the clipper. The same `buildMix()` builds the live graph and mixprobe's offline copy, so the
+probe can't drift from the game. Balance = `TRIM` (dB per sound) in audio.js; files are mastered by
+the generators to a per-category **loudest-100 ms** target (impacts -10, turbos -11..-13, pickups/
+movement -15/-16, UI -16..-18, VO -14), synth fallbacks to the same targets.
+
+**Measured mix** (`node tools/mixprobe.mjs`, output dBFS through the real graph, default faders
+master 0.9 / music 0.7 / sfx 1): SFX loud100 median -19.4 (turbo3 -15.4, explode -14.4, menu blips
+-24); VO -16.4 (sits on top, ducks music to 70%); player engine bed -23 dB rms at speed (-33 idle);
+AI engine -25 @5 m, -33 @15 m, -42 @40 m; music -25..-26 dB rms (tracks normalised to -18 LUFS);
+spatial explode -17.7 @10 m, -27.7 @30 m, -33.7 @60 m, culled >110 m. Player turbos/pads/super star/
+explosions duck the music 20-40 % for the sound's length. All 138 files decode in Chrome 152.
+
+**Engines** are synthesised, no samples: sawtooth + half-rate square through a tanh drive and a
+resonant lowpass, amplitude "putt" at half the firing rate, 7 Hz FM wobble; pitch 52→150 Hz with 3
+gear-ish rev dips; throttle opens the filter and the drive; boost adds a triangle whine at 7x;
+air flares revs +14 %; drift adds band-passed tyre squeal whose pitch rises with `charge`;
+`offroad` adds a low rumble. Per-racer pitch (`ENGINE_PITCH`: King Dad 0.82, Zappy 1.28 …) comes
+from `racerId`. Player gets its own voice; the **4 nearest AI** within 60 m share a pooled set
+(re-picked every 150 ms, mild doppler); everyone else is silent — ~5 voices max on a Steam Deck.
+
+**Music** streams from `<audio loop>` through `createMediaElementSource` (never decoded into a
+buffer). Each file is a **seamless loop body** cut by the loop finder (the intro is dropped), Opus
+.ogg primary (measured gapless in Chrome; MP3/WAV drop ~6 ms per loop), MP3 for browsers without
+Opus, Super Orion 2's track as a last fallback. Files are fetched whole into a blob: URL first,
+because the dev server has no HTTP Range support and Chrome then can't seek/loop an Ogg stream.
+Two decks crossfade 0.9 s. The context suspends and music pauses while the tab is hidden.
+
+**Unlock**: `init()` also installs keydown/pointerdown/touchend/mousedown listeners that call
+`unlock()`; gamepads need the caller (main.js's `In.onGesture` does it). `music()` asked before the
+unlock is remembered and starts on unlock. Engines can be registered before init.
+
+### SFX (all ElevenLabs sound-generation, every one with a synth fallback)
+| name | when |
+|---|---|
+| `countdown`, `go` | 3-2-1 beeps, GO |
+| `hop` (2 takes), `land` (2) | shoulder hop boing, landing thud |
+| `drift_start`, `drift_loop` (seamless, `loop:true`) | tyre chirp, held slide squeal |
+| `charge_red` | slide meter entered the red window (ding) |
+| `turbo1`, `turbo2`, `turbo3` | slide turbos, rising size/length 0.8/1.0/1.5 s |
+| `fizzle`, `overheat` | too-early puff, overheated steam + sputter |
+| `pad`, `start_boost` | turbo pad zap-whoosh, start-line rocket launch |
+| `wall` (2), `bump` (2) | wall bonk, kart-to-kart bonk |
+| `offroad` (seamless loop) | gravel/grass rumble while off-road |
+| `star`, `star_spill` | star pickup pop-twinkle, stars spilling when hit |
+| `item_box`, `roulette`, `item_get` | box smash, one roulette tick (call per tick), item landed |
+| `bomb_roll` (loop), `explode` (2) | Taco Bomb rolling, cartoon boom |
+| `rocket`, `rocket_lock` | Cosmic Rocket launch, lock-on beep-beep |
+| `tnt_drop`, `tnt_on_head`, `tnt_tick`, `nitro` | crate thunk, bonk-boing onto a head, one tick (call per second), Nitro glass+boom |
+| `splat`, `spinout`, `flip` | Ice Cream Splat, spin-out slide whistle, flip whoosh-boing |
+| `shield_up`, `shield_pop` | Bubble Shield on / popped |
+| `super_star` | Super Star invincibility shimmer |
+| `remote` | TV Remote click-bzzt |
+| `warp` | Warp Star whoosh |
+| `lap`, `final_lap`, `finish`, `win`, `lose` | lap chime, final-lap fanfare, finish fanfare, victory jingle, gentle sad trombone |
+| `menu_move`, `menu_ok`, `menu_back` | UI blips |
+| `respawn`, `splash` | helper drops you back (sparkle poof), kart into water |
+| `meow` (2), `purr`, `cheer` | Sootie, podium kids cheering |
+
+### VO (ElevenLabs eleven_v3; `vo_*` play on a one-at-a-time announcer channel)
+Announcer (Charlie, Australian, hyped): `vo_3 vo_2 vo_1 vo_go vo_ready vo_lap_2 vo_final_lap
+vo_you_win vo_great_race vo_so_close vo_new_record vo_title` ("Orion Team Racing!") `vo_choose`
+("Choose your racer!") `vo_orion_cup vo_great_slide vo_super_turbo vo_ouch vo_nice_shot vo_whoa
+vo_boom vo_ten_stars`; item names `vo_taco_bomb vo_rocket vo_tnt vo_ice_cream vo_shield vo_turbo
+vo_super_star vo_tv_remote vo_warp_star`; winners `vo_<racerId>_wins` for all 8 (spoken with the
+display names: Grumbles, Wibble, Zappy, Prickles).
+Barks via `audio.bark(racerId, 'win'|'boost'|'hit'|'item')` (rate-limited to one per 5 s, never cuts
+the announcer): Orion `vo_orion_woohoo/yeah/uhoh` (pitched-up voice), King Dad (Russo) `vo_kingdad_count`
+("Don't make me count to three!"), `vo_kingdad_back` ("Ooh, my back!"), `vo_kingdad_remote`
+("Everybody... PAUSE!"), `vo_kingdad_haha`; Mum (Sophia) `vo_mum_goodjob` ("Good job, sweetheart!"),
+`vo_mum_careful`, `vo_mum_wheee`; Sootie = `meow`/`purr`; `vo_grumblin_grr vo_prickle_huff
+vo_jelly_wobble vo_zapdrone_zap` (vocal SFX).
+
+### Music (ElevenLabs music_v1, instrumental, loop bodies at -18 LUFS; SO2 fallback in brackets)
+`title` 63 s heroic brass/guitar (title) · `beach` 62 s surf guitar + steel drums (coast) · `ice`
+60 s glockenspiel + sleigh bells (frost) · `volcano` 81 s marimba + mariachi brass (dunes) · `castle`
+87 s silly medieval march (castle) · `star` 60 s synth arpeggios (cosmic) · `results` 40 s happy
+podium groove (skyway). Two audio models scored all seven 8-10/10, no vocals.
+
+### Who should call what (not yet wired, as of this writing)
+- **ui/menu**: `menu_move/ok/back`; `audio.music('title')` + `vo_title` on the title screen,
+  `vo_choose` on racer select; `audio.setVolumes()` from settings; `vo_orion_cup` for the cup.
+- **core results**: `vo_<winnerRacerId>_wins` then `bark(winner, 'win')`; `vo_great_race` /
+  `vo_so_close` when the player doesn't win; `cheer` on the podium; `vo_new_record` in time trial;
+  `vo_lap_2` on lap 2.
+- **items**: `item_box` + `roulette` ticks (~12/s) → `item_get` + the item's `vo_*` name; `star`
+  per star, `star_spill` + `bark(racer,'hit')` on hits; `bomb_roll` with `{loop:true, at}` and
+  `handle.set({at})` each frame; `explode`/`nitro`/`splat`/`shield_*`/`rocket*`/`tnt_*`/`remote`
+  (+ `bark('kingdad','item')` when Dad fires it)/`warp`/`super_star`, all with `at` for other karts;
+  `vo_ten_stars` at 10 stars; `vo_nice_shot` when the player's weapon hits.
+- Regenerate: `node tools/gen-sfx.mjs <name> --regen`, then `node tools/sfx-qa.mjs <name>`, then
+  `node tools/mixprobe.mjs`. ElevenLabs starter plan: max 4 concurrent requests; SFX/VO cost ~2 k
+  credits for everything, music ~1 k credits/min (≈8 k for the set).

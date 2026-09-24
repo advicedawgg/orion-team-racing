@@ -20,6 +20,7 @@ export const INHERIT = {
   kerb: 'auto',                // 'auto' = kerbs where the corner is tight, true/false to force
   bridge: false,               // this stretch may pass over/under another stretch (overlap check)
   tunnel: false,               // roof over the road (trackmesh / scenery may use it)
+  raised: false,               // elevated stretch (castle wall top, sky bridge): the terrain does NOT rise to meet it; scenery holds it up
 };
 
 /** Offroad surfaces and their top-speed multiplier. Physics reads this; tracks may add their own names. */

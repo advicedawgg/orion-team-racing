@@ -1,25 +1,35 @@
 // node tools/gentex.mjs [--force] [--regen] [--list] [name|kind ...]
 //
-// Generates OTR's 2D art with Krea 2 Turbo on Unraid's second Arc B60
-// (ComfyUI container `comfy-krea2`, http://192.168.15.100:8188), then hands
-// each raw render to tools/texpost.py which makes it tile / keys it / resizes
-// it and writes the shipped file under assets/.
+// Generates OTR's 2D art with Krea 2 and hands each raw render to
+// tools/texpost.py, which makes it tile / keys it / resizes it and writes the
+// shipped file under assets/.
 //
 //   node tools/gentex.mjs                 everything that's missing
 //   node tools/gentex.mjs tex             only the tiling textures
 //   node tools/gentex.mjs road_ice sky    by name or by kind (tex|sky|title|icon|track)
 //   node tools/gentex.mjs --force lava    re-post-process lava (raw render is reused)
-//   node tools/gentex.mjs --regen lava    re-render lava on the GPU too
+//   node tools/gentex.mjs --regen lava    re-render lava too
+//   SEEDOFS=3 node tools/gentex.mjs --regen title   try a variant; bake the winner's seed in
 //   node tools/gentex.mjs logo            (the logo is ImageMagick only — tools/logo.sh)
 //
-// Idempotent + reproducible: seeds are fixed per asset, raw renders are cached
-// in work/krea/<name>-<hash>.png (hash of prompt+seed+size, so editing a
-// prompt re-renders it and nothing else). Shipped files are skipped when they
-// already exist unless --force.
+// Backends (BACKEND=...):
+//   comfy       (default) Krea 2 Turbo fp8 on Unraid's second Arc B60, ComfyUI
+//               `comfy-krea2` at http://192.168.15.100:8188 — Turbo settings
+//               euler/simple, 8 steps, cfg 1.0 (memory project_krea2_comfyui).
+//               Needs ~18 GB of card1 free; see renderComfy for the OOM trap.
+//   openrouter  hosted Krea 2 (krea/krea-2-medium-turbo) via OpenRouter; needs
+//               OPENROUTER_API_KEY. EVERY SHIPPED ASSET ON 2026-09-25 CAME FROM
+//               THIS, because card1 had no room (jv-probe held 5.4 GB) and the
+//               ComfyUI worker then died.
 //
-// Sampler settings are Krea 2 TURBO's (euler/simple, 8 steps, cfg 1.0) —
-// memory project_krea2_comfyui. Don't restart comfy-krea2 or touch its
-// memory limit (project_krea2_arc_b60): renders just queue behind anyone else.
+// Idempotent: shipped files are skipped when they exist unless --force/--regen.
+// Raw renders are cached in work/krea/<name>-<hash>.png (hash of
+// prompt+seed+size+model, so editing a prompt re-renders only that asset); a
+// raw from either backend is reused, so --force never needs a GPU or a key.
+// Seeds are fixed per asset (the B60 path is bit-reproducible from them).
+//
+// Don't restart comfy-krea2 or touch its memory limit from here
+// (project_krea2_arc_b60).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -96,17 +106,26 @@ export const ASSETS = {
   cloud: { kind: 'tex', seed: 3214, prompt: `Soft fluffy white cartoon clouds seen from directly above, puffy rounded cloud tops filling the whole frame, bright white with very soft pale blue and lavender shading in the gaps. ${STYLE}` },
 
   // ----------------------------------------------------------------- skies
-  sky_beach: { kind: 'sky', seed: 3301, w: 1536, h: 768, prompt: `Sunny tropical sky, clear bright cerulean blue gradient to pale turquoise near the horizon, big fluffy white cumulus clouds scattered around, distant calm turquoise sea along the horizon. ${SKY}` },
-  sky_ice: { kind: 'sky', seed: 3302, w: 1536, h: 768, prompt: `Pink and peach sunset sky over a distant range of snowy mountains shaped like scoops of strawberry and vanilla ice cream, soft cotton-candy clouds, warm pastel pink, lilac and gold. ${SKY}` },
-  sky_volcano: { kind: 'sky', seed: 3303, w: 1536, h: 768, prompt: `Smoky orange volcanic sky, warm amber and tangerine glow near the horizon fading to dusky red-purple above, soft billowing ash clouds, a few floating glowing embers, distant dark volcano silhouettes on the horizon, bright and friendly not scary. ${SKY}` },
-  sky_castle: { kind: 'sky', seed: 3304, w: 1536, h: 768, prompt: `Blue twilight sky at dusk, deep royal blue above fading to soft violet and warm peach glow at the horizon, first twinkling stars, a few soft lilac clouds, distant green hills along the horizon. ${SKY}` },
-  sky_star: { kind: 'sky', seed: 3305, w: 1536, h: 768, prompt: `Deep outer space, colourful swirling pink, violet and teal nebula clouds, dense twinkling starfield, a couple of small distant cartoon planets with rings, magical and bright. ${SKY}` },
+  sky_beach: { kind: 'sky', horizon: 0.77, seed: 3301, w: 1536, h: 768, prompt: `Sunny tropical sky, clear bright cerulean blue gradient to pale turquoise near the horizon, big fluffy white cumulus clouds scattered around, distant calm turquoise sea along the horizon. ${SKY}` },
+  sky_ice: { kind: 'sky', horizon: 0.95, seed: 3302, w: 1536, h: 768, prompt: `Pink and peach sunset sky over a distant range of snowy mountains shaped like scoops of strawberry and vanilla ice cream, soft cotton-candy clouds, warm pastel pink, lilac and gold. ${SKY}` },
+  sky_volcano: { kind: 'sky', horizon: 0.88, seed: 3303, w: 1536, h: 768, prompt: `Smoky orange volcanic sky, warm amber and tangerine glow near the horizon fading to dusky red-purple above, soft billowing ash clouds, a few floating glowing embers, distant dark volcano silhouettes on the horizon, bright and friendly not scary. ${SKY}` },
+  sky_castle: { kind: 'sky', horizon: 0.97, seed: 3304, w: 1536, h: 768, prompt: `Blue twilight sky at dusk, deep royal blue above fading to soft violet and warm peach glow at the horizon, first twinkling stars, a few soft lilac clouds, distant green hills along the horizon. ${SKY}` },
+  sky_star: { kind: 'sky', seed: 3307, w: 1536, h: 768, prompt: `Deep outer space, colourful swirling pink, violet and teal nebula clouds, dense twinkling starfield, a couple of small distant cartoon planets with rings, magical and bright. ${SKY}` },
 
   // ------------------------------------------------------------- key art
+  // Title screen: headroom in the top third for logo.png.
   title: {
-    kind: 'title', seed: 3401, w: 1536, h: 864,
+    kind: 'title', seed: 3405, w: 1536, h: 864,
     prompt: `Dynamic action scene from a colourful family kart racing game. In front, a happy fair-skinned young boy with short messy brown hair and a huge grin, wearing a blue hoodie with a big yellow star on the chest and orange racing stripes, `
-      + `drives a small bright blue go-kart with yellow and red trim, leading the race towards the viewer. Close behind him a cheerful big grown-up dad with pale pinkish-white skin, completely bald head with a short black beard wearing a shiny golden crown and a royal blue robe drives a red kart, `
+      + `drives a small bright blue go-kart with yellow and red trim, leading the race towards the viewer. Close behind him a cheerful big grown-up dad with light peach skin like the boy, completely bald head with a short black beard wearing a shiny golden crown and a royal blue robe drives a red kart, `
+      + `next to him a smiling grown-up adult woman, his mum, with pale skin and long brown hair with a flower in it and a purple dress drives a purple kart, and a small black cat with bright mint-green eyes drives a tiny pink kart. `
+      + `Tropical beach race track with palm trees, turquoise sea, golden sand, bunting flags, sparkles, speed lines and motion blur, drifting dust, bright sunny blue sky. Wide shot: the karts and characters are in the lower two thirds of the picture and the top third is open clear blue sky with nothing in it, leaving room for a logo. ${SCENE}`,
+  },
+  // Same cast, tight close-up with no headroom (loading / results / Steam art).
+  title_close: {
+    kind: 'title', seed: 3405, w: 1536, h: 864,
+    prompt: `Dynamic action scene from a colourful family kart racing game. In front, a happy fair-skinned young boy with short messy brown hair and a huge grin, wearing a blue hoodie with a big yellow star on the chest and orange racing stripes, `
+      + `drives a small bright blue go-kart with yellow and red trim, leading the race towards the viewer. Close behind him a cheerful big grown-up dad with light peach skin like the boy, completely bald head with a short black beard wearing a shiny golden crown and a royal blue robe drives a red kart, `
       + `next to him a smiling grown-up adult woman, his mum, with pale skin and long brown hair with a flower in it and a purple dress drives a purple kart, and a small black cat with bright mint-green eyes drives a tiny pink kart. `
       + `Tropical beach race track with palm trees, turquoise sea, golden sand, bunting flags, sparkles, speed lines and motion blur, drifting dust, bright sunny blue sky. ${SCENE}`,
   },
@@ -164,7 +183,9 @@ const graph = (prompt, seed, w, h, tag) => ({
 
 function specOf(name) {
   const s = ASSETS[name];
-  return { w: 1024, h: 1024, ...s };
+  const o = { w: 1024, h: 1024, ...s };
+  if (process.env.SEEDOFS) o.seed += Number(process.env.SEEDOFS);   // for trying variants; bake the winner into the spec
+  return o;
 }
 function rawPath(name, model = BACKEND === 'openrouter' ? OR_MODEL : UNET) {
   const s = specOf(name);
@@ -190,7 +211,18 @@ async function submit(prompt) {
     await sleep(1500);
     const h = await (await fetch(`${HOST}/history/${id}`)).json();
     const e = h[id];
-    if (!e) continue;
+    if (!e) {
+      // Dead-worker guard: after an XPU OOM the prompt_worker thread can die
+      // while HTTP stays up — prompts then sit in the queue forever.
+      if (i === 40) {
+        const q = await (await fetch(`${HOST}/queue`)).json();
+        if (!q.queue_running.length && q.queue_pending.some(p => p[1] === id)) {
+          await fetch(`${HOST}/queue`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ delete: [id] }) });
+          throw new Error('ComfyUI is not executing anything (prompt_worker thread dead?) — needs `docker restart comfy-krea2`, or use BACKEND=openrouter');
+        }
+      }
+      continue;
+    }
     if (e.status?.status_str === 'error') {
       const m = e.status.messages.find(x => x[0] === 'execution_error')?.[1];
       throw new Error(`run failed in ${m?.node_type}: ${(m?.exception_message || JSON.stringify(e.status.messages)).slice(0, 400).trim()}`);
@@ -238,9 +270,10 @@ async function renderComfy(name) {
 // Fallback backend: the same Krea 2 family, hosted, through OpenRouter's
 // /api/v1/images (NOT chat/completions — Krea models 404 there). It takes
 // `aspect_ratio` (1:1 -> 1024², 16:9 -> 1376x768, 2:1 -> ~1440x720) and
-// ignores `size`; it also IGNORES `seed` (same seed twice = different image,
-// measured), so reproducibility comes from the raw cache in work/krea/, not
-// the seed. ~$0.015 and ~30 s per image, runs 4 at a time.
+// ignores `size`. Seed: two CONCURRENT identical requests came back
+// different, but repeating a request later returned byte-identical PNGs, so
+// treat the raw cache in work/krea/ as the source of truth, and change the
+// seed (SEEDOFS=n to try variants) to get a different picture. ~$0.015 and ~30 s per image, runs 4 at a time.
 async function renderOpenRouter(name) {
   const s = specOf(name);
   const key = process.env.OPENROUTER_API_KEY;
@@ -278,6 +311,10 @@ const force = argv.includes('--force');
 const regen = argv.includes('--regen');
 const sel = argv.filter(a => !a.startsWith('--'));
 
+if (argv.includes('--rawpath')) {        // print the cache path an asset's raw render lives at
+  for (const n of sel) console.log(rawPath(n));
+  process.exit(0);
+}
 if (argv.includes('--list')) {
   for (const [n, s] of Object.entries(ASSETS)) console.log(`${n.padEnd(16)} ${s.kind.padEnd(6)} seed ${s.seed}`);
   process.exit(0);
@@ -288,7 +325,7 @@ if (argv.includes('--credits')) {       // machine-readable dump for CREDITS.md
 }
 
 const kinds = new Set(Object.values(ASSETS).map(s => s.kind));
-let want = sel.length ? sel.flatMap(a => kinds.has(a) ? Object.keys(ASSETS).filter(n => ASSETS[n].kind === a) : [a]) : Object.keys(ASSETS);
+let want = [...new Set(sel.length ? sel.flatMap(a => kinds.has(a) ? Object.keys(ASSETS).filter(n => ASSETS[n].kind === a) : [a]) : Object.keys(ASSETS))];
 if (want.includes('logo')) {
   console.log(execFileSync('bash', [path.join(ROOT, 'tools', 'logo.sh')], { encoding: 'utf8' }).trim());
   want = want.filter(n => n !== 'logo');
@@ -309,7 +346,7 @@ async function one(name) {
       raw = rawPath(name);
       msg += `rendered ${((Date.now() - t0) / 1000).toFixed(0)}s  `;
     } else msg += 'cached raw  ';
-    msg += execFileSync('python3', [path.join(ROOT, 'tools', 'texpost.py'), s.kind, raw, out, ...(s.luma ? ['--luma', String(s.luma)] : []), ...(s.flat ? ['--flat'] : [])], { encoding: 'utf8' }).trim();
+    msg += execFileSync('python3', [path.join(ROOT, 'tools', 'texpost.py'), s.kind, raw, out, ...(s.luma ? ['--luma', String(s.luma)] : []), ...(s.flat ? ['--flat'] : []), ...(s.horizon ? ['--horizon', String(s.horizon)] : [])], { encoding: 'utf8' }).trim();
   } catch (e) {
     failed++;
     msg += `FAILED: ${e.message}`;

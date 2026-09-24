@@ -39,7 +39,7 @@ export const SOUNDS = {
   start_boost: ['race car launching off the start line, engine roar and a rocket whoosh, arcade racing game', 1.3, 0.6, -12],
   wall: ['toy go-kart crashes into a padded wall, rubbery bonk with a plastic clunk, cartoon, short', 0.5, 0.65, -13, { variants: 2 }],
   bump: ['two toy go-karts lightly bump together, soft rubber bonk, cartoon, short', 0.5, 0.65, -15, { variants: 2 }],
-  offroad: ['tyres rolling over gravel and grass, crunchy bumpy rattling, close', 1.0, 0.65, -16],
+  offroad: ['tyres rolling over gravel and grass, steady crunchy bumpy rattling, close', 2.0, 0.65, -16, { loop: true }],   // main.js loops it while off-road
   star: ['collecting a shiny star in a video game, bright sparkly pop with a twinkle, short, cheerful', 0.5, 0.65, -15, { variants: 2 }],
   item_box: [`smashing an item box, crisp cardboard pop with a magical sparkle, ${K}`, 0.7, 0.6, -14],
   roulette: ['one single short plastic tick of a prize wheel, clicky, dry', 0.5, 0.8, -18, { maxDur: 0.12 }],

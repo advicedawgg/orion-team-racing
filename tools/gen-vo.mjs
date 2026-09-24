@@ -45,8 +45,9 @@ export const LINES = {
   vo_ten_stars: A('[excited] Ten stars! Super power!'),
   vo_orion_wins: A('[excited] Orion wins!'), vo_sootie_wins: A('[excited] Sootie wins!'),
   vo_kingdad_wins: A('[excited] King Dad wins!'), vo_mum_wins: A('[excited] Mum wins!'),
-  vo_grumblin_wins: A('[excited] Grumblin wins!'), vo_hardhat_wins: A('[excited] Hardhat wins!'),
-  vo_jelly_wins: A('[excited] Jelly wins!'), vo_zapdrone_wins: A('[excited] Zapdrone wins!'),
+  // keyed by racer id, spoken with the display name from src/racers.js RACERS
+  vo_grumblin_wins: A('[excited] Grumbles wins!'), vo_prickle_wins: A('[excited] Prickles wins!'),
+  vo_jelly_wins: A('[excited] Wibble wins!'), vo_zapdrone_wins: A('[excited] Zappy wins!'),
 
   // character barks (audio.bark(racerId, kind))
   vo_orion_woohoo: { text: '[excited] Woo-hoo!', voice: V.orion, pre: KID },
@@ -60,7 +61,7 @@ export const LINES = {
   vo_mum_careful: { text: '[gently] Careful, darling!', voice: V.mum },
   vo_mum_wheee: { text: '[excited] Wheee!', voice: V.mum },
   vo_grumblin_grr: { sfx: 'grumpy little cartoon monster growl, grrrr, funny, not scary', dur: 0.9 },
-  vo_hardhat_beep: { sfx: 'cartoon construction truck horn, two short honks beep beep, funny', dur: 0.8 },
+  vo_prickle_huff: { sfx: 'a small cartoon hedgehog huffing and squeaking, cute and grumpy', dur: 0.8 },
   vo_jelly_wobble: { sfx: 'wobbly jelly, squishy boing boing wobble, cartoon, funny', dur: 0.9 },
   vo_zapdrone_zap: { sfx: 'tiny cartoon robot, electric zap then a happy beep boop, cute', dur: 0.9 },
 };

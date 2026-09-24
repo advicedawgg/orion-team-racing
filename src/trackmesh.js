@@ -113,6 +113,8 @@ export const PROC = {
 export const THEMES = {
   beach: { road: 'road_beach', ground: 'sand', grass: 'grass', fog: 0xc4ecff, skyTop: 0x2f8fe8, skyHorizon: 0xbfeaff },
   default: { road: 'road', ground: 'grass', grass: 'grass', fog: 0xcfe6ff, skyTop: 0x3b86d8, skyHorizon: 0xd6ecff },
+  ice: { road: 'road_ice', ground: 'snow', grass: 'snow', fog: 0xf2c4d0, skyTop: 0xc58fd8, skyHorizon: 0xffc9d6 },
+  volcano: { road: 'road_volcano', ground: 'rock_volcanic', grass: 'rock_volcanic', fog: 0xe89a6a, skyTop: 0x7a3a5a, skyHorizon: 0xffb070 },
 };
 /** Wall styles: [colour A, colour B (alternating every `seg` m), height, seg]. */
 export const WALLS = {
@@ -123,6 +125,11 @@ export const WALLS = {
   ice: [0xdff4ff, 0xa9dcf5, 1.2, 4],
   castle: [0xb8b0a4, 0x9a9286, 2.2, 4],
   neon: [0xff4fd8, 0x4fe3ff, 0.9, 2],
+  candy: [0xffffff, 0xe8374a, 1.1, 1.6],     // candy-cane barrier (Ice Cream Peaks)
+  waffle: [0xe8b36a, 0xd29546, 1.4, 2.5],    // waffle-cone cliff edge
+  wafer: [0xffe08a, 0xf5a8c0, 1.2, 1.2],     // pink/yellow wafer bridge rail
+  chili: [0xffc21f, 0xe0332c, 1.1, 2],       // hazard stripes by the lava (Taco Volcano)
+  basalt: [0x8a6a5e, 0x77584e, 1.7, 5],      // warm volcanic rock
 };
 
 /* =============================================================== build */
@@ -298,7 +305,15 @@ export async function buildTrackMesh(track, { scene } = {}) {
     const a = hash(xi, zi), b = hash(xi + 1, zi), c = hash(xi, zi + 1), d = hash(xi + 1, zi + 1);
     return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
   };
-  const natural = (x, z) => baseH + dunes * (vnoise(x / 38, z / 38) * 1.2 + vnoise(x / 13, z / 13) * 0.35 - 0.7);
+  // terrain.hills: [{x, z, r, h, color?}] — smooth cos² domes added to the natural ground (mountains the
+  // road climbs / cuts through; the corridor still flattens under the road). `color` tints the dome.
+  const hills = T.hills || [];
+  const hillK = (hl, x, z) => { const d = Math.hypot(x - hl.x, z - hl.z) / hl.r; return d >= 1 ? 0 : Math.cos(d * Math.PI / 2) ** 2; };
+  const natural = (x, z) => {
+    let h = baseH + dunes * (vnoise(x / 38, z / 38) * 1.2 + vnoise(x / 13, z / 13) * 0.35 - 0.7);
+    for (const hl of hills) h += hl.h * hillK(hl, x, z);
+    return h;
+  };
   const segDist = (px, pz, ax, az, bx, bz) => { const dx = bx - ax, dz = bz - az; const t = clamp(((px - ax) * dx + (pz - az) * dz) / (dx * dx + dz * dz || 1), 0, 1); return Math.hypot(px - ax - dx * t, pz - az - dz * t); };
   const carveDepth = (x, z) => {                 // how far below water level to push the ground (0 = no carve)
     let d = 0;
@@ -312,22 +327,30 @@ export async function buildTrackMesh(track, { scene } = {}) {
     return d;
   };
   // nearest centre-line sample per vertex (coarse global, then refine)
-  const near = (x, z) => {
-    let best = 0, bd = Infinity;
-    for (let k = 0; k < n; k += 3) { const dx = x - X[k], dz = z - Z[k], d = dx * dx + dz * dz; if (d < bd) { bd = d; best = k; } }
-    for (let j = -3; j <= 3; j++) { const k = (best + j + n) % n, dx = x - X[k], dz = z - Z[k], d = dx * dx + dz * dz; if (d < bd) { bd = d; best = k; } }
+  // `raised` stretches (inherited prop) are skipped for the TERRAIN: the ground stays natural under a
+  // castle wall top / sky bridge instead of rising into an embankment; scenery builds what holds it up.
+  const raisedA = new Uint8Array(n); let anyRaised = false;
+  for (let k = 0; k < n; k++) if (track.props[k].raised) { raisedA[k] = 1; anyRaised = true; }
+  const near = (x, z, skipRaised = false) => {
+    const skip = skipRaised && anyRaised;
+    let best = -1, bd = Infinity;
+    for (let k = 0; k < n; k += 3) { if (skip && raisedA[k]) continue; const dx = x - X[k], dz = z - Z[k], d = dx * dx + dz * dz; if (d < bd) { bd = d; best = k; } }
+    if (best < 0) return near(x, z);
+    for (let j = -3; j <= 3; j++) { const k = (best + j + n) % n; if (skip && raisedA[k]) continue; const dx = x - X[k], dz = z - Z[k], d = dx * dx + dz * dz; if (d < bd) { bd = d; best = k; } }
     return best;
   };
-  const corridorInfo = (x, z) => {
-    const k = near(x, z);
+  const corridorInfo = (x, z, skipRaised = false) => {
+    const k = near(x, z, skipRaised);
     const lat = (x - X[k]) * lxA(k) + (z - Z[k]) * lzA(k);
     const lim = HW[k] + (lat > 0 ? track.OFFL[k] : track.OFFR[k]);
     return { k, lat, e: Math.abs(lat) - lim, planeY: bankY(Y[k], lat, HW[k], TB[k]), gap: isGap(k) };
   };
   const t0 = performance.now();
-  for (let iz = 0; iz < nz; iz++) for (let ix = 0; ix < nx; ix++) {
+  const noTerrain = def.terrain === false;      // `terrain: false` = no ground at all (Star Road floats in space)
+  if (noTerrain) H.fill(-1e4);
+  else for (let iz = 0; iz < nz; iz++) for (let ix = 0; ix < nx; ix++) {
     const x = x0 + ix * CELL, z = z0 + iz * CELL;
-    const ci = corridorInfo(x, z);
+    const ci = corridorInfo(x, z, true);
     let h = natural(x, z);
     const edgeY = bankY(Y[ci.k], Math.sign(ci.lat) * 1e3, HW[ci.k], TB[ci.k]);
     if (!ci.gap) {
@@ -349,12 +372,15 @@ export async function buildTrackMesh(track, { scene } = {}) {
     const a = H[iz * nx + ix], b = H[iz * nx + ix + 1], c = H[(iz + 1) * nx + ix], d = H[(iz + 1) * nx + ix + 1];
     return a + (b - a) * tx + (c - a) * tz + (a - b - c + d) * tx * tz;
   };
-  {
+  if (!noTerrain) {
     const g = new THREE.PlaneGeometry((nx - 1) * CELL, (nz - 1) * CELL, nx - 1, nz - 1);
     g.rotateX(-Math.PI / 2);
     const pa = g.attributes.position, colors = new Float32Array(pa.count * 3);
-    const sandC = new THREE.Color(0xfff4d6), grassC = new THREE.Color(T.grass?.color ?? 0x8fd06a), wetC = new THREE.Color(0xd9c08a), deepC = new THREE.Color(0x3aa6a0), tmp = new THREE.Color();
+    // terrain.colors: { ground, wet, deep } override the beach defaults (vertex tints × the ground texture)
+    const TC = T.colors || {};
+    const sandC = new THREE.Color(TC.ground ?? 0xfff4d6), grassC = new THREE.Color(T.grass?.color ?? 0x8fd06a), wetC = new THREE.Color(TC.wet ?? 0xd9c08a), deepC = new THREE.Color(TC.deep ?? 0x3aa6a0), tmp = new THREE.Color();
     const grassAbove = T.grass?.above ?? Infinity;
+    const hillC = hills.map(hl => hl.color != null ? new THREE.Color(hl.color) : null);
     for (let i = 0; i < pa.count; i++) {
       // after rotateX(-90°) PlaneGeometry row 0 sits at the smallest z: same layout as H
       const ix = i % nx, iz = Math.floor(i / nx);
@@ -363,6 +389,7 @@ export async function buildTrackMesh(track, { scene } = {}) {
       pa.setXYZ(i, x, h, z);
       tmp.copy(sandC);
       if (h > grassAbove) tmp.lerp(grassC, smooth(grassAbove, grassAbove + 0.8, h));
+      for (let j = 0; j < hills.length; j++) if (hillC[j]) tmp.lerp(hillC[j], smooth(0.08, 0.35, hillK(hills[j], x, z)));
       if (water) {
         tmp.lerp(wetC, 1 - smooth(water.y + 0.2, water.y + 1.2, h));
         tmp.lerp(deepC, 1 - smooth(water.y - 2.5, water.y - 0.2, h));
@@ -394,7 +421,25 @@ export async function buildTrackMesh(track, { scene } = {}) {
   // ------------------------------------------------ sky dome
   {
     const g = new THREE.SphereGeometry(1800, 24, 12);
-    const mat = new THREE.ShaderMaterial({
+    let mat;
+    if (env.sky) {
+      // env.sky = '<tex name>': a 2:1 equirect panorama (assets/tex/sky_<theme>.jpg, horizon at mid-height).
+      // Instant fallback = the skyTop→skyHorizon gradient; below the horizon it fades into the fog colour
+      // so the terrain's far edge melts into it. env.skyShift nudges the painted horizon (v units).
+      // The texture is NOT decoded as sRGB and the shader writes it raw: the painted colours reach the screen as-is.
+      const hex = c => '#' + new THREE.Color(c).getHexString();
+      const tex = loadTex(env.sky, () => cv(64, 256, (g2, w, h) => {
+        const gr = g2.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, hex(env.skyTop)); gr.addColorStop(0.5, hex(env.skyHorizon)); gr.addColorStop(1, hex(env.fog ?? env.skyHorizon));
+        g2.fillStyle = gr; g2.fillRect(0, 0, w, h);
+      }), { srgb: false, anisotropy: 1 });
+      tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter; tex.wrapT = THREE.ClampToEdgeWrapping;
+      mat = new THREE.ShaderMaterial({
+        uniforms: { map: { value: tex }, fogc: { value: new THREE.Color().setHex(env.fog ?? 0xcfe6ff, THREE.LinearSRGBColorSpace) }, shift: { value: env.skyShift ?? 0 } },
+        vertexShader: 'varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+        fragmentShader: 'uniform sampler2D map; uniform vec3 fogc; uniform float shift; varying vec3 vP; void main(){ vec3 d = normalize(vP); float u = atan(d.x, d.z) * 0.1591549 + 0.5; float v = clamp(0.5 + asin(clamp(d.y, -1.0, 1.0)) * 0.3183099 + shift, 0.002, 0.998); vec3 c = texture2D(map, vec2(u, v)).rgb; c = mix(c, fogc, (1.0 - smoothstep(-0.02, 0.05, d.y)) * 0.9); gl_FragColor = vec4(c, 1.0); }',
+        side: THREE.BackSide, depthWrite: false, fog: false, toneMapped: false,
+      });
+    } else mat = new THREE.ShaderMaterial({
       uniforms: { top: { value: new THREE.Color(env.skyTop) }, hor: { value: new THREE.Color(env.skyHorizon) } },
       vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
       fragmentShader: 'uniform vec3 top; uniform vec3 hor; varying vec3 vP; void main(){ float h = clamp(vP.y*1.6+0.05,0.0,1.0); gl_FragColor = vec4(mix(hor, top, pow(h,0.7)),1.0); }',
@@ -491,8 +536,9 @@ export async function buildTrackMesh(track, { scene } = {}) {
   }
 
   // ------------------------------------------------ queries for scenery / camera
-  const groundAt = (x, z, hint = -1) => {
-    const pr = track.project({ x, y: 50, z }, hint, {});
+  // `y` = height of whoever asks (the chase camera passes the kart's): picks the right level where the track crosses itself
+  const groundAt = (x, z, hint = -1, y = 50) => {
+    const pr = track.project({ x, y, z }, hint, {});
     if (!pr.gap && Math.abs(pr.lat) <= Math.max(pr.limL === Infinity ? 0 : pr.limL, pr.limR === Infinity ? 0 : pr.limR) + 0.4 && isFinite(pr.y)) {
       const lim = pr.lat > 0 ? pr.limL : pr.limR;
       if (Math.abs(pr.lat) <= lim) return pr.y;
@@ -511,7 +557,7 @@ export async function buildTrackMesh(track, { scene } = {}) {
     if (build) {
       let seed = 1234;
       const rng = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
-      scenery = await build({ THREE, group, track, def, env, rng, loadTex, groundAt: groundAtGrid, trackGroundAt: groundAt, isClear, aboveWater, corridorInfo, bounds: { x0, z0, x1: x0 + (nx - 1) * CELL, z1: z0 + (nz - 1) * CELL } });
+      scenery = await build({ THREE, group, track, def, env, rng, loadTex, groundAt: groundAtGrid, trackGroundAt: groundAt, naturalAt: natural, isClear, aboveWater, corridorInfo, bounds: { x0, z0, x1: x0 + (nx - 1) * CELL, z1: z0 + (nz - 1) * CELL } });
     }
   } catch (e) {
     if (!/Failed to fetch|Importing a module script failed|error loading dynamically imported module|404/i.test(String(e))) console.warn('[trackmesh] scenery failed:', e);

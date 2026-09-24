@@ -3,9 +3,11 @@
     python3 tools/texpost.py <kind> <raw.png> <out>
 
 kinds
-  tex    seamless tile both axes (overlap-crossfade-and-crop, from SO2's
-         seamless.py), 1024 jpg q85 + a 512 copy in assets/tex/512/
-  sky    wraps horizontally only (it's a panorama), 2048x1024 jpg q85
+  tex    seamless tile both axes (phase-matched crop + min-error boundary
+         cut, see wrap_axis_phase), optional --luma N gamma target and --flat
+         lighting removal; 1024 jpg q85 + a 512 copy in assets/tex/512/
+  sky    2:1 crop, wraps horizontally only, optional --horizon F moves the
+         painted horizon (fraction down) to v=0.5 -> 2048x1024 equirect jpg
   title  1920x1080 jpg q85
   track  640x360 jpg q85 (centre crop to 16:9)
   icon   key the flat background out (flood fill from the border, so white
@@ -165,7 +167,23 @@ def do_tex(src, dest, target=None, flat=False):
             f'{after[0]:.2f}/{after[1]:.2f} {"OK" if ok else "STILL SEAMS"}  {kb}KB (+512: {kb2}KB)')
 
 
-def do_sky(src, dest):
+def horizon_to_middle(a, hz):
+    """Make it a real equirect: the painted horizon (fraction hz down the
+    image) moves to v=0.5 so it sits at eye level on a sphere. Sky above is
+    stretched to fill the upper half; below the horizon continues at the same
+    scale, then the last row repeats (terrain hides it anyway)."""
+    H = a.shape[0]
+    y = (np.arange(1024) + 0.5) / 1024
+    src = np.where(y < 0.5, y / 0.5 * hz * H, hz * H + (y - 0.5) / 0.5 * hz * H)
+    out = a[np.clip(src.astype(int), 0, H - 1)].copy()
+    # Past the bottom of the painting: fade to the flat mean of its last rows
+    # rather than smearing the last row into vertical streaks.
+    flat = a[-8:].reshape(-1, a.shape[2]).mean(axis=0)
+    over = np.clip((src - (H - 1)) / (0.03 * H), 0, 1).reshape(-1, 1, 1)
+    return out * (1 - over) + flat * over
+
+
+def do_sky(src, dest, hz=None):
     # 2:1. A 16:9 render loses a strip top and bottom: keep more of the
     # bottom (horizon side), the zenith is flat sky anyway.
     w, h = src.size
@@ -177,6 +195,8 @@ def do_sky(src, dest):
     before = seam_ratio(a, 1)
     out = wrap_axis_phase(a, 1)
     after = seam_ratio(out, 1)
+    if hz:
+        out = horizon_to_middle(out, hz)
     im = Image.fromarray(np.clip(out, 0, 255).astype(np.uint8)).resize((2048, 1024), Image.LANCZOS)
     kb = save_jpg(im, dest)
     os.makedirs(PREV, exist_ok=True)
@@ -260,7 +280,10 @@ def main():
     kind, raw, dest = sys.argv[1:4]
     target = float(sys.argv[sys.argv.index('--luma') + 1]) if '--luma' in sys.argv else None
     src = Image.open(raw)
-    if kind == 'tex':
+    if kind == 'sky':
+        hz = float(sys.argv[sys.argv.index('--horizon') + 1]) if '--horizon' in sys.argv else None
+        print(do_sky(src, dest, hz))
+    elif kind == 'tex':
         print(do_tex(src, dest, target, '--flat' in sys.argv))
     else:
         print({'sky': do_sky, 'title': do_title, 'track': do_track, 'icon': do_icon}[kind](src, dest))

@@ -48,7 +48,7 @@ export class ChaseCam {
     this.y += (p.y - this.y) * Math.min(1, (k.air ? 3.5 : 9) * dt);
     const pos = this._v.set(p.x - fx * dist * back, this.y + CAM.height, p.z - fz * dist * back);
     if (groundAt) {
-      const g = groundAt(pos.x, pos.z);
+      const g = groundAt(pos.x, pos.z, k.si, p.y);   // hint + kart height: stay on the kart's level where the track passes over itself
       if (isFinite(g)) pos.y = Math.max(pos.y, g + CAM.minClear);
     }
     // shake (landing, walls, hits)

@@ -41,13 +41,14 @@ export const VO_NAMES = [
   'vo_great_slide', 'vo_super_turbo', 'vo_ouch', 'vo_nice_shot', 'vo_whoa', 'vo_boom',
   'vo_taco_bomb', 'vo_rocket', 'vo_tnt', 'vo_ice_cream', 'vo_shield', 'vo_turbo', 'vo_super_star',
   'vo_tv_remote', 'vo_warp_star', 'vo_ten_stars',
+  // 'vo_' + racerId + '_wins' for every racer in src/racers.js
   'vo_orion_wins', 'vo_sootie_wins', 'vo_kingdad_wins', 'vo_mum_wins', 'vo_grumblin_wins',
-  'vo_hardhat_wins', 'vo_jelly_wins', 'vo_zapdrone_wins',
+  'vo_prickle_wins', 'vo_jelly_wins', 'vo_zapdrone_wins',
   // character barks — see BARKS below; play through audio.bark(racerId, kind)
   'vo_orion_woohoo', 'vo_orion_yeah', 'vo_orion_uhoh',
   'vo_kingdad_count', 'vo_kingdad_back', 'vo_kingdad_remote', 'vo_kingdad_haha',
   'vo_mum_goodjob', 'vo_mum_careful', 'vo_mum_wheee',
-  'vo_grumblin_grr', 'vo_hardhat_beep', 'vo_jelly_wobble', 'vo_zapdrone_zap',
+  'vo_grumblin_grr', 'vo_prickle_huff', 'vo_jelly_wobble', 'vo_zapdrone_zap',
 ];
 
 export const MUSIC_NAMES = ['title', 'beach', 'ice', 'volcano', 'castle', 'star', 'results'];
@@ -59,7 +60,7 @@ export const BARKS = {
   kingdad: { win: ['vo_kingdad_haha'], boost: ['vo_kingdad_haha'], hit: ['vo_kingdad_back', 'vo_kingdad_count'], item: ['vo_kingdad_remote'] },
   mum: { win: ['vo_mum_goodjob'], boost: ['vo_mum_wheee'], hit: ['vo_mum_careful'], item: ['vo_mum_goodjob'] },
   grumblin: { win: ['vo_grumblin_grr'], hit: ['vo_grumblin_grr'] },
-  hardhat: { win: ['vo_hardhat_beep'], hit: ['vo_hardhat_beep'] },
+  prickle: { win: ['vo_prickle_huff'], hit: ['vo_prickle_huff'] },
   jelly: { win: ['vo_jelly_wobble'], hit: ['vo_jelly_wobble'] },
   zapdrone: { win: ['vo_zapdrone_zap'], hit: ['vo_zapdrone_zap'], boost: ['vo_zapdrone_zap'] },
 };
@@ -535,11 +536,17 @@ function makeEngineVoice(ctx = S.ctx, G = S) {
   return { out, pan, a, b, lp, drive, lfo, wob, w, wg, sq, sqg, rbg, kart: null, gain: 0 };
 }
 
-function engineState(id, isPlayer) {
-  const h = hashId(id);
+// per-racer engine character (pitch multiplier): Dad's big kart growls, Zapdrone whines
+export const ENGINE_PITCH = { orion: 1.06, sootie: 1.14, kingdad: 0.82, mum: 1.0, grumblin: 0.9, prickle: 0.94, jelly: 1.18, zapdrone: 1.28 };
+function enginePitch(id, racerId) {
+  if (racerId && ENGINE_PITCH[racerId]) return ENGINE_PITCH[racerId];
+  return 1 + (((hashId(id) % 1000) / 1000) - 0.5) * 0.26;   // unknown: stable per-id ±13%
+}
+function engineState(id, isPlayer, racerId) {
+  const h = hashId(racerId || id);
   return {
-    id, isPlayer: !!isPlayer,
-    pitch: 1 + (((h % 1000) / 1000) - 0.5) * 0.26,   // per-kart character ±13%
+    id, isPlayer: !!isPlayer, racerId: racerId || null,
+    pitch: enginePitch(id, racerId),
     wob: 5 + (h % 7),
     u: { speed: 0, maxSpeed: 22, throttle: 0, drift: 0, boost: 0, air: false, pos: null },
     prevPos: null, prevT: 0, vr: 0, dist: 0, voice: null,
@@ -651,21 +658,44 @@ function musicUrls(name) {
   return { urls: [...new Set(list)].map(f => ASSETS + 'audio/' + f), gain: m?.gain ?? 0 };
 }
 
+// Tracks are fetched whole (~1 MB Opus) into a Blob and played from a blob: URL. The element still
+// decodes as it plays (a 60 s loop is ~1 MB compressed vs ~23 MB as an AudioBuffer), but a blob is
+// always seekable with a known duration — so `loop` works on ANY static server. Measured: the dev
+// server (tools/serve.mjs) has no Range support, and Chrome then reports duration=Infinity and
+// cannot seek an Ogg stream at all.
+const blobs = new Map();   // url -> Promise<objectURL|null>
+function fetchBlob(url) {
+  if (!blobs.has(url)) blobs.set(url, fetch(url).then(r => (r.ok ? r.blob() : null)).then(b => (b && b.size > 1000 ? URL.createObjectURL(b) : null), () => null));
+  return blobs.get(url);
+}
+
 function makeDeck() {
   const el = new Audio();
   el.preload = 'auto'; el.loop = true;   // every file is a seamless loop body (tools/gen-music.mjs)
   const src = S.ctx.createMediaElementSource(el);
   const g = S.ctx.createGain(); g.gain.value = 0;
   src.connect(g).connect(S.musicDuck);
-  const d = { el, g, name: null, stopTimer: 0, urls: [], ui: 0 };
-  el.addEventListener('error', () => {
-    // missing / undecodable: walk down the candidate list (Opus → MP3 → SO2 fallback)
-    if (!d.name || d.ui + 1 >= d.urls.length) return;
-    d.ui++;
-    el.src = d.urls[d.ui];
-    el.play().then(() => rampIn(d), () => { });
-  });
+  const d = { el, g, name: null, stopTimer: 0, urls: [], ui: 0, gen: 0 };
+  el.addEventListener('error', () => { if (d.name && el.src) loadDeck(d, d.gen, d.ui + 1); });   // undecodable: next candidate
   return d;
+}
+
+/** try candidate i.. for deck d; `gen` guards against a newer music() call having replaced it */
+async function loadDeck(d, gen, i = 0) {
+  for (; i < d.urls.length; i++) {
+    const obj = await fetchBlob(d.urls[i]);
+    if (gen !== d.gen || !d.name) return;
+    if (!obj) continue;
+    d.ui = i;
+    d.el.src = obj;
+    try { await d.el.play(); } catch (e) {
+      if (gen !== d.gen) return;
+      if (e?.name === 'NotAllowedError') { if (S.musicName === d.name) S.musicName = null; return; }   // retried on unlock()
+      continue;
+    }
+    if (gen === d.gen) rampIn(d);
+    return;
+  }
 }
 
 function rampIn(d) {
@@ -687,6 +717,7 @@ function startMusic(name) {
     cur.g.gain.linearRampToValueAtTime(0, t + 0.9);
     clearTimeout(cur.stopTimer);
     const dead = cur;
+    dead.gen++;
     dead.stopTimer = setTimeout(() => { if (S.decks[S.deck] !== dead) { dead.el.pause(); dead.name = null; } }, 1000);
   }
   S.musicName = name;
@@ -695,11 +726,10 @@ function startMusic(name) {
   const d = S.decks[S.deck];
   clearTimeout(d.stopTimer);
   const info = musicUrls(name);
-  d.name = name; d.urls = info.urls; d.ui = 0;
-  d.el.src = d.urls[0];
-  d.g.gain.cancelScheduledValues(t); d.g.gain.setValueAtTime(0, t);
+  d.name = name; d.urls = info.urls; d.ui = 0; d.gen++;
   d.target = dB(info.gain || 0);
-  d.el.play().then(() => rampIn(d)).catch(e => { if (e?.name === 'NotAllowedError') S.musicName = null; });  // autoplay refused: retried on unlock(); load errors walk the fallback list
+  d.g.gain.cancelScheduledValues(t); d.g.gain.setValueAtTime(0, t);
+  loadDeck(d, d.gen, 0);
 }
 
 /* ======================================================================
@@ -749,22 +779,23 @@ export const audio = {
     try { startMusic(S.wantMusic); } catch (e) { console.warn('[audio] music', e); }
   },
 
-  engineStart(id, isPlayer = false) {
-    if (!S.ctx) return;
+  /** optional: fetch a track in the background so music(name) starts instantly later */
+  preloadMusic(name) { if (!HAS_WINDOW || !name) return; const u = musicUrls(name).urls[0]; if (u) fetchBlob(u); },
+
+  /** racerId (optional, or pass it in engineUpdate) gives the kart its character's engine pitch */
+  engineStart(id, isPlayer = false, racerId = null) {
+    // registered even before init()/unlock(): the race usually starts before the first gesture
     let k = S.karts.get(id);
-    if (!k) { k = engineState(id, isPlayer); S.karts.set(id, k); }
+    if (!k) { k = engineState(id, isPlayer, racerId); S.karts.set(id, k); }
     k.isPlayer = !!isPlayer;
-    if (k.isPlayer) {
-      if (!S.playerVoice) S.playerVoice = makeEngineVoice();
-      // one player voice; a second "player" (split screen) shares it
-      S.playerVoice.kart = k; k.voice = S.playerVoice;
-    }
+    if (racerId) { k.racerId = racerId; k.pitch = enginePitch(id, racerId); }
   },
 
   engineUpdate(id, u) {
-    if (!S.ctx || !u) return;
+    if (!u) return;
     const k = S.karts.get(id);
     if (!k) return;
+    if (u.racerId && u.racerId !== k.racerId) { k.racerId = u.racerId; k.pitch = enginePitch(id, u.racerId); }
     Object.assign(k.u, u);
     if (u.pos) {
       const t = now();
@@ -773,6 +804,13 @@ export const audio = {
       if (k.prevT && t > k.prevT) k.vr = k.vr * 0.8 + 0.2 * clamp((d - k.dist0) / (t - k.prevT), -60, 60);
       k.dist0 = d; k.prevT = t;
     }
+    if (!S.ctx) return;
+    if (k.isPlayer && !k.voice) {
+      // one player voice; a second "player" (split screen) would share it
+      if (!S.playerVoice) S.playerVoice = makeEngineVoice();
+      if (S.playerVoice.kart && S.playerVoice.kart !== k) S.playerVoice.kart.voice = null;
+      S.playerVoice.kart = k; k.voice = S.playerVoice;
+    }
     if (!k.isPlayer) assignAIVoices();
     if (k.voice) driveVoice(k.voice, k);
   },
@@ -780,7 +818,7 @@ export const audio = {
   engineStop(id) {
     const k = S.karts.get(id);
     if (!k) return;
-    if (k.voice) { k.voice.out.gain.setTargetAtTime(0, now(), 0.08); k.voice.kart = null; }
+    if (k.voice && S.ctx) { k.voice.out.gain.setTargetAtTime(0, now(), 0.08); k.voice.kart = null; }
     S.karts.delete(id);
   },
 

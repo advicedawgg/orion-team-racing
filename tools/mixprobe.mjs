@@ -55,6 +55,41 @@ try {
   console.log(`\nSUMMARY  sfx loud100 median ${med(sfxOnly.map(x => x.file.loud))} (range ${Math.min(...sfxOnly.map(x => x.file.loud))}..${Math.max(...sfxOnly.map(x => x.file.loud))})`
     + ` · VO median ${med(vo.map(x => x.file.loud))} · music rms median ${med(r.music.map(x => x.rms))}`
     + ` · player engine top ${r.engines[2].rms} rms · ${files.length} file-backed, ${r.rows.filter(x => !x.file && x.synth).length} synth-only`);
+  // LIVE: unlock with a real click, stream a track through the <audio> deck, jump to 1.5 s before
+  // the loop seam and look for dropouts across it (5.8 ms blocks vs the median level).
+  await page.mouse.click(5, 5);
+  const live = await page.evaluate(async () => {
+    const { audio } = await import('./src/audio.js');
+    const S = audio._debug;
+    audio.unlock(); await new Promise(r => setTimeout(r, 300));
+    const out = { ctx: S.ctx.state, tracks: [] };
+    for (const name of ['beach', 'castle']) {
+      audio.music(name);
+      await new Promise(r => setTimeout(r, 1500));
+      const d = S.decks[S.deck];
+      if (!d) { out.tracks.push({ name, err: `no deck (unlocked=${S.unlocked}, ctx=${S.ctx.state})` }); continue; }
+      for (let i = 0; i < 50 && !(d.el.duration > 0); i++) await new Promise(r => setTimeout(r, 200));
+      if (!(d.el.duration > 0)) { out.tracks.push({ name, err: `not loaded: src=${d.el.src} ready=${d.el.readyState} net=${d.el.networkState} err=${d.el.error?.code} ${d.el.error?.message}` }); continue; }
+      const tap = S.ctx.createScriptProcessor(256, 2, 2), blocks = [];
+      tap.onaudioprocess = e => { const x = e.inputBuffer.getChannelData(0); let s = 0; for (const v of x) s += v * v; blocks.push(Math.sqrt(s / x.length)); };
+      S.musicOut.connect(tap); tap.connect(S.ctx.destination);
+      const dur = d.el.duration;
+      d.el.currentTime = Math.max(0, dur - 1.5);
+      await new Promise(r => setTimeout(r, 3000));
+      S.musicOut.disconnect(tap); tap.disconnect();
+      const b = blocks.slice(20), med = [...b].sort((p, q) => p - q)[b.length >> 1] || 1e-9;
+      const dips = b.filter(x => x < med * 0.25).length;   // compare with the file itself: castle has a real rest ~0.9 s after its seam
+      out.tracks.push({ name, src: d.urls[d.ui].split('/').pop(), playing: !d.el.paused, t: +d.el.currentTime.toFixed(2), dur: +dur.toFixed(2), looped: d.el.currentTime < 2, blocks: b.length, dips, medDb: +(20 * Math.log10(med)).toFixed(1) });
+    }
+    audio.music(null);
+    for (const n of ['hop', 'turbo3', 'vo_go', 'explode']) audio.play(n);
+    out.voices = S.voices.length; out.fromFile = S.fromFile.size;
+    return out;
+  });
+  console.log(`\nLIVE: ctx ${live.ctx} · ${live.fromFile} buffers from files · ${live.voices} voices after a 4-sound burst`);
+  for (const t of live.tracks) if (t.err) console.log(`  music ${t.name} FAIL ${t.err}`); else console.log(`  music ${t.name.padEnd(7)} ${t.src.padEnd(12)} playing=${t.playing} looped=${t.looped} (t ${t.t}/${t.dur}s) · ${t.dips} dropout blocks of ${t.blocks} across the seam · level ${t.medDb} dB`);
+  if (live.tracks.some(t => t.err || !t.playing || !t.looped)) failed = true;
+
   if (errs.length) console.log('\npage errors/warnings:\n  ' + [...new Set(errs)].slice(0, 20).join('\n  '));
   if (jsonOut) await fs.writeFile(jsonOut, JSON.stringify({ decode: dec, ...r }, null, 1));
 } finally {

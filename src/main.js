@@ -359,7 +359,7 @@ function render(dt) {
   // audio
   const fwd = { x: Math.sin(chase.yaw), z: Math.cos(chase.yaw) };
   audio.listener(camera.position, fwd);
-  for (const k of G.race.karts) audio.engineUpdate(k.index, { speed: Math.abs(k.speed), maxSpeed: baseTop(k), throttle: k.ctrl?.throttle ?? k.throttle, drift: k.drift !== 0, boost: k.boostT > 0, air: k.air, pos: k.pos, offroad: !k.onRoad && !k.air });
+  for (const k of G.race.karts) audio.engineUpdate(k.index, { speed: Math.abs(k.speed), maxSpeed: baseTop(k), throttle: k.ctrl?.throttle ?? k.throttle, drift: k.drift !== 0, boost: k.boostT > 0, air: k.air, pos: k.pos, offroad: !k.onRoad && !k.air, charge: k.drift ? k.charge : 0, racerId: k.racerId });
   if (P.respawnT <= 0 && !P.onRoad && !P.air && Math.abs(P.speed) > 5) { if (!offLoop) offLoop = audio.play('offroad', { loop: true, vol: 0.6 }); }
   else if (offLoop) { offLoop.stop(0.15); offLoop = null; }
   // hud

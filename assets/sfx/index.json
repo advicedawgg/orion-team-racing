@@ -184,12 +184,6 @@
   "vo_grumblin_wins": [
    "vo_grumblin_wins.mp3"
   ],
-  "vo_hardhat_beep": [
-   "vo_hardhat_beep.mp3"
-  ],
-  "vo_hardhat_wins": [
-   "vo_hardhat_wins.mp3"
-  ],
   "vo_ice_cream": [
    "vo_ice_cream.mp3"
   ],
@@ -252,6 +246,12 @@
   ],
   "vo_ouch": [
    "vo_ouch.mp3"
+  ],
+  "vo_prickle_huff": [
+   "vo_prickle_huff.mp3"
+  ],
+  "vo_prickle_wins": [
+   "vo_prickle_wins.mp3"
   ],
   "vo_ready": [
    "vo_ready.mp3"
