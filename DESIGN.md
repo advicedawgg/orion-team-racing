@@ -310,7 +310,30 @@ Super Orion worlds:
    the only place you can fall in) → S-bends → Taco Turn → Lava Leap 2 onto the start straight.
    Offroad rock; basalt walls, chili hazard stripes by the lava. AI laps 42–63 s.
 4. **King Dad's Castle** — courtyard + castle halls, banners of King Dad, tight technical turns.
+   *As built:* 1102 m, road 13–15 m, twilight with a big smiling moon. Forecourt start (bunting in the
+   family colours, BBQ, the LOST SOCKS pile, washing line) → DRAWBRIDGE over the moat (a small hop at
+   its end) → gatehouse → the roofed GREAT HALL (`tunnel`; banquet tables are the barrier, torches,
+   King Dad portraits + banners, chandeliers, his giant armchair throne with the TV remote, "DAD'S
+   CHAIR — DO NOT SIT", a TV) → right out of the side door, under the tower bridge → the SPIRAL
+   RAMP: a 300° climbing right-hander (r 27, 0.8 → 12 m, `raised`) round the Remote Tower (a giant
+   TV remote on its roof) that exits OVER its own entrance (`bridge`) → north + east BATTLEMENTS
+   (crenellated parapets, no falls) → sally ramp down and a pad-fed JUMP over the moat (13 m gap,
+   ~1 s air) → the GARDEN MAZE (hedge walls, 90° zig-zags, Sootie topiary, fountain) → King's
+   Hairpin → forecourt. Offroad grass (the hall's is `dirt` wearing the tiled floor). Walls are all
+   `none`: the scenery draws the boundary to match a scenery-only `look` tag on the points
+   (`court/drawbridge/gate/hall/ward/tower/battlement/ramp/hedge`). AI laps 41–61 s.
 5. **Star Road** (secret, unlocked by winning the Orion Cup) — rainbow road in space, can fall off.
+   *As built:* 1227 m, road 14–17 m, `secret: true`, `terrain: false`. Two space-waves (a hop off
+   the second) → Comet Hairpin (walled) → the RAINBOW DROP (`wall: 'fall'`, cloud shoulders, a star
+   gate jump over a 10 m gap) → THE HELIX: a banked right-hand corkscrew winding 450° down round
+   itself (8 m per turn, `bridge`) → the STARDUST BRIDGE (no walls) right under the start grid →
+   the MOON LOOP (270° left round a moon with a face) → climb back to the start. The road is the
+   engine ribbon with its Lambert material patched (`onBeforeCompile`, cached key) into rainbow bands
+   + a scrolling glow; the scenery adds the road's glowing edges + dark underside (visible from the
+   helix below), glowing rails where the data says `rail: 'glow'` (physical wall `none`), chase-
+   light studs on `fall` edges, planets, a ringed planet, an asteroid ring, shooting stars, the
+   giant Sootie constellation (mint eyes), rainbow hoops and floating stars. 24 collectible stars
+   only: more and the leader's permanent 10-star Super split the easy field > 35 s. AI laps 43–67 s.
 
 A **lap** = crossing the start line after passing all checkpoints in order (the track defines
 them as `s` values). 3 laps. Race positions from `(lap, s)`. Offroad (grass/sand/snow) slows
@@ -395,6 +418,21 @@ tracks — the sand is the forgiveness. Iterate with `node tools/check.js <id>` 
 shot: `node tools/shot.mjs 'track=<id>&skip=1&hud=0&cam=x,y,z,tx,ty,tz' shots/o.png`
 (add `--eval "__OTR.scene.fog.near=4000;__OTR.scene.fog.far=5000"` to see the whole map).
 
+**Castle / Star Road extensions (tracks agent 2 — all opt-in):**
+- `terrain: false` — no heightfield at all (space); `groundAt` falls back to −10⁴, `water` omitted →
+  falls use the `cy − 8 m` rule, the rescue cloud drops you back.
+- `secret: true` on the track object — the UI/save gate it behind the Orion Cup.
+- Scenery-only inherited tags on points (track.js ignores them): castle `look`, star `rail`. Read
+  them with `makeKit(ctx).inherited(key, dflt)(k)` (per sample, via `track.U`).
+- trackmesh `groundAt(x, z, hint, y)` takes the asker's height, and the chase camera passes the
+  kart's `si` + y: where the track passes over itself (castle spiral, star helix) the camera clamps
+  to its OWN level, not the deck above.
+- Stacked levels need ≥ 8 m between decks (camera 2 m up + the deck's 1.6 m underside), and a
+  walled spiral needs a gap between the inside rail and any tower wall: the chase cam sits on the
+  chord behind the kart (~0.9 m inside at r 27) and ended up inside the stone.
+- Gate: the lap-time floor now allows the +8% of a 10-star Super leader when items run (the leader
+  holds Super from lap 2 on every track; Star Road's legit laps tripped the old floor).
+
 **Terrain, sky and water extensions (added for Ice Cream Peaks / Taco Volcano — all opt-in):**
 - `terrain.hills` — smooth `h·cos²(π/2·d/r)` domes added to the natural ground. The drivable
   corridor still flattens to the road, and within 22 m the ground blends back up to the hill, so a
@@ -435,7 +473,8 @@ floats). Two helper kits (not themes): `scenery/kit.js` (castle, star) and `scen
 `scatter` placement that never blocks the road, `lofted` strips along the track, `chevrons()` —
 kid-readable arrow boards on the outside of every corner tighter than r≈40 m — `farGround`,
 `fitWater`, `terrainTint`). Budgets as built (scenery only): beach 19 draws / 52k tris, ice 15 /
-164k, volcano 23 / 98k; ≤ 8 of them cast shadows (an InstancedMesh's shadow pass draws every
+164k, volcano 23 / 98k, castle 27 / 164k, star 16 / 78k (castle/star replace the sky material
+themselves when `sky_castle` / `sky_star` load — the star sky keeps its painted lower half); ≤ 8 of them cast shadows (an InstancedMesh's shadow pass draws every
 instance — keep small props shadowless).
 
 ## Modes and UI (ui agent — `menu.js`, `hud.js`, `save.js`, `ui.css`)
