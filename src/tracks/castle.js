@@ -92,7 +92,7 @@ export default {
     M(0, -130, 0.3),                                                       // 49
   ],
   start: 0,
-  gaps: [{ from: 30.06, to: 30.96 }],
+  gaps: [{ from: 30.06, to: 30.8 }],
   jumps: [{ at: 30.02, vy: 9 }, { at: 3.5, vy: 7.5 }],
   pads: [
     { at: 1.4, lat: 0 },

@@ -66,6 +66,7 @@ export function createHud(root) {
     <div class="hx-tl">
       <div class="hx-lap"><small>LAP</small><b id="hLap">1</b><i id="hLaps">/3</i></div>
       <div class="hx-time" id="hTime">0:00.00</div>
+      <div class="hx-best" id="hBest"></div>
       <ol class="hx-laps" id="hLapList"></ol>
     </div>
     <div class="hx-ranks" id="hRanks"></div>
@@ -92,7 +93,7 @@ export function createHud(root) {
   const set = (k, v, f) => { if (last[k] !== v) { last[k] = v; f(v); } };
   const warns = new Map();
   let itemHud = null, itemTried = false;
-  let raceRef = null, rankRows = [], mapCache = null, wrongT = 0, prevK = null, lastNow = performance.now();
+  let raceRef = null, rankRows = [], mapCache = null, wrongT = 0, prevK = null, lastNow = performance.now(), lastRaceT = null;
 
   /* ---------------- rank list (CTR: portraits down the side in current order) */
   function buildRanks(race) {
@@ -147,6 +148,11 @@ export function createHud(root) {
     g.clearRect(0, 0, c.width, c.height);
     g.drawImage(mapCache.bg, 0, 0);
     let me = null;
+    if (race.ghostPos) {   // Time Trial ghost (menu.js)
+      const [x, y] = mapCache.P(race.ghostPos.x, race.ghostPos.z);
+      g.fillStyle = 'rgba(223,244,255,.75)'; g.strokeStyle = 'rgba(11,16,32,.6)'; g.lineWidth = 2;
+      g.beginPath(); g.arc(x, y, 6.5, 0, 7); g.fill(); g.stroke();
+    }
     for (const k of race.order.slice().reverse()) {
       if (k.isPlayer) { me = k; continue; }
       const [x, y] = mapCache.P(k.pos.x, k.pos.z);
@@ -166,14 +172,33 @@ export function createHud(root) {
 
   /* ---------------- per-race setup */
   function attach(race) {
-    raceRef = race; prevK = null; wrongT = 0;
+    raceRef = race; prevK = null; wrongT = 0; lastRaceT = null;
     for (const k of warns.keys()) warns.delete(k);
     el.warn.className = 'hx-warn';
     el.lapList.innerHTML = ''; last.lapN = -1;
+    root.querySelector('#hBest').textContent = race.bestTime ? 'BEST ' + clock(race.bestTime) : '';
     root.classList.toggle('solo', race.karts.length === 1);
     buildRanks(race);
     try { buildMap(race.track); el.map.hidden = false; } catch (e) { console.warn('[hud] minimap', e); el.map.hidden = true; mapCache = null; }
     if (!itemTried && createItemHud) { itemTried = true; try { itemHud = createItemHud(el.item); } catch (e) { console.warn('[hud] createItemHud failed', e); itemHud = null; } }
+    // item events ({type:'item', e, kart, ...} from items.js) — collected every sim step so a
+    // render frame that ran several steps doesn't drop any
+    itemQ.length = 0;
+    if (race.addSystem && !race._hudSys) { race._hudSys = true; race.addSystem(r => { if (r !== raceRef) return; for (const e of r.events) if (e.type === 'item' && itemQ.length < 24) itemQ.push(e); }); }
+  }
+  const itemQ = [];
+  function itemEvents(P) {
+    for (const e of itemQ.splice(0)) {
+      const me = e.kart === P, byMe = e.by === P;
+      switch (e.e) {
+        case 'remote': if (!me) api.event(e.text || 'KING DAD PRESSED PAUSE!', { cls: 'bad', ms: 2600, icon: 'assets/ui/item_remote.png' }); else api.event('EVERYONE ELSE PAUSED!', { cls: 'good', ms: 2200, icon: 'assets/ui/item_remote.png' }); break;
+        case 'hit': if (byMe && !me) api.event('GOT \'EM!', { cls: 'good', ms: 1300 }); break;
+        case 'super': if (me) api.event('SUPER STARS!', { cls: 'good', ms: 1800, icon: 'assets/ui/star.png' }); break;
+        case 'super_star': if (me) api.event('SUPER STAR!', { cls: 'good', ms: 1800, icon: 'assets/ui/item_superstar.png' }); break;
+        case 'blocked': if (me && e.why === 'shield') api.event('SHIELD SAVED YOU!', { cls: 'good', ms: 1300, icon: 'assets/ui/item_shield.png' }); break;
+        case 'tnt_off': if (me && e.why === 'shaken') api.event('SHOOK IT OFF!', { cls: 'good', ms: 1300 }); break;
+      }
+    }
   }
 
   function turboFeedback(k) {
@@ -225,7 +250,11 @@ export function createHud(root) {
           el.lapList.innerHTML = (P.lapTimes || []).map((t, i) => `<li${t === Math.min(...P.lapTimes) && n > 1 ? ' class="best"' : ''}><small>L${i + 1}</small> ${clock(t)}</li>`).join('');
         });
         turboFeedback(P);
-        set('wrong', wrongWay(P, race, dt) || !!v.wrongWay, w => el.wrong.classList.toggle('on', w));
+        const simDt = Math.max(0, Math.min(0.25, race.t - (lastRaceT ?? race.t))); lastRaceT = race.t;   // sim time: correct under fast-forward/scripts
+        set('wrong', wrongWay(P, race, simDt) || !!v.wrongWay, w => el.wrong.classList.toggle('on', w));
+        itemEvents(P);
+        api.warn('lock', P.lockedBy > 0 && !P.finished ? 'ROCKET! WATCH OUT!' : null);
+        api.warn('tnt', P.tnt && !P.finished ? `HOP! HOP! HOP! ${Math.max(0, (P.tnt.need || 5) - (P.tnt.hops || 0))}` : null);
         if (itemHud) try { itemHud.update(P, dt, race); } catch (e) { if (!api._iw) { api._iw = 1; console.warn('[hud] itemHud.update threw', e); } }
       }
       updateRanks(race);
@@ -264,6 +293,7 @@ export function createHud(root) {
       clearTimeout(eventT); eventT = setTimeout(() => { el.event.className = 'hx-event'; }, ms);
     },
     warn(key, text) {
+      if ((warns.get(key) || null) === (text || null)) return;
       if (text) warns.set(key, text); else warns.delete(key);
       const t = [...warns.values()].pop();
       if (t) { el.warn.textContent = t; el.warn.className = 'hx-warn on'; } else el.warn.className = 'hx-warn';

@@ -17,7 +17,7 @@ export default {
   env: {
     skyTop: 0xc58fd8, skyHorizon: 0xffc9d6, fog: 0xf2c4d0, fogNear: 150, fogFar: 560,
     sunDir: [0.4, 0.75, 0.45], sunColor: 0xfff0e6, sun: 2.2, hemiSky: 0xffe6f0, hemiGround: 0xd6c2e8, hemi: 1.15,
-    sky: 'sky_ice',
+    sky: 'sky_ice', clouds: false,
   },
   tex: { road: 'road_ice', ground: 'snow', snow: 'snow', water: 'water' },
   water: { y: -1.6, color: 0x7a4a2c, tint: 0x9a6038 },        // the chocolate river (scenery re-skins it)
@@ -26,10 +26,10 @@ export default {
     colors: { ground: 0xffffff, wet: 0xc99a74, deep: 0x6b3d22 },
     hills: [
       { x: -220, z: 80, r: 170, h: 26, color: 0xffb3cc },     // Strawberry Peak (the track climbs it)
-      { x: -130, z: 40, r: 90, h: 10, color: 0xffb3cc },      // its western shoulder (the downhill swoop)
-      { x: 120, z: 90, r: 95, h: 30, color: 0xb8f0d8 },       // Mint Mountain, west of the start
-      { x: -60, z: -345, r: 120, h: 34, color: 0xfff1c9 },    // Vanilla Hill, south
-      { x: -360, z: -80, r: 110, h: 38, color: 0xd9b3ff },    // Blueberry Bump, far east
+      { x: -130, z: 40, r: 90, h: 10, color: 0xff9cc2 },      // its western shoulder (the downhill swoop)
+      { x: 120, z: 90, r: 95, h: 30, color: 0x9eeccb },       // Mint Mountain, west of the start
+      { x: -60, z: -345, r: 120, h: 34, color: 0xfff0b0 },    // Vanilla Hill, south
+      { x: -360, z: -80, r: 110, h: 38, color: 0xc9a3ff },    // Blueberry Bump, far east
     ],
     carve: [
       { type: 'lake', x: -45, z: 30, r: 22, depth: 3 },         // chocolate pond (the river's source)

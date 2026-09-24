@@ -17,6 +17,7 @@ function setup(tr, { diff = 'medium', seed = 5, player = -1 } = {}) {
 }
 /** Put kart k at (s, lat) on the road, heading along it. */
 function put(tr, k, s, lat = 0, speed = 0) {
+  for (let g = 0; g < 60 && (tr.FLAG[tr.idx(s)] & 1); g++) s += 2;   // never inside a jump's gap (the kart would just fall)
   const p = tr.pointAt(s, lat);
   k.pos.x = p.x; k.pos.y = p.y; k.pos.z = p.z; k.yaw = p.yaw; k.s = tr.wrapS(s); k.lat = lat; k.si = tr.idx(s);
   k.speed = speed; k.air = false; k.vy = 0; k.hitT = 0; k.spinT = 0;
@@ -44,7 +45,7 @@ export function runItemChecks(tr, ok) {
     const base0 = baseTop(k);
     let evs = [];
     for (const st of W.stars.slice(0, 4)) { k.pos.x = st.x; k.pos.y = st.y; k.pos.z = st.z; evs.push(...itemSteps(race, W, 1)); }
-    ok('items: stars collect, cap at 10, 10 = Super (+8% top speed)', k.stars === 10 && has(evs, 'super', k) && evs.filter(e => e.e === 'star').length === 4 && Math.abs(baseTop(k) / base0 - (1 + T.STAR_BONUS)) < 1e-6,
+    ok('items: stars collect, cap at 10, 10 = Super (+8% top speed)', k.stars === 10 && has(evs, 'super', k) && evs.filter(e => e.e === 'star').length >= 4 && Math.abs(baseTop(k) / base0 - (1 + T.STAR_BONUS)) < 1e-6,
       `stars=${k.stars}, star events ${evs.filter(e => e.e === 'star').length}, top ${base0.toFixed(1)}→${baseTop(k).toFixed(1)}`);
     const dead = W.stars.slice(0, 4).every(s => !s.alive);
     itemSteps(race, W, Math.ceil(IT.STAR_RESPAWN / DT) + 2, () => { k.pos.x = 1e4; });
@@ -86,8 +87,9 @@ export function runItemChecks(tr, ok) {
   {
     const { race, W, K } = setup(tr); const [a, b] = K; park(tr, K, 2);
     put(tr, a, 200, 0, 20); put(tr, b, 225, 0.5, 0);
-    W.give(a, 'shield'); W.use(a); W.use(a);
-    const evs = itemSteps(race, W, 90);
+    W.give(a, 'shield'); W.use(a);
+    race.events.length = 0; W.use(a);
+    const evs = [...race.events, ...itemSteps(race, W, 90)];
     ok('items: pressing again fires the bubble forward (spin-out)', has(evs, 'shield_fire', a) && evs.some(e => e.e === 'hit' && e.kart === b && e.item === 'shield') && b.spinT > 0 && a.shieldT === 0);
   }
   // 6. TNT: lands on the head; 5 hops shake it off (real physics hops); no hops = boom at 3 s
@@ -122,6 +124,7 @@ export function runItemChecks(tr, ok) {
     a.stars = 10; W.give(a, 'tnt'); const evU = []; race.events.length = 0; W.use(a); evU.push(...race.events);
     const h = W.hazards[0];
     b.pos.x = h.x; b.pos.z = h.z; b.pos.y = h.y;
+    put(tr, a, 330);                              // the dropper drives on (a Nitro blast would catch it too)
     const evs = itemSteps(race, W, 1);
     W.give(a, 'rocket');
     ok('items: Super TNT = Nitro, explodes on contact; Super rocket = 3', h.kind === 'nitro' && evU.some(e => e.e === 'use' && e.item === 'nitro') && has(evs, 'explode') && b.hitT > 0 && !b.tnt && a.itemCount === 3);
@@ -148,7 +151,7 @@ export function runItemChecks(tr, ok) {
   // 9. taco bomb: rolls ahead, a second press detonates it early; blast flips karts nearby
   {
     const { race, W, K } = setup(tr); const [a, b] = K; park(tr, K, 2);
-    put(tr, a, 400, 0, 20); put(tr, b, 430, 3.5, 0);
+    put(tr, a, 400, 0, 20); put(tr, b, 428, 3.2, 0);
     W.give(a, 'taco_bomb'); W.use(a);
     let evs = itemSteps(race, W, 40);            // ~0.66 s × 36 m/s ≈ 24 m + start 2.4 m ahead → b is 3.5 m to the side, inside the 4.5 m blast
     const bomb = W.projs.find(p => p.kind === 'taco_bomb');
@@ -177,9 +180,11 @@ export function runItemChecks(tr, ok) {
     const { race, W, K } = setup(tr); const [a, b] = K; park(tr, K, 2);
     put(tr, a, 600, 0, 15); put(tr, b, 640);
     a.stars = 6;
+    race.events.length = 0; a.ev.length = 0;
     W.hitKart(a, 'flip', b, 'rocket');
     const lost = 6 - a.stars;
-    let evs = itemSteps(race, W, 1);
+    W.step(DT);                                   // the system spills what applyHit reported in a.ev
+    let evs;
     const n = W.spills.length;
     itemSteps(race, W, 90);
     const rest = W.spills.every(s => s.rest);

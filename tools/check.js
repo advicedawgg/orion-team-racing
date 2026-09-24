@@ -15,6 +15,8 @@ import { buildTrack } from '../src/track.js';
 import { T, DT } from '../src/physics.js';
 import { createRace, simulate } from '../src/race.js';
 import { createBrain, drive, DIFFICULTY } from '../src/ai.js';
+import { createItems } from '../src/items.js';
+import { runItemChecks } from './check-items.js';
 
 const args = process.argv.slice(2);
 const only = args.find(a => !a.startsWith('--') && !/^\d+$/.test(a));
@@ -22,6 +24,7 @@ const argv = (name, d) => { const i = args.indexOf('--' + name); return i >= 0 ?
 const SEED = +argv('seed', 1);
 const DIFFS = argv('diff', 'easy,medium,hard').split(',');
 const QUIET = args.includes('--quiet');
+const ITEMS = !args.includes('--noitems');       // items agent: races run WITH items unless --noitems
 
 // A spread of stats (1..5, sum 9) so the gate covers the fastest and slowest karts.
 const ENTRANTS = [
@@ -87,6 +90,9 @@ for (const def of TRACKS) {
     ok('slopes ≤ 35%', maxSlope <= 0.35, `max ${(maxSlope * 100).toFixed(0)}% at s=${f1(at * tr.ds)}`);
     let maxK = 0, atK = 0; for (let k = 0; k < n; k++) if (Math.abs(tr.CURV[k]) > maxK) { maxK = Math.abs(tr.CURV[k]); atK = k; }
     ok('tightest radius ≥ 10 m and ≥ half-width + 3', 1 / maxK >= 10 && 1 / maxK >= tr.HW[atK] + 3, `r=${f1(1 / maxK)} m at s=${f1(atK * tr.ds)}`);
+    // tunnels: the chase camera sits ~6 m behind the kart — a tight bend would put it through the tunnel wall
+    let tK = 0, tAt = -1; for (let k = 0; k < n; k++) if ((tr.FLAG[k] & 8) && Math.abs(tr.CURV[k]) > tK) { tK = Math.abs(tr.CURV[k]); tAt = k; }
+    if (tAt >= 0) ok('tunnels curve gently (r ≥ 60 m, camera stays inside)', 1 / tK >= 60, `r=${f1(1 / tK)} m at s=${f1(tAt * tr.ds)}`);
   }
   {
     const cps = tr.checkpoints;
@@ -133,6 +139,7 @@ for (const def of TRACKS) {
   // ------------------------------------------------------------ headless 8-AI races
   for (const diff of DIFFS) {
     const race = createRace({ track: tr, entrants: ENTRANTS, playerIndex: -1, difficulty: diff, seed: SEED });
+    const W = ITEMS ? createItems(race, { seed: SEED }) : null;
     const t0 = Date.now();
     const limit = 60 + (L / 12) * race.laps;          // generous: an average of 12 m/s
     simulate(race, { maxT: limit });
@@ -149,9 +156,16 @@ for (const def of TRACKS) {
       const st = race.stats[r.kart.index];
       console.log(`     ${r.place}. ${r.racerId} ${r.kart.stats.speed}${r.kart.stats.accel}${r.kart.stats.turn}  ${r.finished && !r.estimated ? f1(r.time) + ' s' : 'DNF'}  laps ${r.lapTimes.map(f1).join(' / ')}  stuck ${f1(st.maxStuck)} s  walls ${st.walls}  turbos ${st.turbos} fizz ${st.fizzles} oh ${st.overheats}  pads ${st.pads}  jumps ${st.jumps}  respawns ${st.respawns}`);
     }
+    if (W) {
+      const S = W.stats, sum = o => Object.values(o).reduce((a, b) => a + b, 0), fmt = o => Object.entries(o).map(([k, v]) => `${k} ${v}`).join(', ');
+      console.log(`     items: boxes ${S.boxes}, used ${sum(S.used)} (${fmt(S.used)}), hits ${sum(S.hits)} (${fmt(S.hits)}), blocked ${S.blocked}, stars ${S.stars}, spilled ${S.spilled}, TNT on/shaken/boom ${S.tntOn}/${S.tntShaken}/${S.tntBoom}, rockets ${S.rocketHits}/${S.rocketsFired}`);
+      ok(`${diff}: items get picked up, used and land hits`, S.boxes > 15 && sum(S.used) > 10 && sum(S.hits) > 5, `${S.boxes} boxes, ${sum(S.used)} used, ${sum(S.hits)} hits`);
+    }
     ok(`${diff}: all 8 finish ${race.laps} laps in < ${limit | 0} s`, finished === 8, `${finished}/8`);
     ok(`${diff}: nobody stuck > 3 s`, maxStuck <= 3, `max ${f1(maxStuck)} s`);
-    const expect = L / T.BASE_MAX;                    // a lap flat out on base speed
+    // a lap flat out on base speed — with items on, the leader holds 10 stars (Super: +STAR_BONUS top
+    // speed) from lap 2, which alone made legit fast tracks (Star Road) trip the 0.8 floor (tracks agent)
+    const expect = L / (T.BASE_MAX * (ITEMS ? 1 + T.STAR_BONUS : 1));
     ok(`${diff}: lap times sane (${f1(expect * 0.8)}–${f1(expect * 1.9)} s)`, minLap > expect * 0.8 && maxLap < expect * 1.9, `${f1(minLap)}–${f1(maxLap)} s`);
     ok(`${diff}: AI power-slides and fires turbos`, turbos > (diff === 'easy' ? 8 : 30), `${turbos} turbos`);
     ok(`${diff}: respawns rare (< 1 per kart per race)`, respawns < 8, `${respawns}`);
@@ -169,11 +183,14 @@ for (const def of TRACKS) {
     const race = createRace({ track: tr, entrants: ENTRANTS, playerIndex: 6, difficulty: diff, seed: SEED });
     const kid = createBrain(race.player, tr, 'easy', SEED + 99);
     kid.cfg = { ...DIFFICULTY.easy, slide: 0, turbo: 0, line: 0.4, wobble: 4 };
-    simulate(race, { maxT: 600, playerCtrl: r => drive(kid, r) });
-    return race.player.finishPlace ?? race.player.place;
+    let hitsOnKid = 0;
+    if (ITEMS) createItems(race, { seed: SEED });
+    simulate(race, { maxT: 600, playerCtrl: r => drive(kid, r), onStep: r => { for (const e of r.events) if (e.type === 'item' && e.e === 'hit' && e.kart === r.player && e.by && e.by !== r.player) hitsOnKid++; } });
+    return { p: race.player.finishPlace ?? race.player.place, hitsOnKid };
   };
-  if (DIFFS.includes('easy')) { const p = kidRace('easy'); ok('easy: a no-slide kid bot reaches the podium (Easy is beatable)', p <= 3, `kid finished ${p}`); }
-  if (DIFFS.includes('hard')) { const p = kidRace('hard'); ok('hard: the same kid bot does not win (Hard is a challenge)', p > 1, `kid finished ${p}`); }
+  if (DIFFS.includes('easy')) { const { p, hitsOnKid } = kidRace('easy'); ok('easy: a no-slide kid bot reaches the podium (Easy is beatable)', p <= 3, `kid finished ${p}${ITEMS ? `, AI item hits on the kid: ${hitsOnKid}` : ''}`); }
+  if (DIFFS.includes('hard')) { const { p, hitsOnKid } = kidRace('hard'); ok('hard: the same kid bot does not win (Hard is a challenge)', p > 1, `kid finished ${p}${ITEMS ? `, AI item hits on the kid: ${hitsOnKid}` : ''}`); }
+  if (ITEMS) runItemChecks(tr, ok);
 }
 
 console.log(`\n${fails ? 'FAIL' : 'PASS'} — ${fails} failing check(s), ${warns} warning(s)`);

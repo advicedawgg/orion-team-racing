@@ -30,7 +30,7 @@ set -e
 io="/mnt/c/Users/xam88/charfab-io/$1"; res="$2"; targets="$3"; seed="$4"
 mkdir -p ~/charfab/hf
 rm -f "$io"/out*.glb
-docker run --rm --gpus all \
+docker run --rm --gpus all --ulimit nofile=65536:65536 \
   -v ~/charfab/hf:/root/.cache/huggingface \
   -v "$io":/io \
   -v /mnt/c/Users/xam88/charfab-runner.py:/workspace/TRELLIS.2/trellis_runner.py \

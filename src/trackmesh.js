@@ -343,7 +343,10 @@ export async function buildTrackMesh(track, { scene } = {}) {
     const k = near(x, z, skipRaised);
     const lat = (x - X[k]) * lxA(k) + (z - Z[k]) * lzA(k);
     const lim = HW[k] + (lat > 0 ? track.OFFL[k] : track.OFFR[k]);
-    return { k, lat, e: Math.abs(lat) - lim, planeY: bankY(Y[k], lat, HW[k], TB[k]), gap: isGap(k) };
+    // past the END of the nearest sample (only happens next to skipped `raised` samples — under a bridge):
+    // distance along the road counts too, else the ground under a bridge snaps up to the approach's height
+    const along = Math.abs((x - X[k]) * track.TX[k] + (z - Z[k]) * track.TZ[k]) - track.ds;
+    return { k, lat, e: Math.max(Math.abs(lat) - lim, along), planeY: bankY(Y[k], lat, HW[k], TB[k]), gap: isGap(k) };
   };
   const t0 = performance.now();
   const noTerrain = def.terrain === false;      // `terrain: false` = no ground at all (Star Road floats in space)

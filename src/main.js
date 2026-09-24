@@ -17,6 +17,7 @@ import { buildTrackMesh, mergeGeos } from './trackmesh.js';
 import { ChaseCam } from './camera.js';
 import { createFx } from './fx.js';
 import { createHud } from './hud.js';
+import { createItemViews } from './itemviews.js';
 
 const $ = id => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
@@ -29,6 +30,8 @@ try { audio = (await import('./audio.js')).audio || NOAUDIO; } catch (e) { conso
 let R = null;
 try { R = await import('./racers.js'); if (!R.buildRacer || !R.RACERS) throw new Error('racers.js incomplete'); }
 catch (e) { console.warn('[otr] racers.js missing/broken, using box karts', e); R = await import('./kartbox.js'); }
+let MENU = null;   // ui agent: title/menus/results/pause (menu.js). Missing = core's placeholder title card.
+try { MENU = await import('./menu.js'); } catch (e) { console.warn('[otr] menu.js missing/broken, placeholder title', e); }
 
 /* ------------------------------------------------------------------ renderer */
 const renderer = new THREE.WebGLRenderer({ canvas: $('c'), antialias: true, powerPreference: 'high-performance' });
@@ -57,6 +60,7 @@ addEventListener('resize', resize); resize();
 const hud = createHud($('hud'));
 const fx = Q.get('fx') === '0' ? null : createFx(scene);
 const chase = new ChaseCam(camera);
+const IV = createItemViews({ scene, fx, audio, chase, visuals: () => G.visuals });   // items (itemviews.js)
 if (Q.get('cam')) chase.pin(Q.get('cam').split(',').map(Number));
 const stateFns = new Set();
 const G = {
@@ -89,6 +93,7 @@ async function loadTrack(id) {
 
 /* ------------------------------------------------------------------ racers */
 function entrantsFor(playerId) {
+  if (G.solo) return { ids: [playerId], slot: 0 };          // Time Trial (menu.js sets G.solo)
   const all = R.RACERS.map(r => r.id);
   const others = all.filter(id => id !== playerId);
   const ids = others.slice(0, 7);
@@ -144,11 +149,12 @@ async function startRace() {
   const { ids, slot } = entrantsFor(G.racerId);
   const stats = id => (R.RACERS.find(r => r.id === id) || {}).stats || { speed: 3, accel: 3, turn: 3 };
   G.race = createRace({ track: G.track, entrants: ids.map(id => ({ racerId: id, stats: stats(id) })), playerIndex: slot,
-    difficulty: G.difficulty, laps: G.laps, seed: G.seed });
+    difficulty: G.difficulty, laps: G.laps, seed: G.seed, easyBoost: G.easyBoost });
   if (Q.get('ai') === '1') G.race.autoPlayer = true;
-  In.settings.autoAccel = Q.has('auto') ? Q.get('auto') === '1' : false;
+  In.settings.autoAccel = Q.has('auto') ? Q.get('auto') === '1' : !!G.autoAccel;   // G.autoAccel/easyBoost: menu.js settings
   G.slotIndex = slot;
   buildVisuals(ids);
+  IV.attach(G.race);                         // items: before compileAsync so item shaders are warmed too
   for (const [i, k] of G.race.karts.entries()) snapVisual(i, k);
   chase.snap(G.race.player);
   fx?.clearSkids();
@@ -162,19 +168,31 @@ async function startRace() {
   try { await renderer.compileAsync(scene, camera); } catch { renderer.compile(scene, camera); }
   setState('countdown');
 }
+/** Tear the race down (menus: quit / back to the menu). The idle track orbit renders again. */
+function endRace() {
+  for (const v of G.visuals) { scene.remove(v.root); try { R.disposeTree?.(v.root); } catch { /* shared mats */ } }
+  G.visuals = []; G.race = null; G.paused = false; IV.detach();
+  blob.count = 0; for (const c of clouds) c.visible = false;
+  driftLoop?.stop(0.05); driftLoop = null; offLoop?.stop(0.05); offLoop = null;
+  audio.enginesOff?.(); audio.pause?.(false);
+  hud.show(false); hud.count(null); hud.banner('');
+  fx?.clearSkids();
+}
 
 /* ------------------------------------------------------------------ sim stepping */
 function playerCtrl() {
   const c = G.override || In.controls;
-  const out = { steer: c.steer || 0, throttle: c.throttle || 0, brake: c.brake || 0, hopA: !!c.hopA || G.pendA, hopB: !!c.hopB || G.pendB };
+  const out = { steer: c.steer || 0, throttle: c.throttle || 0, brake: c.brake || 0, hopA: !!c.hopA || G.pendA, hopB: !!c.hopB || G.pendB,
+    item: !!c.item || G.pendI, itemBack: (c.brake || 0) > 0.3 };   // items: held + latched tap; ↓ = throw backward
   return out;
 }
 function stepSim() {
   const race = G.race;
   for (const [i, k] of race.karts.entries()) { const v = G.visuals[i]; v.px = k.pos.x; v.py = k.pos.y; v.pz = k.pos.z; v.pyaw = k.yaw + k.drift * k.driftAngle; }
   race.step(playerCtrl());
-  G.pendA = G.pendB = false;
+  G.pendA = G.pendB = G.pendI = false;
   handleEvents(race.events);
+  IV.step(race.events, G.ff);
 }
 /** Fast-forward N seconds synchronously (tests / ?t=). Renders nothing. */
 function advance(secs) {
@@ -315,11 +333,13 @@ function frame(now) {
   In.update();
   if (In.hit('hopA')) G.pendA = true;
   if (In.hit('hopB')) G.pendB = true;
+  if (In.hit('item')) G.pendI = true;
   if (In.hit('mute')) audio.toggleMute();
   if (In.hit('fullscreen')) { if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {}); else document.exitFullscreen?.(); }
-  if (In.hit('pause') && (G.state === 'race' || G.state === 'countdown' || G.state === 'finished')) { G.paused = !G.paused; audio.pause?.(G.paused); hud.banner(G.paused ? 'PAUSED' : '', G.paused ? 1e9 : 1); }
-  if (G.state === 'title' && (In.hit('confirm') || In.hit('hopA') || In.hit('item'))) { $('screens').classList.add('hide'); startRace(); }
-  if (G.state === 'results' && (In.hit('confirm') || In.hit('hopA'))) { G.pendA = false; startRace(); }
+  // with menu.js loaded it owns pause / title / results input (its own keyboard + pad reading)
+  if (!MENU && In.hit('pause') && (G.state === 'race' || G.state === 'countdown' || G.state === 'finished')) { G.paused = !G.paused; audio.pause?.(G.paused); hud.banner(G.paused ? 'PAUSED' : '', G.paused ? 1e9 : 1); }
+  if (!MENU && G.state === 'title' && (In.hit('confirm') || In.hit('hopA') || In.hit('item'))) { $('screens').classList.add('hide'); startRace(); }
+  if (!MENU && G.state === 'results' && (In.hit('confirm') || In.hit('hopA'))) { G.pendA = false; startRace(); }
   tick(dt);
   render(dt);
 }
@@ -333,6 +353,7 @@ function tick(dt) {
 }
 function render(dt) {
   if (!G.race) {
+    if (G.menuCovers) return;   // an opaque menu screen is up: don't draw the orbit behind it
     // title / loading: a slow orbit around the start arch
     if (G.track) {
       G.t += dt; const f = G.track.frameAt(0), a = G.t * 0.12;
@@ -352,6 +373,7 @@ function render(dt) {
   sun.position.copy(sun.target.position).addScaledVector(G.sunDir, 120);
   if (G.tm.sky) G.tm.sky.position.copy(camera.position);
   G.tm.update(dt, G.t);
+  if (!G.paused) IV.update(dt, alpha);
   if (fx && !G.paused) {
     for (const [i, k] of G.race.karts.entries()) fx.kart(k, G.visuals[i].rig, dt, camera.position);
     fx.update(dt, camera);
@@ -367,7 +389,7 @@ function render(dt) {
   Object.assign(hudView, { lap: P.lap, laps: race.laps, place: P.place, speed: P.speed, charge: P.charge, redStart: redStart(P), inRed: P.inRed,
     drift: P.drift, overheat: P.overheat, turbos: P.turbos, boostT: P.boostT, boostMaxT: P.boostMaxT, stars: P.stars, finished: P.finished,
     raceTime: P.finished ? P.finishTime : Math.max(0, race.t), wrongWay: false });
-  hud.update(hudView);
+  hud.update(hudView, race);
   renderer.render(scene, camera);
   G.frames++;
 }
@@ -396,7 +418,7 @@ window.__OTR = {
   render() { render(1 / 60); },
   info() { const i = renderer.info; return { calls: i.render.calls, triangles: i.render.triangles, geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length }; },
   setPaused(p) { G.paused = p; },
-  loadTrack, startRace,
+  loadTrack, startRace, endRace, hud,
 };
 
 /* ------------------------------------------------------------------ boot */
@@ -405,7 +427,14 @@ In.onGesture(() => { audio.init(); audio.unlock(); });
 setState('boot');
 await loadTrack(G.trackId);
 requestAnimationFrame(frame);
-if (Q.get('skip') === '1' || Q.has('t') || Q.get('ai') === '1') {
+const SKIP = Q.get('skip') === '1' || Q.has('t') || Q.get('ai') === '1';
+if (MENU) {
+  try {
+    await MENU.initMenu({ G, Q, scene, camera, renderer, audio, hud, In, R, loadTrack, startRace, endRace, setState, onState,
+      advance(s) { advance(s); render(0); } }, { skip: SKIP });
+  } catch (e) { console.error('[otr] menu.js init failed, placeholder title', e); MENU = null; }
+}
+if (SKIP) {
   $('screens').classList.add('hide');
   await startRace();
   if (Q.has('t')) {
@@ -419,7 +448,7 @@ if (Q.get('skip') === '1' || Q.has('t') || Q.get('ai') === '1') {
     if (G.race.phase === 'race' && G.state === 'countdown') setState('race');
     hud.count(null);
   }
-} else {
+} else if (!MENU) {
   $('card').innerHTML = `<h1>ORION TEAM RACING<small>${G.track.name.toUpperCase()}</small></h1><p class="go">Press Space / A / tap to race!</p>`;
   setState('title');
   // tap anywhere on touch to start

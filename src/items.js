@@ -63,7 +63,7 @@ export const ODDS = [
 
 /** How the AI uses items, by difficulty. `mercy` scales attacks aimed at the human player. */
 export const AI_ITEM = {
-  easy:   { think: 0.7,  use: 0.35, mercy: 0.15, aimLat: 3.4, defend: 0.3,  hopGap: 0.3,  hold: 3.5, homing: 9,  homingVsPlayer: 4.5 },
+  easy:   { think: 0.7,  use: 0.35, mercy: 0.05, aimLat: 3.4, defend: 0.3,  hopGap: 0.3,  hold: 3.5, homing: 9,  homingVsPlayer: 3 },
   medium: { think: 0.4,  use: 0.6,  mercy: 0.55, aimLat: 2.6, defend: 0.65, hopGap: 0.14, hold: 2,   homing: 13, homingVsPlayer: 9 },
   hard:   { think: 0.22, use: 0.9,  mercy: 1,    aimLat: 2.0, defend: 0.95, hopGap: 0.05, hold: 1,   homing: 16, homingVsPlayer: 16 },
 };
@@ -147,7 +147,13 @@ function hitKart(W, k, kind, by, item) {
   if (k.finished || k.respawnT > 0) return false;
   const why = k.invincT > 0 ? 'star' : k.shieldT > 0 ? 'shield' : null;
   const landed = applyHit(k, kind);
-  if (landed) { bump(W.stats.hits, item); emit(W, 'hit', k, { by, item, kind }); }   // a TNT on the head keeps ticking
+  if (landed) {
+    bump(W.stats.hits, item); emit(W, 'hit', k, { by, item, kind });   // a TNT on the head keeps ticking
+    if (by && by !== k) k._hitByT = W.t;                                // Easy AI leaves a kid alone for a while after this
+    // spill now (the end-of-step scan only catches hits from physics, e.g. super-star bumps)
+    const e = k.ev[k.ev.length - 1];
+    if (Array.isArray(e) && e[0] === 'stars_lost' && !e[2]) { e[2] = true; spill(W, k, e[1]); }
+  }
   else { W.stats.blocked++; emit(W, 'blocked', k, { by, item, why: why || 'none' }); }
   return landed;
 }
@@ -391,7 +397,7 @@ function step(W, dt) {
   if (W.hazards.length > 30 || W.hazards.some(h => !h.alive)) W.hazards = W.hazards.filter(h => h.alive);
 
   // ---- stars spill out of whoever got hit this step
-  for (const k of karts) for (const e of k.ev) if (Array.isArray(e) && e[0] === 'stars_lost') spill(W, k, e[1]);
+  for (const k of karts) for (const e of k.ev) if (Array.isArray(e) && e[0] === 'stars_lost' && !e[2]) { e[2] = true; spill(W, k, e[1]); }
 }
 
 function collectStar(W, k, st) {
@@ -487,6 +493,14 @@ function stepProj(W, p, dt) {
     wantLat = 0; latRate = 3;
     if (p.range === Infinity) p.range = IT.ROCKET.lost;
   }
+  if (p.kind === 'warp') {             // hungry: swerve into anyone it's about to pass (everyone "in its path")
+    let bd = 12;
+    for (const o of race.karts) {
+      if (o === p.owner || o.finished || o.respawnT > 0 || p.hitSet.has(o)) continue;
+      const d = tr.dS(p.s, o.s);
+      if (d > -1 && d < bd && Math.abs(o.lat - p.lat) < 4.5) { bd = d; wantLat = o.lat; latRate = 40; }
+    }
+  }
   p.lat = approach(p.lat, wantLat, latRate * dt);
   const ds = p.v * dt;
   p.s = tr.wrapS(p.s + ds); p.travelled += Math.abs(ds);
@@ -569,7 +583,8 @@ function aiControl(W, b, c) {
   if (k.hitT > 0 || k.spinT > 0 || k.respawnT > 0 || k.roulT > 0) return c;
 
   const human = o => o.isPlayer && !race.autoPlayer && !o.finished;
-  const chance = o => cfg.use * (o && human(o) ? cfg.mercy : 1);
+  const gentleMercy = cfg.mercy < 0.5;
+  const chance = o => !o || !human(o) ? cfg.use : gentleMercy && W.t - (o._hitByT ?? -99) < 25 ? 0 : cfg.use * cfg.mercy;
   const roll = p => W.r() < p;
   // nearest kart ahead / behind in a lateral lane
   const scan = (d0, d1, lane) => {
@@ -584,7 +599,8 @@ function aiControl(W, b, c) {
     return best;
   };
   const press = (back = false) => { c.item = true; c.itemBack = back; return c; };
-  const timeout = st.holdT > 16;
+  let timeout = st.holdT > 16;
+  const gentle = gentleMercy;                  // Easy: never force a homing item onto the kid
 
   // a bomb in flight: set it off when someone is in the blast
   if (k.bomb && k.bomb.alive) {
@@ -605,6 +621,7 @@ function aiControl(W, b, c) {
       const tgt = race.order.find(o => o.place === k.place - 1);
       if (tgt && !tgt.finished && tr.dS(k.s, tgt.s) < 140 && roll(chance(tgt))) return press();
       if (!tgt && st.holdT > 8) return press();
+      if (gentle && tgt && human(tgt)) timeout = false;
       break;
     }
     case 'taco_bomb': {
@@ -639,6 +656,7 @@ function aiControl(W, b, c) {
     case 'warp': {
       const lead = race.order[0];
       if (st.holdT > cfg.hold && roll(chance(lead))) return press();
+      if (gentle && human(lead)) timeout = false;
       break;
     }
   }

@@ -38,13 +38,15 @@ src/scenery/*.js      per-theme scenery builders (beach.js: core placeholder)  (
 src/kartbox.js        box-kart fallback if racers.js is missing/broken          (core)
 src/racers.js         roster + procedural kart & character models + animation  (characters agent)
 src/items.js          item boxes, stars, weapons, projectiles, effects          (items agent)
-src/hud.js            in-race HUD (core wrote a minimal stub first)             (ui agent)
-src/menu.js           title, mode/character/track select, results, podium       (ui agent)
+src/hud.js            in-race HUD: lap/place/rank list/minimap/meter/pops/banners (ui agent)
+src/menu.js           title, menus, character/track select, results, cup, podium, pause, settings (ui agent)
 src/audio.js          SFX + music + synthesized engines                          (audio agent)
-src/save.js           localStorage save (unlocks, best times, settings)         (ui agent)
+src/save.js           localStorage save (unlocks, best times, settings, ghosts) (ui agent)
+ui.css                HUD (.hx-*) + menu (#ui .scr-*) styles, linked from index.html (ui agent)
 tools/check.js        THE GATE: track checks + headless 8-AI race sim           (core, extended by all)
 tools/shot.mjs        screenshot through the GPU headless Chrome                 (core)
 tools/slide-test.mjs  scripted power slide in the real browser, 3 turbos + shots (core)
+tools/ui-test.mjs     menu/HUD browser driver: screens, key/pad/tap flows, cup, time trial (ui agent)
 assets/tex|ui|sfx|audio|models   generated assets
 ```
 
@@ -180,27 +182,108 @@ Blurbs are in `RACERS[i].blurb`. `getRacer(id)` returns the entry (falls back to
 
 ## Items (items agent) — CTR's set, Orion-themed
 
-Collected from breakable **? item boxes** (rows across the track, respawn 3 s). A roulette spins
-~1.5 s. Distribution weighted by race position (leaders get defensive items, back-markers get
-the good stuff, like CTR).
+**Files:** `src/items.js` (PURE sim: boxes, stars, roulette, every item, hits, spills, AI item
+brain — the gate runs it), `src/itemviews.js` (THREE meshes/particles/sounds/shake, browser only),
+`src/itemhud.js` (the item-slot widget hud.js hosts in `.hx-item`), `tools/check-items.js` (unit
+checks the gate runs per track), `tools/shot-items.mjs` (screenshot every item state).
+All tuning is in `items.js`: `IT` (sizes, speeds, times), `ODDS` (roulette by place), `AI_ITEM`
+(AI use by difficulty).
 
-**Stars ⭐ = Wumpa fruit.** Rows/crates of stars on the racing line; holding **10 stars** makes
-every item **Super** (juiced) and raises top speed slightly. Getting hit spills stars.
+Collected from breakable **? item boxes** (`track.itemRows`; pickup radius 1.9 m — generous;
+respawn 3 s; rainbow instanced boxes, 1 draw call). A box starts the **roulette** (1.5 s, icons
+whizz and slow down in the HUD) only if your slot is empty. Odds by race position (`ODDS`,
+8-kart field; other sizes are mapped onto it): 1st gets taco/TNT/ice cream/shield, never
+warp/super star/remote (measured: 7 % catch-up items for 1st, 76 % for 8th). One remote "pause"
+at a time; one warp star in the air at a time.
 
-| item | CTR analogue | behaviour | super (10⭐) |
-|---|---|---|---|
-| Taco Bomb | bowling bomb | rolls forward along the track, explodes on contact/after range; hold ↓ to roll backward; press item again to detonate early | bigger blast |
-| Cosmic Rocket | homing missile | homes on the racer directly ahead | 3 rockets |
-| TNT Crate | TNT | dropped behind; lands ON the head of whoever hits it, 3-2-1 then boom unless they hop 5 times to shake it off | Nitro: explodes on contact |
-| Ice Cream Splat | beaker | dropped puddle, causes a spin-out | bigger puddle |
-| Bubble Shield | shield | absorbs one hit for 10 s; item button fires it forward | lasts longer |
-| Turbo Rocket | turbo | big turbo | bigger/longer |
-| Super Star | Aku Aku / Uka Uka | invincible + top speed 7 s, knocks others aside (Sootie's spirit orbits you) | longer |
-| TV Remote | clock | "KING DAD PRESSED PAUSE!" everyone else spins/slows 3 s | longer |
-| Warp Star | warp orb | flies along the course and hits the leader (and anyone in its path) | faster |
+**Stars ⭐ = Wumpa fruit.** `track.starRows` (instanced, 1 draw call incl. spilled ones; pickup
+radius 1.7 m; a collected star respawns after 14 s). `kart.stars` caps at 10; **10 = Super**:
++8 % top speed (physics) and every item juiced. Getting hit spills the stars physics took
+(flip 3, spin 1) as real stars that bounce out and can be grabbed by anyone (the victim after
+1.3 s, others after 0.45 s; they blink out after 9 s).
 
-Hit reactions: bomb/rocket = kart flips up and spins (~1.2 s, lose ~3 stars); puddle = spin-out
-(~1 s); remote = wobble slowdown.
+| item (`id` = icon `assets/ui/item_<id>.png`) | as built | super (10⭐) |
+|---|---|---|
+| Taco Bomb `taco_bomb` | rolls along the road (s/lat, follows every curve) at ≥36 m/s (owner speed + 10); ↓ + item rolls it backward at 16 m/s; explodes on contact (r 1.4 m) or after 170 m / 6 s; press item again to set it off early. Blast r 4.5 m flips everyone in it except the thrower | blast 7.5 m, bigger bomb |
+| Cosmic Rocket `rocket` | locks the racer directly ahead (place − 1) the moment it's fired (`target.lockedBy++` → HUD warning + red reticle over the target), follows the road at ≥ target speed + 12 m/s, steers across lanes onto it, rises to meet it over jumps; hits anyone it touches (flip). No one ahead = flies straight 150 m. AI rockets on Easy steer weaker when the target is the kid | 3 rockets (×3 badge) |
+| TNT Crate `tnt` | dropped 2.6 m behind (owner immune 1.2 s). Touching it puts it **on your head** (`kart.tnt = {t, hops, need:5}`): ticks 3-2-1 (big world-space number + HUD), **5 hops shake it off**, else BOOM (flip). A super star or a shield (popped) just knocks it away | **Nitro** `nitro`: explodes on contact, r 3 m (catches the dropper too) |
+| Ice Cream Splat `icecream` | puddle dropped behind (r 2 m hazard, drawn 2.4 m): spin-out, then it's gone; lasts 35 s | r 3.1 m |
+| Bubble Shield `shield` | `shieldT` 10 s absorbs one hit (physics pops it); while armed, **item fires the bubble forward** (↓: backward) — it spins out the first kart it touches | 15 s |
+| Turbo Rocket `turbo` | `addBoost(2.2 s, tier 3, kick 6)` (purple flames) | 3.0 s, kick 8 |
+| Super Star `superstar` | `invincT` 7 s: immune, top speed, bumps others into spin-outs (physics); knocks TNT off your head. **Sootie's spirit** (a little black cat, mint eyes, glowing) orbits you, gold aura + rainbow sparkles | 10 s |
+| TV Remote `remote` | everyone else (unless shielded/starred) `wobble` → `slowT` 3 s, "pause" sign over their heads; event `remote` with `text: 'KING DAD PRESSED PAUSE!'` | 4.5 s |
+| Warp Star `warp` | flies up the course at 60 m/s to the **leader** (lock-on warning for them), swerves into anyone it's about to pass (flips everyone in its path), done when it hits the leader. Not rollable in 1st | 85 m/s |
+
+Hit reactions (physics `applyHit`): bomb/rocket/TNT/Nitro/warp = flip (1.2 s, −3 stars); ice
+cream / fired bubble / super-star bump = spin (1 s, −1 star); remote = wobble. Shield and super
+star are respected everywhere (a blocked hit emits `blocked` with `why: 'shield'|'star'`).
+
+**AI item brain** (`items.aiControl`, called from the end of `ai.js drive()` — one line): thinks
+every 0.7/0.4/0.22 s (easy/medium/hard); fires rockets at the kart ahead within 140 m, bombs at
+someone ahead in its lane (≤45 m) or backward at a close chaser, drops TNT/puddles when someone is
+3–20 m behind, raises the shield when a rocket locks on (P 0.3/0.65/0.95), turbos on straights,
+uses super star / remote / warp soon; hops a TNT off its head (easy hops slowly and sometimes
+eats the boom); sets off its own bomb when someone is in the blast. **Easy is gentle with the
+player**: `mercy` 0.05 × the use chance on attacks aimed at the kid, weaker rocket homing on
+the kid, never force-fires a homing item at the kid, and a 25 s break after the kid was hit.
+Measured over 15 kid-bot races per difficulty (all 5 tracks × 3 seeds): AI item hits on the kid
+per race easy 1.8 (1.0 of which is the mild remote wobble) / medium 4.1 / hard 2.7; AI-on-AI ~4 per
+kart per race on every difficulty. Items are a catch-up equaliser like CTR: kid-bot mean place
+medium 3.6 → 2.3, hard 7.3 → 5.7 with items on.
+
+### Items API (for other agents)
+
+```js
+import { createItems, IT, ITEMS, ITEM_IDS, ODDS, AI_ITEM, trackPoint } from './items.js';
+const W = createItems(race, { seed });   // race.items = W; race.addSystem(step) — the gate + main do this
+W.give(kart, id, count?)   W.use(kart, back?)   W.hitKart(kart, kind, byKart, itemId)   W.roll(kart)
+W.boxes / W.stars / W.spills / W.projs / W.hazards / W.stats    // plain data, read by the views
+// controls: the control object may carry  item (held; edge-detected per kart)  and  itemBack (throw backward)
+```
+Kart fields added: `item` (id | null), `itemCount`, `roulT`/`roulDur` (roulette seconds left),
+`tnt` ({t, hops, need, by} | null), `lockedBy` (homing projectiles on you), `lockDist` (m to the
+nearest), `bomb` (your rolling bomb), `shieldArmed`, `_hitByT`.
+
+**Events** — pushed to `race.events` as `{ type: 'item', e, kart, ...}` inside the sim step (so a
+listener that reads `race.events` after `race.step()` or from its own `race.addSystem` sees them):
+`box` {pos, roulette} · `roulette` · `got` {item, count} · `use` {item, super, back} (item `nitro`
+for a super TNT) · `drop` {item, pos} · `star` {n, pos} · `super` (reached 10) · `spill` {n, pos} ·
+`hit` {by, item, kind} · `blocked` {by, item, why} · `explode` {pos, r, item, big} · `fizzle` {pos,
+item} · `lock` {by, item} (kart = the target) · `tnt_on` {by} · `tnt_tick` {n: 3|2|1} · `tnt_hop`
+{n, need} · `tnt_off` {why: 'shaken'|'star'|'gone'} · `splat` {pos, by} · `shield_up` · `shield_fire`
+· `turbo` · `super_star` {t} · `remote` {text, super, t} · `warp` {target} · `warp_hit` {by, pos} ·
+`detonate`. Physics also reports the victim's kart events `hit`, `stars_lost`, `shield_pop`.
+hud.js (UI agent) turns `remote`/`hit`/`super`/`super_star`/`blocked`/`tnt_off` into callouts
+and `lockedBy`/`tnt` into the flashing "ROCKET! WATCH OUT!" / "HOP! HOP! HOP!" warnings;
+itemviews.js adds only the player's own hit callout (`BOOM!`, `ZAPPED!`, `SPLAT!` … via `race.ui`).
+
+**Browser wiring** (main.js, 7 marked lines): `IV = createItemViews({scene, fx, audio, chase,
+visuals})`; `IV.attach(race)` in startRace **before** `compileAsync` (it makes one of every item
+mesh visible for that call so no shader compiles mid-race); `IV.step(race.events, G.ff)` after
+each step; `IV.update(dt, alpha)` each rendered frame; `IV.detach()` in endRace; the player's
+control object gets `item: In item held || latched tap (G.pendI)` and `itemBack: brake > 0.3`.
+`window.__OTR.items` = W, `__OTR.itemViews` = IV (`IV.boom(pos, r)`, `IV.info()`).
+Sounds used: `item_box roulette (ticks slow down) item_get + vo_<item> star star_spill
+bomb_roll (loop, follows the bomb) explode nitro rocket rocket_lock (beeps faster as it closes)
+tnt_drop tnt_on_head tnt_tick splat shield_up shield_pop super_star meow remote vo_kingdad_remote
+warp turbo3 vo_ouch vo_nice_shot vo_ten_stars` + `audio.bark(racer, 'hit'|'item'|'boost')`.
+Explosions = pooled fireball + smoke ball + ground ring + a comic "BOOM!" sprite + fx bursts, and
+camera shake scaled by distance to the player. No lights anywhere.
+
+**Debug URL params:** `items=0` (items off: no boxes/stars/AI items), `give=<id>` (the player
+gets it at GO; `give=nitro` = TNT + 10 stars), `refill=1` (…again every time the slot empties),
+`stars=N` (player starts with N stars). E.g.
+`?track=beach&skip=1&give=rocket&refill=1`.
+
+**Verify:** `node tools/check.js` races every track with items ON (prints item stats per race,
+checks items get picked up/used/land hits) and runs `tools/check-items.js` per track (20 checks:
+star cap/Super, box roulette + respawn, odds by place, shield absorbs one, shield fire, TNT 5
+real hops / 3-2-1 boom, Nitro + triple rockets, rocket homing across lanes, bomb roll/detonate/
+backward, puddle spin, star spill + re-collect, remote, super star, warp path hits). `--noitems`
+for the old item-less races. Screenshots: `node tools/shot-items.mjs [scenario…]` → `shots/items/`
+(`--list`). **Cost:** idle items = **2 draw calls** (158 vs 156 at the grid, 74 vs 72 mid-race,
+measured by toggling the item group), +~9k triangles; each live projectile/crate/puddle/bubble/
+explosion part adds 1. Sim cost ~33 µs per 60 Hz step for 8 karts in node.
 
 ## Tracks (tracks agents)
 
@@ -212,7 +295,17 @@ Super Orion worlds:
 
 1. **Bubbly Beach** — easy, wide, gentle sweepers, a jump over a lagoon inlet, palm trees.
 2. **Ice Cream Peaks** — snowy ice-cream mountain, hairpins that teach sliding, a big jump.
+   *As built:* 1123 m, road 14–18 m, clockwise (mostly RIGHT turns). Vanilla Sweeper → a 0 → 21 m
+   climb up Strawberry Peak (pad) → Sprinkle Hairpin (r≈19, 180°) → summit ridge → pad-fed jump
+   off the Cherry Scoop (vy 10 into a downhill: ~1 s air = hang-time turbo) → downhill swoop and
+   S-bends beside the chocolate river → Cherry Bend (180°) over the humped Wafer Bridge (`raised`).
+   Offroad snow; candy-cane/waffle/wafer walls. AI laps 43–62 s.
 3. **Taco Volcano** — lava rivers, rock bridges, ramps, a tunnel through the volcano.
+   *As built:* 1152 m, road 15–18 m, anticlockwise. Salsa Sweeper → Lava Leap 1 (12 m gap, pad) →
+   climb to the Chilli Hairpin mesa (y 10) → down past the volcano (pad) → the ~150 m Taco Tunnel
+   through its flank → the Rock Bridge over the lava lake (`raised`, `wall: 'fall'` both sides —
+   the only place you can fall in) → S-bends → Taco Turn → Lava Leap 2 onto the start straight.
+   Offroad rock; basalt walls, chili hazard stripes by the lava. AI laps 42–63 s.
 4. **King Dad's Castle** — courtyard + castle halls, banners of King Dad, tight technical turns.
 5. **Star Road** (secret, unlocked by winning the Orion Cup) — rainbow road in space, can fall off.
 
@@ -235,11 +328,14 @@ export default {
                                 //   snow, mud, dirt, ice, rock, lava, space — add yours there with a speed factor)
   defaults: { offL: 9, offR: 9, wallL: 'fence', wallR: 'fence' },   // inherited props, see below
   env: { skyTop, skyHorizon, fog, fogNear, fogFar, sunDir: [x,y,z], sunColor, sun, hemiSky, hemiGround, hemi,
-         clouds: true },        // all optional; trackmesh THEMES[theme] gives the defaults
+         clouds: true,          // all optional; trackmesh THEMES[theme] gives the defaults
+         sky: 'sky_beach', skyShift: 0 },   // optional painted 2:1 panorama (assets/tex/<sky>.jpg), see below
   tex: { road: 'road_beach', ground: 'sand', water: 'water', <surfaceName>: '<texName>' },   // optional
   water: { y: -1.4, color, tint },   // optional sea/lake plane. Touching it off-road = rescue. Omit for none.
   terrain: { base: 0.2, shore: 70, dunes: 1.6, cell: 4.5, grass: { above: 1.6, color },
-             carve: [{ type: 'lake', x, z, r, depth }, { type: 'channel', pts: [[x,z],…], w, depth }] },
+             carve: [{ type: 'lake', x, z, r, depth }, { type: 'channel', pts: [[x,z],…], w, depth }],
+             hills: [{ x, z, r, h, color? }],            // cos² domes (h < 0 = a crater), see below
+             colors: { ground, wet, deep } },           // terrain vertex tints (default: beach sand/wet sand/teal)
   points: [ { x, z, y, w, bank, …inherited props }, … ],   // DRIVING ORDER. Point 0 = start line.
   start: 0,                     // optional: `at` of the start line (default point 0)
   gaps:  [{ from: 12.06, to: 12.4 }],      // no road here (jump over water/void); needs a jump lip just before
@@ -267,7 +363,7 @@ driving `+z` (Y up, forward = `(sin yaw, 0, cos yaw)`, left = `(fz, 0, −fx)`, 
 | prop | meaning |
 |---|---|
 | `offL`, `offR` (`off` = both) | metres of drivable offroad beyond each road edge, then the boundary |
-| `wallL`, `wallR` (`wall` = both) | boundary kind: a visible style (`fence`, `beach`, `wood`, `rock`, `ice`, `castle`, `neon` — `WALLS` in trackmesh.js, add yours), `'none'` = invisible wall, `'fall'` = no boundary, you can fall off (Star Road) |
+| `wallL`, `wallR` (`wall` = both) | boundary kind: a visible style (`fence`, `beach`, `wood`, `rock`, `ice`, `castle`, `neon`, `candy`, `waffle`, `wafer`, `chili`, `basalt` — `WALLS` in trackmesh.js, add yours), `'none'` = invisible wall, `'fall'` = no boundary, you can fall off (Star Road) |
 | `surfL`, `surfR` (`surf` = both) | offroad surface name for that side |
 | `kerb` | `'auto'` (default: red/white kerbs where the corner is tighter than r≈55 m), `true`, `false` |
 | `bridge` | this stretch may pass over/under another stretch (≥5 m apart vertically) |
@@ -293,7 +389,34 @@ Corners of radius 25–45 m over 120°+ are the satisfying 3-turbo slides; radiu
 17 m road is a wall-banger for kids. Put a turbo pad ~30 m before a jump so everyone clears it;
 `vy` 9 over a 9 m gap gives ~0.7 s air (≥0.5 s = hang-time turbo). Keep `off` ≥ 5 on easy
 tracks — the sand is the forgiveness. Iterate with `node tools/check.js <id>` and an overview
-shot: `node tools/shot.mjs 'track=<id>&skip=1&hud=0&cam=x,y,z,tx,ty,tz' shots/o.png`.
+shot: `node tools/shot.mjs 'track=<id>&skip=1&hud=0&cam=x,y,z,tx,ty,tz' shots/o.png`
+(add `--eval "__OTR.scene.fog.near=4000;__OTR.scene.fog.far=5000"` to see the whole map).
+
+**Terrain, sky and water extensions (added for Ice Cream Peaks / Taco Volcano — all opt-in):**
+- `terrain.hills` — smooth `h·cos²(π/2·d/r)` domes added to the natural ground. The drivable
+  corridor still flattens to the road, and within 22 m the ground blends back up to the hill, so a
+  road climbing a hill looks cut into its flank (Ice Cream Peaks climbs 0 → 21 m this way). A hill's
+  `color` tints its dome. Mountains are data now — the scenery doesn't have to fake them.
+- `terrain.colors` — the terrain's base / near-water / under-water vertex tints (× the ground texture).
+- `env.sky` — a 2:1 equirect panorama with the horizon at mid-height (the art agent's
+  `assets/tex/sky_<theme>.jpg`); its lower half fades into the fog colour so the terrain's far edge
+  melts in. The skyTop→skyHorizon gradient is the instant fallback. The panoramas carry their own
+  clouds, so those tracks set `clouds: false`. Pick `fog` ≈ the panorama's horizon colour.
+- `water` doesn't have to be water: Ice Cream Peaks' is a chocolate river, Taco Volcano's is lava
+  (a jump gap over it = the helper carries you across; falling off a `'fall'` edge into it = rescue).
+  The scenery re-skins the `water` mesh (`group.getObjectByName('water')`) and shrinks it to the
+  terrain rectangle; a far-ground frame hides the terrain's square edge.
+- **Surfaces are a top-speed factor only** (`SURFACES` in track.js) — there is no grip model, so a
+  slippery ice patch isn't possible without a physics change (Ice Cream Peaks has none).
+- `raised` stretches (bridges): the terrain under them stays natural and a `carve` can run under
+  them (trackmesh `corridorInfo` now counts distance ALONG the road past a skipped sample, else the
+  ground under a bridge snapped up to the approach's height). The Wafer Bridge and the Rock Bridge
+  are raised stretches over a carved river / lake.
+- **Tunnels**: `tunnel: true` is still a flag only. The heightfield can't hold a hole, so the road
+  cuts a V through the hill and `scenery/volcano.js` builds the inside (arch shell + glow strips),
+  a rock cap that rebuilds the hill over the cutting (same texture/uv/tint as the terrain via
+  `naturalAt` + `terrainTint`, edges sunk under the real ground) and portal faces. Keep the tunnel
+  gently curved (r ≳ 80 m) and its roof ≥ 8.5 m: the chase camera sits 2 m up, 5–6 m behind.
 
 ### Scenery hook (tracks agents)
 
@@ -302,18 +425,98 @@ A missing file is fine. `ctx = { THREE, group (add your meshes here), track, def
 (seeded), loadTex(name, fallbackCanvasFn?, {repeat, file, onload}), groundAt(x,z) (terrain height),
 trackGroundAt(x,z) (road/offroad height where drivable, else terrain), isClear(x,z,r,margin)
 (outside the drivable corridor — never block the road), aboveWater(x,z,h), corridorInfo(x,z),
-bounds {x0,z0,x1,z1} }`. **Instance** repeated props, **merge** one-offs per material, and put
-props ON `groundAt` (nothing floats). `src/scenery/beach.js` is a worked example (palms,
-umbrellas, rocks, lighthouse, huts, boats, bunting ≈ 10 draw calls).
+naturalAt(x,z) (the ground before the corridor flattened it: dunes + hills), bounds {x0,z0,x1,z1} }`.
+**Instance** repeated props, **merge** one-offs per material, and put props ON `groundAt` (nothing
+floats). Two helper kits (not themes): `scenery/kit.js` (castle, star) and `scenery/propkit.js`
+(beach, ice, volcano: `instanced` with per-instance colour, `merge`/`paint`/`paintBy`, `claim`/
+`scatter` placement that never blocks the road, `lofted` strips along the track, `chevrons()` —
+kid-readable arrow boards on the outside of every corner tighter than r≈40 m — `farGround`,
+`fitWater`, `terrainTint`). Budgets as built (scenery only): beach 19 draws / 52k tris, ice 15 /
+164k, volcano 23 / 98k; ≤ 8 of them cast shadows (an InstancedMesh's shadow pass draws every
+instance — keep small props shadowless).
 
-## Modes
+## Modes and UI (ui agent — `menu.js`, `hud.js`, `save.js`, `ui.css`)
 
-- **Quick Race** (pick racer, track, difficulty) — 8 racers, 3 laps.
-- **Orion Cup** (Grand Prix): tracks 1→4, points 10/8/6/5/4/3/2/1, podium at the end; winning
-  unlocks Star Road.
-- **Time Trial** (stretch): solo, best-lap ghost saved in localStorage.
-- Difficulty: **Easy** (default; AI at ~85% pace, kid assist on), **Medium**, **Hard**.
-  Mild rubber-banding on Easy/Medium so the race stays together.
+- **Quick Race** — pick racer, then track; 8 racers, 3 laps. Difficulty chips live on the main menu.
+- **Orion Cup** — `CUP_ORDER = beach → ice → volcano → castle` (whichever are registered, in that
+  order; missing ones are skipped). Points `POINTS = 10/8/6/5/4/3/2/1`; standings screen after every
+  race (rows slide into the new order, points count up); **podium** at the end (3D: top 3 on the
+  blocks cheering, trophy, confetti; 4th–8th at the sides, 6th–8th mildly `sad` — never the player).
+  Winning (any difficulty) records `cupWins[diff]` and unlocks **Star Road** with a "STAR ROAD
+  UNLOCKED!" screen the first time. No "restart" in the pause menu during a cup.
+- **Time Trial** — solo race (`G.solo` → main races just the player; `G.noItems` and
+  `race.noItems = true` are set — **items agent: skip boxes when `race.noItems`**, not yet honoured).
+  Best lap + best race saved per track; the best race is saved as a **ghost** (10 Hz pos/yaw) and
+  replays as a translucent kart (cloned transparent materials) + a pale minimap dot; HUD shows "BEST".
+- **Difficulty**: Easy (default) / Medium / Hard, shown as drawn SVG faces (emoji don't render in the
+  headless Chrome). Settings: volumes (master/music/sfx), **AUTO-GO** (auto-accelerate: `easy` =
+  on in Easy only (default) / `on` / `off`; touch always auto-accelerates), **KID HELPER**
+  (`kidAssist`, default on → `easyBoost` on every difficulty), **FANCY RACERS** (HD models, shown
+  only if `hdracers.js` lists any), CONTROLS help (keys / pad buttons / touch glyphs + turbo how-to).
+- **Kid-first**: no reading needed — title (any key/tap) → Quick Race (focused) → racer (last one
+  focused) → track → race is four presses of A. Results always celebrate: 1st = "YOU WIN!" +
+  confetti, 2nd/3rd = podium messages, 4th+ = "GREAT RACE! You came 5th — Super zooming!".
+
+**Screens** (`menu.js`, DOM in `#ui`, one at a time): `title` (key art `assets/ui/title.jpg` +
+`logo.png`, sparkles, "PRESS START!"; fallback = 3D line-up of all racers + CSS text logo) →
+`menu` → `select` (4×2 portrait grid + 3D turntable preview with hops, name, blurb, SPEED/ZOOM/TURN
+bars; confirm = cheer + bark) → `tracks` (cards `assets/ui/track_<id>.jpg` read live from `TRACKS`;
+a `secret: true` / id `star` track shows as a locked "?????" until unlocked; TT shows ghost times)
+→ `loading` → race → `results` (overlay; the race keeps running behind; appears 2.6 s after the
+player finishes, unfinished rows say "racing…" and fill in live; Race again / Next track / Menu,
+or Continue in a cup) → `standings` → `podium` → `unlock`. `pause` (Esc/P/Start/❚❚: Keep racing,
+Start again, Settings, Quit to menu), `settings`, `controls`. Music: `title` on menus, `results`
+on results/standings/podium; SFX `menu_move/ok/back`; VO `vo_title`, `vo_choose`, `vo_orion_cup`,
+`vo_<winner>_wins`, `vo_so_close`, `vo_great_race`, `vo_new_record`, podium `cheer` + winner bark.
+
+**Menu input**: menus read the keyboard (arrows/WASD, Enter/Space/E = OK, Esc/Backspace = back)
+and the Gamepad API themselves (d-pad/stick with repeat, A = OK, B = back, Start), because
+input.js's `confirm` merges A/B. Focusables are `[data-nav]`; arrows move **spatially** to the
+nearest one; `[data-adj]` rows take ←/→. Mouse hover focuses, tap/click activates. While a menu
+is up, `body.menu-open` hides the touch buttons. With menu.js loaded, main.js's own pause/title/
+results key handling is off (`!MENU` guards); without it core's placeholder title card returns.
+
+**main.js hooks the UI uses** (all small, marked in main.js): `initMenu(api, {skip})` at boot
+(awaited before `__OTR.ready`); `G.solo`, `G.autoAccel`, `G.easyBoost` (passed to `createRace`),
+`G.hd`, `G.menuCovers` (an opaque screen is up → the idle orbit isn't rendered); `endRace()`
+(tear down visuals/engines/HUD, `G.race = null`; also on `__OTR`); `hud.update(view, race)`.
+All menu screens run in main's `title` state. `?skip=1` / `?t=` / `?ai=1` races use **only** the
+URL (never the saved racer/difficulty/assists) so tests stay deterministic.
+
+**Save** (`save.js`, every access in try/catch; a blocked/private storage just forgets):
+```js
+localStorage.otrSave = { v: 1, unlocked: { star: false }, cupWins: { easy, medium, hard },
+  best: { <trackId>: { lap, race, racer } },            // every finished race counts, TT or not
+  settings: { master, music, sfx, autoAccel: 'easy'|'on'|'off', kidAssist, hd, difficulty },
+  lastRacer, lastTrack }
+localStorage['otrGhost:<trackId>'] = { v: 1, racer, time, hz: 10, d: [x,y,z,yaw …] }  // dm / mrad ints, ~20 KB
+```
+
+**HUD** (`hud.js`, `.hx-*` in ui.css): LAP big top-left + race timer + lap splits (best green);
+**rank list** of portraits down the left in live order (player ringed gold, rows slide);
+position huge top-right coloured by place (gold/silver/bronze/blue) with a bump on change; stars
+(`assets/ui/star.png`, glows at 10 = SUPER) + the items agent's `itemhud.js` slot top-centre;
+minimap bottom-right (top-right under the position on touch) from the sampled centreline, gaps in
+blue, a dot per racer in kart colour, player ringed + heading tick; slide meter + turbo pips +
+boost bar bottom-centre; turbo pops "TURBO!" / "SUPER TURBO!!" / "ULTRA TURBO!!!" and "OOPS!"
+(fizzle/overheat) from player state diffs; bouncy coloured 3-2-1-GO; banners (`LAP 2`, rainbow
+`FINAL LAP!`); "TURN AROUND!" wrong-way (heading vs track tangent > ~115° for 0.9 s of **sim**
+time); flashing warnings "ROCKET! WATCH OUT!" (`P.lockedBy > 0`) and "HOP! HOP! HOP! n"
+(`P.tnt`). **Events into the HUD**: (1) `hud.banner(text, ms, cls)` (big, one at a time);
+(2) `hud.event(text, {ms, cls: 'good'|'bad'|'item', icon})` — the callout line under the banner;
+(3) `hud.warn(key, text|null)` — persistent flashing warning; (4) a pure module may push
+`race.ui.push({ text, ms, cls, icon, kart })` (kart = only show for that kart; `warn:true, key,
+on` = a warning) — drained every frame; (5) the HUD also listens to items.js events
+`{type:'item', e, kart, by}` itself (collected per sim step by a `race.addSystem` hook): `remote`
+→ "KING DAD PRESSED PAUSE!" (e.text), player hits → "GOT 'EM!", `super` → "SUPER STARS!",
+`super_star`, shield blocks, TNT shaken off.
+
+**URL**: `?screen=title|menu|select|tracks|settings|controls|standings|podium|unlock|results|pause`
+jumps to a screen (results/pause run a real race, fast-forwarded; standings/podium use a fake cup;
+`&mode=tt|cup` for tracks/results; `&race=N` for standings). **Test driver**: `node
+tools/ui-test.mjs screens|flow|cup|hud|tt|pad|tap [--size 844x390] [--touch] [--only a,b]` →
+`shots/ui/*-<size>.png`; fails on page errors, console errors and failed requests. `pad` fakes a
+standard gamepad through `navigator.getGamepads`; `cup` and `tt` clear `otrSave` first.
 
 ## Verification (every agent)
 
@@ -334,7 +537,8 @@ umbrellas, rocks, lighthouse, huts, boats, bunting ≈ 10 draw calls).
   driving the player, `&ai=1` lets AI drive the player, `&hud=0`. Also `&diff=easy|medium|hard`,
   `&slot=0..7` (player grid slot, default 6), `&laps=N`, `&seed=N`, `&touch=1` (force touch UI),
   `&auto=1` (auto-accelerate), `&hd=1`, `&shadows=0`, `&fx=0`. `window.__OTR` exposes game
-  state for tests (see **Core runtime APIs**).
+  state for tests (see **Core runtime APIs**). UI: `?screen=<name>` opens a menu screen (see
+  **Modes and UI**); `__OTR.menu` = `{ M, screen, show(name), action('up'|'ok'|'back'…), launch(trackId) }`.
 - `node tools/slide-test.mjs` drives the player through a real power slide in the browser
   (3 perfect turbos) and screenshots each flame colour to `shots/slide/`.
 
@@ -444,16 +648,20 @@ called 20 s later (unfinished karts get estimated times).
 band), `createBrain(kart, track, difficulty, seed)`, `drive(brain, race)` → control object.
 
 **`main.js`**: `setState(name)` / `onState(fn(state, prev))` — states `boot, title, countdown,
-race, finished, results` (the UI agent's menus hook here; `title` is a placeholder card).
+race, finished, results` (menu.js runs every menu screen inside `title`; see **Modes and UI**).
 `window.__OTR`: `ready, state, race, track, player, G, scene, camera, renderer, chase, fx, audio,
 T, DT, override(ctrl|null)` (drive the player), `advance(secs)` (fast-forward, silent),
 `script(n, fn(k,i) → ctrl, {draw})` (step n frames with scripted controls; returns the player's
 kart events), `hold(bool)` (freeze the live loop), `render()`, `info()` (`renderer.info` calls/
-triangles), `loadTrack(id)`, `startRace()`.
+triangles), `loadTrack(id)`, `startRace()`, `endRace()`, `hud`, `menu`.
 
-**`hud.js`** (core stub → UI agent): `createHud(el)` → `{ show(bool), update(view), count(n|'GO!'|null),
-banner(text, ms, cls), results(rows|null) }`; `view` = `{lap, laps, place, speed, charge, redStart,
-inRed, drift, overheat, turbos, boostT, boostMaxT, stars, finished, raceTime}`.
+**`hud.js`** (UI agent): `createHud(el)` → `{ show(bool), update(view, race), count(n|'GO!'|null),
+banner(text, ms, cls), event(text, {ms, cls, icon}), warn(key, text|null), pop(text, cls),
+results(rows|null) }`; `view` = `{lap, laps, place, speed, charge, redStart, inRed, drift,
+overheat, turbos, boostT, boostMaxT, stars, finished, raceTime, wrongWay}`; `race` feeds the rank
+list, minimap, wrong-way, pops and item events. `menuOwnsResults` (set by menu.js) turns the stub
+results panel off. Also exports `portraitURL(id, size)` (cached data URL of `renderPortrait`),
+`clock(t)`, `ordSuffix(n)`.
 
 **`input.js`**: `update()` once per frame; `controls` (same shape as the control object + `item`),
 `hit(name)` edges (`hopA hopB item pause mute fullscreen confirm back up down left right`),
@@ -564,6 +772,7 @@ podium groove (skyway). Two audio models scored all seven 8-10/10, no vocals.
 ### Who should call what (not yet wired, as of this writing)
 - **ui/menu**: `menu_move/ok/back`; `audio.music('title')` + `vo_title` on the title screen,
   `vo_choose` on racer select; `audio.setVolumes()` from settings; `vo_orion_cup` for the cup.
+  (wired by the ui agent, incl. results/podium VO, `cheer`, winner bark and `vo_new_record`.)
 - **core results**: `vo_<winnerRacerId>_wins` then `bark(winner, 'win')`; `vo_great_race` /
   `vo_so_close` when the player doesn't win; `cheer` on the podium; `vo_new_record` in time trial;
   `vo_lap_2` on lap 2.

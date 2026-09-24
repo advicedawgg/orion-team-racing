@@ -16,6 +16,7 @@ export default {
   env: {
     skyTop: 0x2f8fe8, skyHorizon: 0xbfeaff, fog: 0xc4ecff, fogNear: 140, fogFar: 520,
     sunDir: [-0.45, 0.8, 0.35], sunColor: 0xfff2d6, sun: 2.3, hemiSky: 0xd8f0ff, hemiGround: 0xc8a870, hemi: 1.05,
+    sky: 'sky_beach', clouds: false,   // painted panorama (assets/tex/sky_beach.jpg, has its own clouds); the gradient above is its fallback
   },
   water: { y: -1.4, color: 0x22c7d8, deep: 0x0d7fb4 },
   terrain: {
