@@ -135,6 +135,7 @@ sheet `shots/qa/<track>-sheet.jpg` from `playtest.mjs`.
 **https://orion3.advicedawg.com** = Cloudflare Worker `orion-team-racing` (static assets, `wrangler.jsonc`),
 card 3 on the family launcher at https://orion.advicedawg.com (repo `D:\dev\Oriongame` on maxpowa).
 wrangler's OAuth only exists on **maxpowa**, so deploys go from a plain copy at `D:\dev\orion-team-racing`
-(not a git checkout — the hub repo is canonical): tar the shipped files
-(`index.html ui.css src vendor assets wrangler.jsonc .assetsignore`), scp, extract over it, `npx wrangler deploy`.
+(not a git checkout — the hub repo is canonical). Ship from a COMMIT, never the working tree (another agent's
+half-done files would go live): `git archive HEAD index.html ui.css src vendor assets wrangler.jsonc .assetsignore`
+→ tar → scp → extract over that copy → `npx wrangler deploy`. Then check a changed file on the live URL with curl.
 The Steam Deck does NOT have this game yet (its updater pulls GitHub tarballs; this repo has no remote).
