@@ -272,6 +272,12 @@ async function startRace() {
   for (const k of G.race.karts) audio.engineStart(k.index, k.isPlayer);
   audio.music(G.track.def.music || G.track.theme);
   G.acc = 0; G.t = 0;
+  // HD drivers swap in asynchronously (racers.js attachHD) — wait for them, capped, so the GLB decode and
+  // their shaders land in the warm-up below instead of hitching mid-race; then re-apply the shadow rule
+  // (only the player's kart casts) to the freshly attached HD meshes.
+  { const hdw = G.visuals.map(v => v.rig?.hdReady).filter(Boolean);
+    if (hdw.length) await Promise.race([Promise.all(hdw), new Promise(r => setTimeout(r, 8000))]);
+    G.visuals.forEach((v, i) => v.root.traverse(o => { if (o.isMesh) o.castShadow = i === G.slotIndex; })); }
   // quality: shadows on/off only changes here, right before the warm-up compiles everything anyway
   const wantSh = SHADOWS && qual().shadows;
   if (renderer.shadowMap.enabled !== wantSh) {

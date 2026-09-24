@@ -717,7 +717,9 @@ export function animateRacer(rig, s, dt) {
 let hdMod = null;
 function attachHD(rig) {
   if (!hdMod) hdMod = import('./hdracers.js').catch(() => null);
-  hdMod.then(m => {
+  // rig.hdReady settles once the HD driver is in (or known absent): main.js startRace awaits it so the GLB
+  // decode + its shaders happen during the pre-race warm-up, not as a hitch mid-countdown/race.
+  rig.hdReady = hdMod.then(m => {
     if (!m || !m.hasHD || !m.hasHD(rig.id)) return null;
     return m.loadHDRacer(rig.id, { lean: .5 }).then(res => ({ m, res }));
   }).then(x => {

@@ -23,7 +23,7 @@ export const DEFAULTS = () => ({
   unlocked: { star: false },
   cupWins: { easy: 0, medium: 0, hard: 0 },
   best: {},
-  settings: { master: 0.9, music: 0.7, sfx: 1, autoAccel: 'easy', kidAssist: true, hd: false, difficulty: 'easy', quality: 'auto' },
+  settings: { master: 0.9, music: 0.7, sfx: 1, autoAccel: 'easy', kidAssist: true, hd: true, hdDefaultV: 1, difficulty: 'easy', quality: 'auto' },
   lastRacer: 'orion', lastTrack: null,
 });
 
@@ -53,7 +53,17 @@ function merge(base, over) {
 export function load() {
   if (data) return data;
   data = DEFAULTS();
-  try { const raw = store.get(KEY); if (raw) data = merge(DEFAULTS(), JSON.parse(raw)); } catch (e) { console.warn('[save] unreadable save, starting fresh', e); }
+  try {
+    const raw = store.get(KEY);
+    if (raw) {
+      const stored = JSON.parse(raw);
+      data = merge(DEFAULTS(), stored);
+      // 2026-09-25: FANCY RACERS became the default (switching it on later hitches while the GLBs load).
+      // One-time flip for saves written while the default was off. Read the flag off the RAW stored object —
+      // after merge() the defaults would make it look already migrated.
+      if (!stored.settings || stored.settings.hdDefaultV !== 1) { data.settings.hd = true; data.settings.hdDefaultV = 1; save(); }
+    }
+  } catch (e) { console.warn('[save] unreadable save, starting fresh', e); }
   return data;
 }
 export function save() { try { store.set(KEY, JSON.stringify(load())); } catch (e) { console.warn('[save] could not save', e); } }

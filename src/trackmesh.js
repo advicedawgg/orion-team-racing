@@ -99,6 +99,9 @@ export const PROC = {
     const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#ff9d00'); gr.addColorStop(1, '#ffe14a');
     g.fillStyle = '#ff5a1f'; g.fillRect(0, 0, w, h);
     g.fillStyle = gr;
+    // CanvasTexture flips Y (canvas top = v 1 = forward), so draw the chevrons upside down: tips toward the canvas TOP.
+    // (They used to point at the canvas bottom = backwards on the road — reported by the user 2026-09-25.)
+    g.translate(0, h); g.scale(1, -1);
     for (let i = 0; i < 2; i++) {             // two chevrons pointing +v (forward)
       const y0 = i * h / 2 + h * 0.08;
       g.beginPath(); g.moveTo(w * 0.1, y0 + h * 0.18); g.lineTo(w / 2, y0 + h * 0.4); g.lineTo(w * 0.9, y0 + h * 0.18);
