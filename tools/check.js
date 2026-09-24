@@ -16,6 +16,7 @@ import { T, DT } from '../src/physics.js';
 import { createRace, simulate } from '../src/race.js';
 import { createBrain, drive, DIFFICULTY } from '../src/ai.js';
 import { createItems } from '../src/items.js';
+import { kidBot, wobblyKid } from './kidbots.js';
 import { runItemChecks } from './check-items.js';
 
 const args = process.argv.slice(2);
@@ -184,15 +185,27 @@ for (const def of TRACKS) {
   // should reach the podium; on Hard it should NOT win (the AI isn't brain-dead).
   const kidRace = diff => {
     const race = createRace({ track: tr, entrants: ENTRANTS, playerIndex: 6, difficulty: diff, seed: SEED });
-    const kid = createBrain(race.player, tr, 'easy', SEED + 99);
-    kid.cfg = { ...DIFFICULTY.easy, slide: 0, turbo: 0, line: 0.4, wobble: 4 };
+    const kid = kidBot(race.player, tr, SEED + 99);   // tools/kidbots.js; the race applies the real assists
     let hitsOnKid = 0;
     if (ITEMS) createItems(race, { seed: SEED });
-    simulate(race, { maxT: 600, playerCtrl: r => drive(kid, r), onStep: r => { for (const e of r.events) if (e.type === 'item' && e.e === 'hit' && e.kart === r.player && e.by && e.by !== r.player) hitsOnKid++; } });
+    simulate(race, { maxT: 600, playerCtrl: r => kid.drive(r), onStep: r => { for (const e of r.events) if (e.type === 'item' && e.e === 'hit' && e.kart === r.player && e.by && e.by !== r.player) hitsOnKid++; } });
     return { p: race.player.finishPlace ?? race.player.place, hitsOnKid };
   };
   if (DIFFS.includes('easy')) { const { p, hitsOnKid } = kidRace('easy'); ok('easy: a no-slide kid bot reaches the podium (Easy is beatable)', p <= 3, `kid finished ${p}${ITEMS ? `, AI item hits on the kid: ${hitsOnKid}` : ''}`); }
   if (DIFFS.includes('hard')) { const { p, hitsOnKid } = kidRace('hard'); ok('hard: the same kid bot does not win (Hard is a challenge)', p > 1, `kid finished ${p}${ITEMS ? `, AI item hits on the kid: ${hitsOnKid}` : ''}`); }
+  // wobbly kid (tools/kidbots.js: late reactions, steering noise, full-lock yanks, hop mashing) on Easy with the
+  // real Easy assists (auto-accelerate, kid-assist steering nudge, softer sand): must finish, must not keep
+  // falling off (Star Road), and should end up near the pack, not lapped (balance agent)
+  if (DIFFS.includes('easy')) {
+    const race = createRace({ track: tr, entrants: ENTRANTS, playerIndex: 6, difficulty: 'easy', seed: SEED });
+    const bot = wobblyKid(race.player, tr, SEED + 99);
+    let falls = 0;
+    if (ITEMS) createItems(race, { seed: SEED });
+    simulate(race, { maxT: 600, playerCtrl: r => bot.drive(r), onStep: r => { for (const e of r.events) if (e.type === 'kart' && e.kart === r.player && e.e === 'respawn' && e.v === 'fall') falls++; } });
+    const P = race.player, first = race.results()[0].time;
+    ok('easy: a wobbly kid finishes, rarely falls off, stays near the pack', P.finished && !P.estimated && falls <= 1 && P.finishTime - first < 15,
+      `place ${P.finishPlace}, ${f1(P.finishTime - first)} s behind the winner, falls ${falls}`);
+  }
   if (ITEMS) runItemChecks(tr, ok);
 }
 

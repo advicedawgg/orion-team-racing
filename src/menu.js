@@ -110,7 +110,7 @@ const stage = (() => {
   }
   function trophy() {
     const g = new THREE.Group();
-    const gold = mat({ color: 0xffc83a, metalness: .85, roughness: .22, emissive: 0x5a3a00, emissiveIntensity: .35 });
+    const gold = mat({ color: 0xffc83a, metalness: .35, roughness: .3, emissive: 0x7a5200, emissiveIntensity: .7 });   // qa: .85 metal with no env map rendered dark brown
     const pts = [[0, 0], [.42, 0], [.42, .1], [.16, .16], [.12, .42], [.1, .55], [.2, .62], [.46, .84], [.56, 1.25], [.52, 1.3], [0, 1.3]].map(([x, y]) => new THREE.Vector2(x, y));
     g.add(new THREE.Mesh(new THREE.LatheGeometry(pts, 32), gold));
     for (const s of [-1, 1]) { const hdl = new THREE.Mesh(new THREE.TorusGeometry(.2, .05, 8, 20, Math.PI * 1.2), gold); hdl.position.set(s * .56, 1.02, 0); hdl.rotation.z = s > 0 ? -Math.PI * .6 : Math.PI * 1.6; g.add(hdl); }
@@ -774,7 +774,7 @@ function showSettings() {
       <div class="opts">
         ${vol('master', 'VOLUME')}${vol('music', 'MUSIC')}${vol('sfx', 'EFFECTS')}
         ${tog('autoAccel', 'AUTO-GO', AUTO_LBL[s.autoAccel] || 'EASY ONLY', 'kart drives forward by itself')}
-        ${tog('kidAssist', 'KID HELPER', s.kidAssist ? 'ON' : 'OFF', 'easy turbos, no overheating')}
+        ${tog('kidAssist', 'KID HELPER', s.kidAssist ? 'ON' : 'OFF', 'easy turbos + steering help')}
         ${hdAny ? tog('hd', 'FANCY RACERS', s.hd ? 'ON' : 'OFF', 'detailed 3D models') : ''}
         ${tog('quality', 'GRAPHICS', QUAL_LBL[s.quality] || 'AUTO', 'FAST = smoother on small computers')}
       </div>

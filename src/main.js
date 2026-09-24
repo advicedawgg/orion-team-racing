@@ -6,14 +6,14 @@
 //
 // URL debug params (DESIGN.md): track, racer, skip, cam=x,y,z,tx,ty,tz, t (fast-forward s with
 // AI driving), ai=1 (AI drives the player), hud=0, diff=easy|medium|hard, slot (player grid slot
-// 0..7), laps, seed, touch=1, hd=1, shadows=0, fx=0.   window.__OTR exposes state for tests.
+// 0..7), laps, seed, touch=1, hd=1, shadows=0, fx=0, q=low|high|auto (quality).   window.__OTR exposes state for tests.
 import * as THREE from 'three';
 import * as In from './input.js';
 import { DT, T, redStart, baseTop } from './physics.js';
 import { buildTrack } from './track.js';
 import { TRACKS, trackById } from './tracks/index.js';
 import { createRace, COUNTDOWN } from './race.js';
-import { buildTrackMesh, mergeGeos } from './trackmesh.js';
+import { buildTrackMesh, mergeGeos, texturesReady } from './trackmesh.js';
 import { ChaseCam } from './camera.js';
 import { createFx } from './fx.js';
 import { createHud } from './hud.js';
@@ -75,12 +75,12 @@ function setQuality(v) {
   G.qLevel = G.quality === 'low' ? 'low' : G.quality === 'high' ? 'high' : (G.autoLow ? 'low' : 'high');
   applyQuality();
 }
-const qWatch = { dts: [], bad: 0 };
+const qWatch = { dts: [], sum: 0, bad: 0 };
 function watchQuality(dt) {
-  if (G.quality !== 'auto' || G.qLevel === 'low' || G.state !== 'race' || G.paused || document.hidden) { qWatch.dts.length = 0; return; }
-  qWatch.dts.push(dt);
-  if (qWatch.dts.length < 120) return;
-  const med = [...qWatch.dts].sort((a, b) => a - b)[60]; qWatch.dts.length = 0;
+  if (G.quality !== 'auto' || G.qLevel === 'low' || G.state !== 'race' || G.paused || document.hidden || dt > 0.5) { qWatch.dts.length = 0; qWatch.sum = 0; return; }
+  qWatch.dts.push(dt); qWatch.sum += dt;
+  if (qWatch.sum < 2 || qWatch.dts.length < 20) return;      // 2 s windows of wall time
+  const med = [...qWatch.dts].sort((a, b) => a - b)[qWatch.dts.length >> 1]; qWatch.dts.length = 0; qWatch.sum = 0;
   qWatch.bad = med > 0.0205 ? qWatch.bad + 1 : 0;
   if (qWatch.bad >= 2) { G.autoLow = true; setQuality('auto'); console.info('[otr] auto quality: frame time', (med * 1000).toFixed(1), 'ms → low'); }
 }
@@ -129,6 +129,7 @@ async function loadTrack(id) {
   const def = trackById(id);
   G.track = buildTrack(def);
   G.tm = await buildTrackMesh(G.track, { scene });
+  await texturesReady(5000);   // the loading screen is up anyway: don't let a big jpg land (and upload) mid-race
   scene.add(G.tm.group);
   const env = G.tm.env;
   scene.fog = new THREE.Fog(env.fog ?? 0xcfe6ff, env.fogNear ?? 140, env.fogFar ?? 520);
@@ -220,6 +221,13 @@ async function startRace() {
   G.shadowsOn = wantSh;
   // warm every shader before the lights go green (three compiles per material × light count)
   try { await renderer.compileAsync(scene, camera); } catch { renderer.compile(scene, camera); }
+  // …and upload every texture now: compile doesn't, and anything behind the start camera (sky
+  // panorama halves, far scenery, item sprites) otherwise uploads on first sight mid-race
+  { const texs = new Set(); scene.traverse(o => { if (o.material) for (const m of [].concat(o.material)) { for (const v of Object.values(m)) if (v?.isTexture) texs.add(v); if (m.uniforms) for (const u of Object.values(m.uniforms)) if (u?.value?.isTexture) texs.add(u.value); } });
+    for (const t of texs) try { renderer.initTexture(t); } catch { /* not ready */ } }
+  // …and one throwaway frame with culling off, so every vertex buffer is on the GPU before GO
+  { const off = []; scene.traverse(o => { if (o.isMesh && o.frustumCulled) { o.frustumCulled = false; off.push(o); } });
+    try { renderer.render(scene, camera); } finally { for (const o of off) o.frustumCulled = true; } }
   setState('countdown');
 }
 /** Tear the race down (menus: quit / back to the menu). The idle track orbit renders again. */
@@ -362,6 +370,9 @@ function drawKarts(alpha, dt) {
     const farD = (QUAL[G.qLevel] || QUAL.high).far;
     const far = (x - camera.position.x) ** 2 + (z - camera.position.z) ** 2 > farD * farD;
     if (far) root.visible = false;
+    // an AI kart right on top of the chase camera fills the screen with the inside of its model
+    // (seen at the grid: King Dad's crown). Hide it for those few frames instead.
+    else if (i !== race.playerIndex && (x - camera.position.x) ** 2 + (y + 0.8 - camera.position.y) ** 2 + (z - camera.position.z) ** 2 < 2.4 * 2.4) root.visible = false;
     // blob shadow on the ground under the kart (not for the player: it has a real one)
     const gy = isFinite(k.ground) ? k.ground : y;
     const hgt = Math.max(0, y - gy), sc = root.visible && (i !== race.playerIndex || !G.shadowsOn) ? Math.max(0.35, 1 - hgt * 0.18) : 0;

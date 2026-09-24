@@ -17,6 +17,13 @@ const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t
 
 /* =============================================================== textures */
 const texCache = new Map();
+const texPending = new Set();   // image loads in flight (texturesReady() lets the loader wait for them)
+/** Resolves when every texture image requested so far has loaded or failed, or after `ms`. main.js
+ *  awaits this before a race so a big jpg doesn't arrive (and upload) mid-race. */
+export function texturesReady(ms = 5000) {
+  if (!texPending.size) return Promise.resolve();
+  return Promise.race([Promise.allSettled([...texPending]), new Promise(r => setTimeout(r, ms))]);
+}
 /**
  * A texture that exists immediately (procedural canvas) and upgrades itself to
  * assets/tex/<name>.jpg|png|webp if the file loads. Never throws, never blocks.
@@ -34,11 +41,12 @@ export function loadTex(name, fallback, { repeat = null, srgb = true, anisotropy
   texCache.set(key, tex);
   if (name && file && typeof Image !== 'undefined') {
     const exts = ['jpg', 'png'];
+    let done; const pr = new Promise(r => { done = r; }); texPending.add(pr); pr.then(() => texPending.delete(pr));
     const tryExt = i => {
-      if (i >= exts.length) return;
+      if (i >= exts.length) { done(); return; }
       const img = new Image();
       // dispose first: the GPU storage was sized for the canvas, a bigger image can't be sub-uploaded into it
-      img.onload = () => { tex.dispose(); tex.image = img; tex.needsUpdate = true; tex.userData.procedural = false; tex.userData.src = img.src; onload?.(tex); };
+      img.onload = () => { tex.dispose(); tex.image = img; tex.needsUpdate = true; tex.userData.procedural = false; tex.userData.src = img.src; try { onload?.(tex); } finally { done(); } };
       img.onerror = () => tryExt(i + 1);
       img.src = `${TEX_BASE}${name}.${exts[i]}`;
     };

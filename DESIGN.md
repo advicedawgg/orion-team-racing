@@ -499,7 +499,8 @@ instance — keep small props shadowless).
   headless Chrome). Settings: volumes (master/music/sfx), **AUTO-GO** (auto-accelerate: `easy` =
   on in Easy only (default) / `on` / `off`; touch always auto-accelerates), **KID HELPER**
   (`kidAssist`, default on → `easyBoost` on every difficulty), **FANCY RACERS** (HD models, shown
-  only if `hdracers.js` lists any), CONTROLS help (keys / pad buttons / touch glyphs + turbo how-to).
+  only if `hdracers.js` lists any), **GRAPHICS** (`quality`: `auto` (default) / `high` "FANCY" /
+  `low` "FAST" → main.js `setQuality`, see **Quality**), CONTROLS help (keys / pad buttons / touch glyphs + turbo how-to).
 - **Kid-first**: no reading needed — title (any key/tap) → Quick Race (focused) → racer (last one
   focused) → track → race is four presses of A. Results always celebrate: 1st = "YOU WIN!" +
   confetti, 2nd/3rd = podium messages, 4th+ = "GREAT RACE! You came 5th — Super zooming!".
@@ -583,11 +584,32 @@ standard gamepad through `navigator.getGamepads`; `cup` and `tt` clear `otrSave`
   into a race, `&cam=x,y,z,tx,ty,tz` pins the camera, `&t=12` fast-forwards the sim 12 s with AI
   driving the player, `&ai=1` lets AI drive the player, `&hud=0`. Also `&diff=easy|medium|hard`,
   `&slot=0..7` (player grid slot, default 6), `&laps=N`, `&seed=N`, `&touch=1` (force touch UI),
-  `&auto=1` (auto-accelerate), `&hd=1`, `&shadows=0`, `&fx=0`. `window.__OTR` exposes game
+  `&auto=1` (auto-accelerate), `&hd=1`, `&shadows=0`, `&fx=0`, `&q=low|high|auto` (quality). `window.__OTR` exposes game
   state for tests (see **Core runtime APIs**). UI: `?screen=<name>` opens a menu screen (see
   **Modes and UI**); `__OTR.menu` = `{ M, screen, show(name), action('up'|'ok'|'back'…), launch(trackId) }`.
 - `node tools/slide-test.mjs` drives the player through a real power slide in the browser
   (3 perfect turbos) and screenshots each flame colour to `shots/slide/`.
+
+## Quality, camera, loading (QA agent)
+
+- **Quality** (`main.js` `QUAL`, `setQuality(v)` also on `__OTR` and the menu api; URL `?q=low|high|auto`;
+  save `settings.quality`): `low` = pixel ratio ×0.85, no real-time shadow (player gets a blob), `fx.q = 0.5`
+  (half the particles), AI karts culled at 150 m (230 m high). `auto` = high until the median rAF interval over
+  two consecutive 2 s windows of racing exceeds 20.5 ms, then low for the session (never back up). Pixel ratio +
+  particles apply at once; shadows only in `startRace` (the toggle recompiles every shader; compileAsync pays).
+- **Race warm-up** (`startRace`): `compileAsync` → `renderer.initTexture` for every texture in the scene → one
+  render with frustum culling off (uploads every vertex buffer). `loadTrack` awaits `texturesReady()` (trackmesh:
+  every `loadTex` image in flight, 5 s cap) so a jpg can't land mid-race. `loadTrack` disposes the old track's
+  geometries, materials and textures (`disposeGroup`).
+- **Chase camera** (`camera.js`): slides sideways to stay `CAM.wallMargin` (0.9 m) inside the boundary line from
+  `track.project` (no clamp on `'fall'` edges), eases back out; under `tunnel` samples caps height at
+  `cy + CAM.tunnelCap` (5.5 m). main.js hides an AI kart that is within 2.4 m of the camera.
+- **fx.js**: additive sprites fade out inside 5 m of the camera; every sprite's size is capped at 0.075 × its
+  camera distance; exhaust flames are 0.17–0.4 m at alpha 0.55 (the old 0.55 m / 0.85 stacked to white over the kart).
+- Tools: `tools/playtest.mjs` (AI-driven live race, chase shots every 4 s + contact sheet, `--perf` draw calls/
+  tris/render() CPU/GPU timer ms/whole-frame CPU), `tools/realflow.mjs` (whole game in one session with real keys),
+  `tools/input-test.mjs` (fake Xbox pad + keyboard), `tools/leakcheck.mjs` (memory across track switches).
+  Measured numbers are in README.md "Performance".
 
 ## Hard-won rules inherited from the sibling projects
 

@@ -45,9 +45,12 @@ export function runItemChecks(tr, ok) {
     const base0 = baseTop(k);
     let evs = [];
     for (const st of W.stars.slice(0, 4)) { k.pos.x = st.x; k.pos.y = st.y; k.pos.z = st.z; evs.push(...itemSteps(race, W, 1)); }
-    ok('items: stars collect, cap at 10, 10 = Super (+8% top speed)', k.stars === 10 && has(evs, 'super', k) && evs.filter(e => e.e === 'star').length >= 4 && Math.abs(baseTop(k) / base0 - (1 + T.STAR_BONUS)) < 1e-6,
-      `stars=${k.stars}, star events ${evs.filter(e => e.e === 'star').length}, top ${base0.toFixed(1)}→${baseTop(k).toFixed(1)}`);
-    const dead = W.stars.slice(0, 4).every(s => !s.alive);
+    // balance: a FULL kart (10) drives through stars without taking them — they stay for the pack (IT.FULL_PASS)
+    const nEv = evs.filter(e => e.e === 'star' && e.kart === k).length, want = IT.FULL_PASS ? 2 : 4;
+    ok(`items: stars collect, cap at 10, 10 = Super (+${(T.STAR_BONUS * 100).toFixed(1)}% top speed)${IT.FULL_PASS ? ', a full kart leaves stars for others' : ''}`,
+      k.stars === 10 && has(evs, 'super', k) && nEv === want && Math.abs(baseTop(k) / base0 - (1 + T.STAR_BONUS)) < 1e-6 && (!IT.FULL_PASS || W.stars.slice(2, 4).every(s => s.alive)),
+      `stars=${k.stars}, star events ${nEv}, top ${base0.toFixed(1)}→${baseTop(k).toFixed(1)}`);
+    const dead = W.stars.slice(0, want).every(s => !s.alive);
     itemSteps(race, W, Math.ceil(IT.STAR_RESPAWN / DT) + 2, () => { k.pos.x = 1e4; });
     ok('items: collected stars respawn', dead && W.stars.slice(0, 4).every(s => s.alive), `${IT.STAR_RESPAWN} s`);
   }

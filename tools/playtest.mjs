@@ -74,6 +74,11 @@ for (const id of TRACKS) {
   try {
     await page.setViewportSize({ width: W, height: H });
     if (THROTTLE) { const cdp = await ctx.newCDPSession(page); await cdp.send('Emulation.setCPUThrottlingRate', { rate: THROTTLE }); }
+    // time every rAF callback (the whole game frame: input, sim steps, fx, HUD, render) — CPU only
+    if (PERF) await page.addInitScript(() => {
+      const raf = window.requestAnimationFrame.bind(window); window.__rafMs = [];
+      window.requestAnimationFrame = cb => raf(ts => { const t0 = performance.now(); cb(ts); const O = window.__OTR; if (O?.race && O.state === 'race' && O.race.t > 10) window.__rafMs.push(performance.now() - t0); });
+    });
     const t0 = Date.now();
     await page.goto(`${BASE}index.html?track=${id}&skip=1&ai=1&seed=2${EXTRA ? '&' + EXTRA : ''}`, { waitUntil: 'load', timeout: 90000 });
     await page.waitForFunction(() => window.__OTR?.ready, null, { timeout: 90000 });
@@ -99,7 +104,8 @@ for (const id of TRACKS) {
       const grid = fr.filter(f => f.state === 'countdown' || (f.t > -99 && f.t < 0));
       const mid = fr.filter(f => f.t > 10 && f.state === 'race');
       const first5 = fr.filter(f => f.t > -99 && f.t < 5);
-      perf = { grid: summ(grid), mid: summ(mid), worstFirst5: +Math.max(...first5.map(f => f.cpu)).toFixed(1) };
+      const raf = await page.evaluate(() => window.__rafMs);
+      perf = { grid: summ(grid), mid: summ(mid), worstFirst5: +Math.max(...first5.map(f => f.cpu)).toFixed(1), frame50: +pct(raf, 0.5).toFixed(2), frame95: +pct(raf, 0.95).toFixed(2) };
       if (flag('spikes')) { let pp = 0, pt = 0; for (const f of fr) { if (f.cpu > 12 || f.progs !== pp || f.tex !== pt) console.log('  spike/change', JSON.stringify({ t: +f.t.toFixed(2), cpu: +f.cpu.toFixed(1), gpu: f.gpu && +f.gpu.toFixed(1), progs: f.progs, tex: f.tex, state: f.state })); pp = f.progs; pt = f.tex; } }
       await fs.writeFile(path.join(dir, 'perf.json'), JSON.stringify({ perf, loadMs }, null, 1));
     }
@@ -120,8 +126,8 @@ for (const id of TRACKS) {
 }
 await browser.close().catch(() => {});
 if (PERF) {
-  console.log('\n| track | load s | grid calls | grid ktris | grid cpu ms p50 | grid gpu ms p50 | mid calls p50/max | mid ktris | mid cpu p50/max | mid gpu p50/p95 | worst render() first 5 s |');
-  console.log('|---|---|---|---|---|---|---|---|---|---|---|');
-  for (const r of table) if (r.perf) { const g = r.perf.grid, m = r.perf.mid; console.log(`| ${r.id} | ${(r.loadMs / 1000).toFixed(1)} | ${g.calls} | ${g.ktris} | ${g.cpu50} | ${g.gpu50} | ${m.calls}/${m.callsMax} | ${m.ktris} | ${m.cpu50}/${m.cpuMax} | ${m.gpu50}/${m.gpu95} | ${r.perf.worstFirst5} |`); }
+  console.log('\n| track | load s | grid calls | grid ktris | grid cpu ms p50 | grid gpu ms p50 | mid calls p50/max | mid ktris | mid cpu p50/max | mid gpu p50/p95 | worst render() first 5 s | whole frame CPU p50/p95 (race) |');
+  console.log('|---|---|---|---|---|---|---|---|---|---|---|---|');
+  for (const r of table) if (r.perf) { const g = r.perf.grid, m = r.perf.mid; console.log(`| ${r.id} | ${(r.loadMs / 1000).toFixed(1)} | ${g.calls} | ${g.ktris} | ${g.cpu50} | ${g.gpu50} | ${m.calls}/${m.callsMax} | ${m.ktris} | ${m.cpu50}/${m.cpuMax} | ${m.gpu50}/${m.gpu95} | ${r.perf.worstFirst5} | ${r.perf.frame50}/${r.perf.frame95} |`); }
 }
 process.exit(fail);

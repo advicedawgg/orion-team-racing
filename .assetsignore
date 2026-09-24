@@ -1,0 +1,21 @@
+# Cloudflare static assets: ship ONLY index.html, ui.css, src/, vendor/, assets/.
+# (gitignore syntax; paths are relative to the repo root = assets.directory)
+.git
+.gitignore
+.assetsignore
+wrangler.jsonc
+node_modules
+tools
+work
+shots
+_scratch
+/*.md
+package.json
+package-lock.json
+# dev/test pages
+hd.html
+racers.html
+audio-test.html
+# generation notes + an unused half-res texture set (tools/texpost.py writes it; nothing loads it)
+assets/models/README.md
+assets/tex/512

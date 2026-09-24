@@ -33,17 +33,18 @@ export const T = {
   // Racer stats (1..5, 3 = neutral) → small deltas per point away from 3, tuned with tools/balance.js so a
   // point of any stat is worth about the same race time (DESIGN.md "Balance").
   STAT: 0.03,             // turn RATE per point (feel: how sharp the kart steers/slides; doesn't win races)
-  STAT_SPEED: 0.0075,     // speed: top speed (and boost cap) per point
-  STAT_ACC: 0.1,          // accel ("ZOOM"): acceleration per point — off the line, out of hits/spins/walls/offroad
-  STAT_KICK: 0.1,         // accel: turbo/pad kick size per point
-  STAT_BOOST: 0.08,       // accel: boost reserve seconds per point (turbos, pads, items all last a bit longer)
-  STAT_DRIFT: 0.015,      // turn: slide top-speed factor per point (high turn = keeps more speed sliding)
-  STAT_GRIP: 0.35,        // turn: corner-scrub reduction per point (high turn = carries more speed round corners)
+  STAT_SPEED: 0.007,      // speed: top speed (and boost cap) per point
+  STAT_ACC: 0.13,         // accel ("ZOOM"): acceleration per point — off the line, out of hits/spins/walls/offroad
+  STAT_KICK: 0.11,        // accel: turbo/pad kick size per point
+  STAT_BOOST: 0.11,       // accel: boost reserve seconds per point (turbos, pads, items all last a bit longer)
+  STAT_DRIFT: 0.02,       // turn: slide top-speed factor per point (high turn = keeps more speed sliding)
+  STAT_GRIP: 0.4,         // turn: corner-scrub reduction per point (high turn = carries more speed round corners)
   CORNER: { a0: 12, a1: 32, loss: 0.07 },   // steering scrub: top × (1 − loss·ramp(aLat: a0→a1 m/s²)), not in a slide
   KART_R: 0.8, WALL_E: 0.25, WALL_MIN_KEEP: 0.4,
   SNAP: 0.4, RESPAWN_T: 1.2, RESPAWN_DROP: 2.5,
   HIT: { flip: { t: 1.2, keep: 0.15, stars: 3 }, spin: { t: 1.0, keep: 0.45, stars: 1 }, wobble: { t: 3.0 } },
   STALL_T: 0.8,
+  ASSIST_OFFROAD: 0.7,    // kid assist (Easy / KID HELPER): offroad costs 70% of its usual slowdown (sand 0.64 → 0.75)
 };
 
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -95,6 +96,7 @@ export function topSpeed(k) {
   }
   let surf = SURFACES[k.surface] ?? 0.65;
   if (k.surface === 'gap' || k.surface === 'void') surf = 1;
+  if (k.assist && surf < 1) surf = 1 - (1 - surf) * T.ASSIST_OFFROAD;   // kid assist: sand is gentler
   if (k.boostT > 0) surf = Math.sqrt(surf);        // a turbo powers through sand, partly
   v *= surf;
   if (k.drift) v *= Math.min(1, T.DRIFT_SPEED * statK(k.stats.turn, T.STAT_DRIFT));
@@ -483,7 +485,7 @@ async function selfTest() {
     // accel stat: 0→90% time, ZOOM 5 vs 1
     const tTo90 = st => { const k = fresh({ stats: { speed: 3, accel: st, turn: 3 } }); let t = 0; for (; t < 6 && k.speed < 0.9 * baseTop(k); t += DT) stepKart(k, C(), flat); return t; };
     const [ta5, ta1] = [tTo90(5), tTo90(1)];
-    check('accel stat: ZOOM 5 reaches 90% sooner than ZOOM 1 (small)', ta5 < ta1 && ta1 / ta5 < 1.6, `0→90% ${ta5.toFixed(2)} s vs ${ta1.toFixed(2)} s`);
+    check('accel stat: ZOOM 5 reaches 90% sooner than ZOOM 1 (acceleration only matters ~5% of a race)', ta5 < ta1 && ta1 / ta5 < 1.9, `0→90% ${ta5.toFixed(2)} s vs ${ta1.toFixed(2)} s`);
   }
   // helper: get to speed, hop+slide left, then press the other shoulder per a policy
   const slideRun = (policy, o = {}) => {
@@ -566,6 +568,14 @@ async function selfTest() {
     { const p = flat.pointAt(k.s, -(flat.HW[k.si] + 6)); k.pos.x = p.x; k.pos.z = p.z; }   // onto the right-hand offroad (lat < 0 = right)
     run(k, 3, C());
     check('offroad: ~35% slower, still moving', k.speed > T.BASE_MAX * 0.55 && k.speed < T.BASE_MAX * 0.75, `v=${k.speed.toFixed(2)} on ${k.surface}`);
+  }
+  // 9b. turn stat: a high-TURN kart keeps more speed in a long slide and round a hard steady corner
+  {
+    const slideV = turn => { const k = fresh({ stats: { speed: 3, accel: 3, turn } }); run(k, 4, C()); run(k, 0.5, C({ steer: 1, hopA: true })); run(k, 0.45, C({ steer: -0.5, hopA: true })); return k.drift && k.onRoad ? k.speed : 0; };
+    const cornerV = turn => { const k = fresh({ stats: { speed: 3, accel: 3, turn } }); run(k, 4, C()); run(k, 0.8, C({ steer: 0.6 })); return k.onRoad ? k.speed : 0; };
+    const [s5, s1, c5, c1] = [slideV(5), slideV(1), cornerV(5), cornerV(1)];
+    check('turn stat: TURN 5 carries more speed sliding and cornering than TURN 1 (a few %)', s5 > s1 && c5 > c1 && s5 / s1 < 1.1 && c5 / c1 < 1.1,
+      `slide ${s5.toFixed(2)} vs ${s1.toFixed(2)} m/s, corner ${c5.toFixed(2)} vs ${c1.toFixed(2)} m/s`);
   }
   // 10. wall deflects and scrubs, never dead-stops
   {

@@ -8,7 +8,7 @@
 //   race.addSystem(fn)               // fn(race, dt) runs every step after physics (items agent)
 
 import { DT, createKart, placeKart, stepKart, collideKarts, addBoost, T } from './physics.js';
-import { createBrain, drive, DIFFICULTY } from './ai.js';
+import { createBrain, drive, DIFFICULTY, kidAssist } from './ai.js';
 
 export const COUNTDOWN = 3.6;          // s from the start of the countdown to GO
 export const START_WINDOW = [-0.25, 0.1]; // press accelerate in here (s relative to GO) for a start boost
@@ -19,7 +19,7 @@ export const AFTER_PLAYER = 20;        // s the race keeps going after the playe
  * player (-1 = all AI, e.g. the gate). opts: difficulty, laps, seed, easyBoost (kid assist, player),
  * noStall (disable the early-mash stall; always on in easy).
  */
-export function createRace({ track, entrants, playerIndex = -1, difficulty = 'easy', laps, seed = 1, easyBoost, noStall } = {}) {
+export function createRace({ track, entrants, playerIndex = -1, difficulty = 'easy', laps, seed = 1, easyBoost, noStall, assist } = {}) {
   const cfg = DIFFICULTY[difficulty] || DIFFICULTY.easy;
   laps = laps ?? track.laps ?? 3;
   const easy = difficulty === 'easy';
@@ -27,6 +27,7 @@ export function createRace({ track, entrants, playerIndex = -1, difficulty = 'ea
     const isPlayer = i === playerIndex;
     const k = createKart({ racerId: e.racerId, stats: e.stats, isPlayer, index: i,
       easyBoost: isPlayer ? (easyBoost ?? easy) : false, pace: isPlayer ? 1 : cfg.pace });
+    k.assist = isPlayer && (assist ?? easyBoost ?? easy);   // kid assist: steering nudge + softer offroad (ai.js kidAssist, balance agent)
     placeKart(k, track.grid[i % track.grid.length], track);
     return k;
   });
@@ -99,8 +100,8 @@ function stepRace(race, playerCtrl = NOCTRL) {
   if (focus) for (const k of karts) {
     if (k.isPlayer) continue;
     const d = k.progress - focus.progress;           // + = AI ahead
-    const [ahead, behind] = race.cfg.band;
-    const f = d > 0 ? 1 + (ahead - 1) * Math.min(1, d / 120) : 1 + (behind - 1) * Math.min(1, -d / 150);
+    const [ahead, behind] = race.cfg.band, [dA, dB] = race.cfg.bandD || [120, 150];   // full effect at dA m ahead / dB m behind
+    const f = d > 0 ? 1 + (ahead - 1) * Math.min(1, d / dA) : 1 + (behind - 1) * Math.min(1, -d / dB);
     k.pace = race.cfg.pace * f;
   }
 
@@ -109,7 +110,7 @@ function stepRace(race, playerCtrl = NOCTRL) {
     k.ev.length = 0;
     const b = brains[k.index];
     const useAI = !k.isPlayer || race.autoPlayer || k.finished;
-    const c = useAI ? drive(b, race) : playerCtrl;
+    const c = useAI ? drive(b, race) : k.assist ? kidAssist(k, track, playerCtrl) : playerCtrl;
     k.ctrl = c;
     stepKart(k, c, track);
   }
