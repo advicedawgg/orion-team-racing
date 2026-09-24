@@ -129,3 +129,12 @@ sheet `shots/qa/<track>-sheet.jpg` from `playtest.mjs`.
 - Keep it kid-friendly: big readable things, nothing scary, generous timing, and every result
   screen celebrates.
 - Don't commit or deploy unless asked.
+
+## Deploy (live since 2026-09-25)
+
+**https://orion3.advicedawg.com** = Cloudflare Worker `orion-team-racing` (static assets, `wrangler.jsonc`),
+card 3 on the family launcher at https://orion.advicedawg.com (repo `D:\dev\Oriongame` on maxpowa).
+wrangler's OAuth only exists on **maxpowa**, so deploys go from a plain copy at `D:\dev\orion-team-racing`
+(not a git checkout — the hub repo is canonical): tar the shipped files
+(`index.html ui.css src vendor assets wrangler.jsonc .assetsignore`), scp, extract over it, `npx wrangler deploy`.
+The Steam Deck does NOT have this game yet (its updater pulls GitHub tarballs; this repo has no remote).

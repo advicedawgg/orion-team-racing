@@ -1,12 +1,13 @@
 // Cloudflare Workers config — serves the game as static assets (same shape as Super Orion 2).
 // Ships only index.html, ui.css, src/, vendor/ and assets/ — everything else is in .assetsignore.
-// Deploy (NOT done yet — the lead / user decides):  npx wrangler deploy
+// Deploy:  npx wrangler deploy   (from a copy on maxpowa — wrangler OAuth lives there; see AGENTS.md)
 {
   "name": "orion-team-racing",
   "compatibility_date": "2026-08-15",
   "assets": {
     "directory": "."
-  }
-  // Add a custom domain when there is one, like SO2's:
-  // "routes": [ { "pattern": "<subdomain>.advicedawg.com", "custom_domain": true } ]
+  },
+  "routes": [
+    { "pattern": "orion3.advicedawg.com", "custom_domain": true }
+  ]
 }
