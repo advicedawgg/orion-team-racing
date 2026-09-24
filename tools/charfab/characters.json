@@ -59,6 +59,11 @@
       "slug": "zapdrone",
       "kind": "creature",
       "desc": "a cute little cartoon robot drone shaped like a chunky grey metal diamond octahedron, one big glowing red round eye in the middle, two glowing light blue electric rings orbiting around it, small antenna on top"
+    },
+    {
+      "slug": "prickle",
+      "kind": "creature",
+      "desc": "a cute round little cartoon burr-hog creature like a chubby hedgehog, a round chocolate brown ball-shaped body covered in chunky cream coloured cone spikes, a friendly cream coloured face with big shiny black eyes, rosy cheeks, a tiny pink nose and a cheeky grin, stubby little arms held forward as if holding a steering wheel, sitting, small brown feet"
     }
   ]
 }

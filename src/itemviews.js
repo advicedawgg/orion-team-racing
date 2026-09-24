@@ -516,7 +516,7 @@ export function createItemViews({ scene, fx = null, audio = null, chase = null, 
   // ---------------------------------------------------------------- per-frame update
   const _hp = new THREE.Vector3();
   function update(dt, alpha = 1) {
-    if (!W || !race) { root.visible = false; return; }
+    if (!W || !race || race.noItems) { root.visible = false; return; }   // race.noItems: Time Trial
     root.visible = true;
     t += dt;
     const V = visuals();

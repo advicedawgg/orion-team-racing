@@ -303,7 +303,7 @@ function endProj(W, p, boom) {
 /* ============================================================================ the step */
 function step(W, dt) {
   const race = W.race;
-  if (race.phase !== 'race' && race.phase !== 'done') return;
+  if (race.phase !== 'race' && race.phase !== 'done' || race.noItems) return;   // noItems: Time Trial (menu.js)
   W.t += dt;
   const karts = race.karts, tr = W.track;
 
@@ -559,7 +559,7 @@ function aiControl(W, b, c) {
   const cfg = aiCfgFor(W, k);
   const st = b.it || (b.it = { thinkT: W.r() * 0.5, holdT: 0, last: null, hopHold: 0, hopWait: 0.2 });
   c.item = false;
-  if (race.phase !== 'race' || k.finished && !k.isPlayer) return c;
+  if (race.phase !== 'race' || race.noItems || k.finished && !k.isPlayer) return c;
 
   // ---- TNT on the head: hop it off
   if (k.tnt) {

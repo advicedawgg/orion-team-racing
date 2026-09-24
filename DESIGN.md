@@ -37,7 +37,9 @@ src/tracks/index.js   track registry (TRACKS) — the gate races every entry    
 src/scenery/*.js      per-theme scenery builders (beach.js: core placeholder)  (tracks agents)
 src/kartbox.js        box-kart fallback if racers.js is missing/broken          (core)
 src/racers.js         roster + procedural kart & character models + animation  (characters agent)
-src/items.js          item boxes, stars, weapons, projectiles, effects          (items agent)
+src/items.js          PURE item sim: boxes, stars, weapons, hits, AI item use    (items agent)
+src/itemviews.js      item meshes/particles/sounds (THREE, browser only)        (items agent)
+src/itemhud.js        item slot + roulette widget (hud.js hosts it)             (items agent)
 src/hud.js            in-race HUD: lap/place/rank list/minimap/meter/pops/banners (ui agent)
 src/menu.js           title, menus, character/track select, results, cup, podium, pause, settings (ui agent)
 src/audio.js          SFX + music + synthesized engines                          (audio agent)
@@ -270,7 +272,8 @@ warp turbo3 vo_ouch vo_nice_shot vo_ten_stars` + `audio.bark(racer, 'hit'|'item'
 Explosions = pooled fireball + smoke ball + ground ring + a comic "BOOM!" sprite + fx bursts, and
 camera shake scaled by distance to the player. No lights anywhere.
 
-**Debug URL params:** `items=0` (items off: no boxes/stars/AI items), `give=<id>` (the player
+**Debug URL params:** `items=0` (items off: no boxes/stars/AI items; `race.noItems = true` does the
+same at runtime — Time Trial), `give=<id>` (the player
 gets it at GO; `give=nitro` = TNT + 10 stars), `refill=1` (…again every time the slot empties),
 `stars=N` (player starts with N stars). E.g.
 `?track=beach&skip=1&give=rocket&refill=1`.
@@ -445,7 +448,8 @@ instance — keep small props shadowless).
   Winning (any difficulty) records `cupWins[diff]` and unlocks **Star Road** with a "STAR ROAD
   UNLOCKED!" screen the first time. No "restart" in the pause menu during a cup.
 - **Time Trial** — solo race (`G.solo` → main races just the player; `G.noItems` and
-  `race.noItems = true` are set — **items agent: skip boxes when `race.noItems`**, not yet honoured).
+  `race.noItems = true` are set — items.js skips its whole step and the AI item brain, itemviews hides
+  everything while `race.noItems` is true).
   Best lap + best race saved per track; the best race is saved as a **ghost** (10 Hz pos/yaw) and
   replays as a translucent kart (cloned transparent materials) + a pale minimap dot; HUD shows "BEST".
 - **Difficulty**: Easy (default) / Medium / Hard, shown as drawn SVG faces (emoji don't render in the

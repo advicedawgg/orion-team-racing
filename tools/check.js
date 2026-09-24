@@ -90,9 +90,12 @@ for (const def of TRACKS) {
     ok('slopes ≤ 35%', maxSlope <= 0.35, `max ${(maxSlope * 100).toFixed(0)}% at s=${f1(at * tr.ds)}`);
     let maxK = 0, atK = 0; for (let k = 0; k < n; k++) if (Math.abs(tr.CURV[k]) > maxK) { maxK = Math.abs(tr.CURV[k]); atK = k; }
     ok('tightest radius ≥ 10 m and ≥ half-width + 3', 1 / maxK >= 10 && 1 / maxK >= tr.HW[atK] + 3, `r=${f1(1 / maxK)} m at s=${f1(atK * tr.ds)}`);
-    // tunnels: the chase camera sits ~6 m behind the kart — a tight bend would put it through the tunnel wall
-    let tK = 0, tAt = -1; for (let k = 0; k < n; k++) if ((tr.FLAG[k] & 8) && Math.abs(tr.CURV[k]) > tK) { tK = Math.abs(tr.CURV[k]); tAt = k; }
-    if (tAt >= 0) ok('tunnels curve gently (r ≥ 60 m, camera stays inside)', 1 / tK >= 60, `r=${f1(1 / tK)} m at s=${f1(tAt * tr.ds)}`);
+    // Taco Tunnel (an enclosed tube): the chase camera sits ~6 m behind the kart, a tight bend would put it
+    // through the tunnel wall (offset d²/2r: 0.4 m at r=45). Castle's `tunnel` halls are open-plan — not checked.
+    if (def.id === 'volcano') {
+      let tK = 0, tAt = -1; for (let k = 0; k < n; k++) if ((tr.FLAG[k] & 8) && Math.abs(tr.CURV[k]) > tK) { tK = Math.abs(tr.CURV[k]); tAt = k; }
+      ok('the tunnel curves gently (r ≥ 45 m, camera stays inside)', tAt >= 0 && 1 / tK >= 45, tAt >= 0 ? `r=${f1(1 / tK)} m at s=${f1(tAt * tr.ds)}` : 'no tunnel!');
+    }
   }
   {
     const cps = tr.checkpoints;
