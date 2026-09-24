@@ -168,3 +168,9 @@ wrangler's OAuth only exists on **maxpowa**, so deploys go from a plain copy at 
 half-done files would go live): `git archive HEAD index.html ui.css src vendor assets wrangler.jsonc .assetsignore`
 → tar → scp → extract over that copy → `npx wrangler deploy`. Then check a changed file on the live URL with curl.
 The Steam Deck does NOT have this game yet (its updater pulls GitHub tarballs; this repo has no remote).
+
+**Online game server (live since 2026-09-25):** container `otr-server` on Unraid (host net, restart always) —
+HTTP/WS :8955 behind Cloudflare tunnel `otr` (container `cloudflared-otr`) = https://orion3-net.advicedawg.com
+(`PROD_SERVER` in src/protocol.js), WebRTC on udp/8956 via the UniFi forward "otr udp". Redeploy the server:
+`rsync -a --delete --exclude node_modules server src unraid:/mnt/user/appdata/otr/src/ && ssh unraid bash /boot/config/scripts/otr-run.sh`
+(a PROTOCOL_VERSION bump means the static site and the server must ship together). Check: `curl -s https://orion3-net.advicedawg.com/health`.
