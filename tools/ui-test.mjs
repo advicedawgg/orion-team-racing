@@ -26,7 +26,8 @@ const page = await ctx.newPage();
 const errs = [];
 page.on('pageerror', e => errs.push('pageerror: ' + e.message.slice(0, 300)));
 page.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text().slice(0, 300)); });
-page.on('requestfailed', r => { if (!r.url().startsWith('blob:')) errs.push('requestfailed: ' + r.url() + ' ' + (r.failure()?.errorText || '')); });
+// ERR_ABORTED = the page moved on mid-download (HD racer GLBs load in the menus since FANCY RACERS became the default) — not a failure
+page.on('requestfailed', r => { if (!r.url().startsWith('blob:') && !/ERR_ABORTED/.test(r.failure()?.errorText || '')) errs.push('requestfailed: ' + r.url() + ' ' + (r.failure()?.errorText || '')); });
 page.on('response', r => { if (r.status() >= 400) errs.push(`http ${r.status()}: ${r.url()}`); });
 await fs.mkdir(OUT, { recursive: true });
 await page.setViewportSize({ width: W, height: H });

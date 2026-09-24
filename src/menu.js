@@ -253,7 +253,7 @@ function mount(name, html, opts = {}) {
     const t = e.target.closest('[data-nav]');
     if (t && el.contains(t)) { setFocus(t, true); activate(t); }
   });
-  el.addEventListener('pointermove', e => { if (e.pointerType !== 'mouse') return; const t = e.target.closest('[data-nav]'); if (t && t !== cur?.focus) setFocus(t, true); });
+  el.addEventListener('pointermove', e => { if (e.pointerType !== 'mouse') return; const t = e.target.closest('[data-nav]'); if (t && t !== cur?.focus) setFocus(t, true, true); });
   opts.onShow?.(el);
   const mem = M.focusMem[name];
   const f = (typeof opts.focus === 'string' ? el.querySelector(opts.focus) : opts.focus) || (mem && el.querySelector(`[data-key="${mem}"]`)) || el.querySelector('[data-nav]');
@@ -265,14 +265,14 @@ function unmount(hide = true) {
   if (cur) { cur.onHide?.(); cur.el.remove(); cur = null; }
   if (hide) { root.className = ''; document.body.classList.remove('menu-open'); api.G.menuCovers = false; M.screen = null; }
 }
-function setFocus(t, silent) {
+function setFocus(t, silent, byMouse = false) {
   if (!cur || !t) return;
   if (cur.focus === t) return;
   cur.focus?.classList.remove('focus');
   cur.focus = t; t.classList.add('focus');
   if (t.dataset.key) M.focusMem[cur.name] = t.dataset.key;
   if (!silent) sfx('menu_move');
-  cur.onFocus?.(t);
+  cur.onFocus?.(t, byMouse);
 }
 function activate(t) {
   if (!cur || !t) return;
@@ -520,7 +520,9 @@ function showSelect(pn = 0) {
       racersReady.then(() => el.querySelectorAll('.rtile img').forEach((img, i) => { img.src = portraitURL(list[i].id, 128); }));
       if (pn === 0) setTimeout(() => vo('vo_choose'), 250);
     },
-    onFocus(t) { if (t.dataset.id) preview(t.dataset.id); },
+    // Mouse HOVER must not change the pick: Prickles' tile sits between King Dad and GO!, so gliding to the
+    // button re-picked him (user report 2026-09-25). Hover only highlights; click/tap, keys and pad pick.
+    onFocus(t, byMouse) { if (t.dataset.id && !byMouse) preview(t.dataset.id); },
     acts: {
       pick(t) { preview(t.dataset.id); choose(); },
       go() { choose(); },
@@ -528,9 +530,10 @@ function showSelect(pn = 0) {
     },
     back() { if (mp) { if (pn === 1) showSelect(0); else showJoin(true); } else showMenu(M.mode === 'cup' ? 'cup' : M.mode === 'tt' ? 'tt' : 'quick'); },
   });
+  let chosen = false;
   preview(cur0, true);
   function preview(id, force) {
-    if (!el) return;
+    if (!el || chosen) return;                 // locked in: nothing may change the pick during the cheer
     if (id === taken) return;
     if (id === (pn === 1 ? M.racer2 : M.racer) && !force && el.dataset.shown === id) return;
     if (pn === 1) M.racer2 = id; else M.racer = id;
@@ -543,7 +546,6 @@ function showSelect(pn = 0) {
     el.querySelectorAll('.rtile').forEach(b => b.classList.toggle('sel', b.dataset.id === id));
     stage.one(id);
   }
-  let chosen = false;
   function choose() {
     if (chosen) return; chosen = true;
     stage.cheer();

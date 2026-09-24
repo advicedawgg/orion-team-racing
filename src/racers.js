@@ -542,9 +542,11 @@ const LOOK = {
       const leaf = new THREE.Shape();
       leaf.moveTo(-.42, 0); leaf.quadraticCurveTo(0, .26, .42, 0); leaf.quadraticCurveTo(0, -.26, -.42, 0);
       const g = new THREE.ExtrudeGeometry(leaf, { depth: .03, bevelEnabled: false });
-      K.add(MAT.paint, g, LEAF, [0, .96, -.62], [-Math.PI / 2 + .25, 0, 0]);
-      K.add(MAT.matte, rbox(.8, .02, .03, 0), 0x2a6b1f, [0, .975, -.62], [.25, 0, 0]);
-      K.add(MAT.matte, new THREE.CylinderGeometry(.03, .04, .3, 5), 0x6d4c41, [0, .8, -.64]);
+      // Sits out over the rear bumper, clear of the driver: at z -.62 the bar ran straight through
+      // Prickles' spiky back in both tiers (user report 2026-09-25).
+      K.add(MAT.paint, g, LEAF, [0, .8, -1.0], [-Math.PI / 2 + .25, 0, 0]);
+      K.add(MAT.matte, rbox(.8, .02, .03, 0), 0x2a6b1f, [0, .815, -1.0], [.25, 0, 0]);
+      K.add(MAT.matte, new THREE.CylinderGeometry(.03, .04, .3, 5), 0x6d4c41, [0, .64, -1.0]);
       // acorn on the nose
       K.add(MAT.paint, rbox(.13, .15, .13, .8), 0xc98b4a, [0, .5, .56]);
       K.add(MAT.matte, rbox(.16, .07, .16, .6), 0x6d4c41, [0, .57, .56]);
