@@ -57,9 +57,37 @@ def wrap_axis_phase(a, axis, frac=0.10):
         if best is None or d < best:
             best, bestL = d, L
     L = bestL
-    t = np.linspace(0.0, 1.0, b).reshape(-1, *([1] * (a.ndim - 1)))
+    A, B = a[L:L + b], a[:b]
+    # Min-error boundary cut (image quilting) through the overlap instead of a
+    # straight crossfade: a linear blend of two different irregular patterns
+    # double-exposes them (ghosted stones); a cut along where they already
+    # agree, feathered by a few px, doesn't. Rows above the cut come from the
+    # tail A (continues a[L-1]), rows below from the head B (continues a[b]).
+    e = np.abs(A - B).sum(axis=2) if A.ndim == 3 else np.abs(A - B)   # b x m
+    m = e.shape[1]
+    # Keep the cut off the very first/last rows so both ends stay continuous.
+    pad = max(2, b // 8)
+    e[:pad] = e[-pad:] = e.max() * 4 + 1
+    cost = e.copy()
+    back = np.zeros_like(e, dtype=np.int8)
+    for j in range(1, m):
+        prev = cost[:, j - 1]
+        up = np.r_[np.inf, prev[:-1]]
+        dn = np.r_[prev[1:], np.inf]
+        stack = np.stack([up, prev, dn])
+        k = stack.argmin(axis=0)
+        cost[:, j] += stack[k, np.arange(b)]
+        back[:, j] = k - 1
+    cut = np.zeros(m, dtype=int)
+    cut[-1] = int(cost[:, -1].argmin())
+    for j in range(m - 1, 0, -1):
+        cut[j - 1] = cut[j] + back[cut[j], j]
+    rows = np.arange(b).reshape(-1, 1)
+    feather = max(2, b // 16)
+    w = np.clip((rows - cut.reshape(1, -1)) / feather + 0.5, 0, 1)      # 0 = A, 1 = B
+    w = w.reshape(b, m, *([1] * (a.ndim - 2)))
     out = a[:L].copy()
-    out[:b] = a[L:L + b] * (1.0 - t) + a[:b] * t
+    out[:b] = A * (1 - w) + B * w
     return np.moveaxis(out, 0, axis)
 
 
@@ -138,9 +166,16 @@ def do_tex(src, dest, target=None, flat=False):
 
 
 def do_sky(src, dest):
+    # 2:1. A 16:9 render loses a strip top and bottom: keep more of the
+    # bottom (horizon side), the zenith is flat sky anyway.
+    w, h = src.size
+    if abs(w / h - 2) > 0.01:
+        nh = round(w / 2)
+        top = int((h - nh) * 0.35)
+        src = src.crop((0, top, w, top + nh))
     a = np.asarray(src.convert('RGB')).astype(np.float32)
     before = seam_ratio(a, 1)
-    out = wrap_axis(a, 1, 0.12)
+    out = wrap_axis_phase(a, 1)
     after = seam_ratio(out, 1)
     im = Image.fromarray(np.clip(out, 0, 255).astype(np.uint8)).resize((2048, 1024), Image.LANCZOS)
     kb = save_jpg(im, dest)
@@ -178,7 +213,7 @@ def do_icon(src, dest):
     bg = np.median(ring, axis=0)
     near = (np.abs(a - bg).max(axis=2) < 28).astype(np.uint8) * 255
     # Flood fill from the border through "near background" pixels only.
-    m = Image.fromarray(np.pad(near, 1, constant_values=255))
+    m = Image.fromarray(np.pad(near, 1, constant_values=255)).copy()   # .copy(): floodfill silently no-ops on a fromarray view
     ImageDraw.floodfill(m, (0, 0), 128, thresh=0)
     bgmask = (np.asarray(m)[1:-1, 1:-1] == 128)
     obj = (~bgmask).astype(np.uint8) * 255

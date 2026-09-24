@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OTR Audio Bench</title>
+<style>
+  :root { --bg: #14121c; --panel: #1f1c2b; --ink: #f2eefc; --dim: #9d97b5; --acc: #ffd23a; --file: #6fe3a4; --synth: #ff9ec4; --bad: #ff6a5a; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; padding: 16px; }
+  h1 { font-size: 20px; margin: 0 0 4px; } h2 { font-size: 15px; margin: 18px 0 8px; color: var(--acc); }
+  .grid { display: flex; flex-wrap: wrap; gap: 6px; }
+  button { background: var(--panel); color: var(--ink); border: 1px solid #3a3550; border-radius: 6px; padding: 6px 10px; cursor: pointer; font: inherit; }
+  button:hover { border-color: var(--acc); }
+  button.file { border-left: 4px solid var(--file); } button.synth { border-left: 4px solid var(--synth); }
+  button.on { background: #3a3060; }
+  .row { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
+  label { color: var(--dim); } input[type=range] { width: 160px; vertical-align: middle; }
+  .legend span { margin-right: 14px; } .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; }
+  #status { color: var(--dim); margin: 6px 0; } pre { background: var(--panel); padding: 10px; border-radius: 6px; overflow: auto; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>Orion Team Racing — audio bench</h1>
+<div class="legend"><span><i style="background:var(--file)"></i>generated file</span><span><i style="background:var(--synth)"></i>synth fallback</span> · shift-click any SFX to hear its synth fallback</div>
+<div id="status">click anywhere to unlock audio…</div>
+<div class="row">
+  <label>master <input id="vm" type="range" min="0" max="1" step="0.01" value="0.9"></label>
+  <label>music <input id="vmu" type="range" min="0" max="1" step="0.01" value="0.55"></label>
+  <label>sfx <input id="vs" type="range" min="0" max="1" step="0.01" value="1"></label>
+  <button id="mute">mute (M)</button>
+</div>
+
+<h2>Music</h2><div class="grid" id="music"></div>
+<h2>Engine</h2>
+<div class="row">
+  <button id="eng">player engine: off</button>
+  <label>speed <input id="espd" type="range" min="0" max="1.4" step="0.01" value="0"></label>
+  <label>throttle <input id="ethr" type="range" min="0" max="1" step="0.01" value="1"></label>
+  <label>charge <input id="echg" type="range" min="0" max="1" step="0.01" value="0"></label>
+  <label><input id="edrift" type="checkbox"> drift</label>
+  <label><input id="eboost" type="checkbox"> boost</label>
+  <label><input id="eair" type="checkbox"> air</label>
+  <label><input id="eoff" type="checkbox"> offroad</label>
+  <button id="ai">6 AI karts orbiting: off</button>
+  <button id="auto">auto-drive demo</button>
+</div>
+<h2>SFX</h2><div class="grid" id="sfx"></div>
+<h2>Announcer / character VO</h2><div class="grid" id="vo"></div>
+<h2>Spatial</h2>
+<div class="row"><button data-sp="10">explode @10 m left</button><button data-sp="30">explode @30 m right</button><button data-sp="80">explode @80 m</button></div>
+<h2>Report</h2><pre id="out">—</pre>
+
+<script type="module">
+import { audio, SFX_NAMES, VO_NAMES, MUSIC_NAMES } from './src/audio.js';
+const $ = id => document.getElementById(id);
+audio.init();
+const S = audio._debug;
+
+function mk(parent, name, onclick) {
+  const b = document.createElement('button'); b.textContent = name; b.onclick = onclick; parent.appendChild(b); return b;
+}
+const sfxBtns = {};
+for (const n of SFX_NAMES) sfxBtns[n] = mk($('sfx'), n, e => {
+  if (e.shiftKey) { const buf = audio._mix.bakeSynth(n); const s = S.ctx.createBufferSource(); s.buffer = buf; s.connect(S.sfxBus); s.start(); }
+  else if (n === 'drift_loop' || n === 'bomb_roll' || n === 'purr') { const h = audio.play(n, { loop: true }); setTimeout(() => h.stop(0.2), 2500); }
+  else audio.play(n);
+});
+for (const n of VO_NAMES) sfxBtns[n] = mk($('vo'), n.replace(/^vo_/, ''), () => audio.play(n));
+const mb = {};
+for (const n of [...MUSIC_NAMES, null]) mb[n] = mk($('music'), n ?? 'stop', () => { audio.music(n); for (const k in mb) mb[k].classList.toggle('on', k === String(n)); });
+audio.loaded.then(() => {
+  for (const [n, b] of Object.entries(sfxBtns)) b.className = S.fromFile.has(n) ? 'file' : (n.startsWith('vo_') ? '' : 'synth');
+  $('status').textContent = `${S.fromFile.size} sounds from files · ${SFX_NAMES.filter(n => !S.fromFile.has(n)).length} SFX on synth fallback · ctx ${S.ctx.state}`;
+});
+const vols = () => audio.setVolumes({ master: +$('vm').value, music: +$('vmu').value, sfx: +$('vs').value });
+for (const id of ['vm', 'vmu', 'vs']) $(id).oninput = vols;
+$('mute').onclick = () => { $('mute').textContent = audio.toggleMute() ? 'unmute (M)' : 'mute (M)'; };
+addEventListener('keydown', e => { if (e.key === 'm' || e.key === 'M') $('mute').click(); });
+document.querySelectorAll('[data-sp]').forEach(b => b.onclick = () => {
+  const d = +b.dataset.sp; audio.listener({ x: 0, y: 0, z: 0 }, { x: 0, z: 1 });
+  audio.play('explode', { at: { x: d === 30 ? -d : d, y: 0, z: d === 80 ? d : 2 } });   // right = -x when facing +z
+});
+
+// engine bench
+let engOn = false, aiOn = false, autoT = -1;
+$('eng').onclick = () => { engOn = !engOn; $('eng').textContent = 'player engine: ' + (engOn ? 'on' : 'off'); engOn ? audio.engineStart('orion', true) : audio.engineStop('orion'); };
+$('ai').onclick = () => {
+  aiOn = !aiOn; $('ai').textContent = '6 AI karts orbiting: ' + (aiOn ? 'on' : 'off');
+  for (let i = 0; i < 6; i++) aiOn ? audio.engineStart('ai' + i, false) : audio.engineStop('ai' + i);
+};
+$('auto').onclick = () => { autoT = autoT < 0 ? 0 : -1; if (autoT === 0 && !engOn) $('eng').click(); };
+let last = performance.now();
+function tick(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  audio.listener({ x: 0, y: 0, z: 0 }, { x: 0, z: 1 });
+  if (autoT >= 0) {   // scripted lap: accelerate, slide w/ 3 turbos, jump, offroad, brake
+    autoT += dt; const t = autoT % 14;
+    const spd = t < 3 ? t / 3 : t < 12 ? 1 : 1 - (t - 12) / 2;
+    $('espd').value = spd + (t > 5 && t < 9 ? 0.25 : 0); $('ethr').value = t < 12 ? 1 : 0;
+    $('edrift').checked = t > 4 && t < 8; $('echg').value = t > 4 && t < 8 ? ((t - 4) % 1.2) / 1.2 : 0;
+    $('eboost').checked = t > 5 && t < 9; $('eair').checked = t > 9.5 && t < 10.5; $('eoff').checked = t > 10.8 && t < 12;
+    if (Math.abs(t - 4) < dt) audio.play('hop');
+    for (const [k, n] of [[5, 'turbo1'], [6.2, 'turbo2'], [7.4, 'turbo3'], [9.5, 'hop'], [10.5, 'land']]) if (t >= k && t - dt < k) audio.play(n);
+  }
+  if (engOn) audio.engineUpdate('orion', {
+    speed: +$('espd').value * 22, maxSpeed: 22, throttle: +$('ethr').value, drift: $('edrift').checked ? 1 : 0,
+    boost: $('eboost').checked ? 1 : 0, air: $('eair').checked, offroad: $('eoff').checked, charge: +$('echg').value, pos: { x: 0, y: 0, z: 0 },
+  });
+  if (aiOn) for (let i = 0; i < 6; i++) {
+    const a = now / 1000 * 0.5 + i * Math.PI / 3, r = 6 + i * 7;
+    audio.engineUpdate('ai' + i, { speed: 20, maxSpeed: 22, throttle: 1, drift: 0, boost: 0, air: false, pos: { x: Math.cos(a) * r, y: 0, z: Math.sin(a) * r } });
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+/* ---------------- automation hooks (tools/mixprobe.mjs) ---------------- */
+async function listFiles() {
+  const sfx = await (await fetch('assets/sfx/index.json', { cache: 'no-store' })).json();
+  const mus = await (await fetch('assets/audio/index.json', { cache: 'no-store' })).json();
+  const files = [];
+  for (const [n, fs] of Object.entries(sfx.files)) for (const f of fs) files.push({ name: n, url: 'assets/sfx/' + f });
+  for (const [n, m] of Object.entries(mus.music)) for (const f of [m.file, m.mp3, m.fallback, m.fallbackMp3]) if (f) files.push({ name: 'music:' + n, url: 'assets/audio/' + f });
+  return files;
+}
+function stats(buf, from = 0, to = buf.length) {
+  const sr = buf.sampleRate, w = Math.round(sr * 0.1), n = to - from, mono = new Float32Array(n);
+  let peak = 0, tot = 0;
+  for (let c = 0; c < buf.numberOfChannels; c++) { const d = buf.getChannelData(c); for (let i = 0; i < n; i++) { mono[i] += d[from + i] / buf.numberOfChannels; peak = Math.max(peak, Math.abs(d[from + i])); } }
+  let sum = 0, best = 0;
+  for (let i = 0; i < n; i++) { sum += mono[i] * mono[i]; tot += mono[i] * mono[i]; if (i >= w) sum -= mono[i - w] * mono[i - w]; if (i >= w - 1) best = Math.max(best, sum / w); }
+  const db = x => +(10 * Math.log10(Math.max(1e-12, x))).toFixed(1);
+  return { loud: db(best), rms: db(tot / Math.max(1, n)), peak: +(20 * Math.log10(Math.max(1e-6, peak))).toFixed(1) };
+}
+const M = audio._mix, SR = 48000;
+async function renderOne(kind, name, { vol = 1, at = null, secs = null, buf = null } = {}) {
+  const b0 = buf;
+  const len = Math.ceil(SR * (secs ?? (b0.duration + 0.1)));
+  const oc = new OfflineAudioContext(2, len, SR);
+  const G = M.buildMix(oc, S.vol);
+  const src = oc.createBufferSource(); src.buffer = b0;
+  const sp = M.spatial(at);
+  if (!sp) return { loud: -99, rms: -99, peak: -99, culled: true };
+  const g = oc.createGain(); g.gain.value = vol * sp.g * Math.pow(10, (M.TRIM[name] ?? 0) / 20);
+  let node = src; node.connect(g); node = g;
+  if (sp.lp) { const f = oc.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = sp.lp; node.connect(f); node = f; }
+  const p = oc.createStereoPanner(); p.pan.value = sp.pan; node.connect(p);
+  p.connect(kind === 'vo' ? G.voBus : kind === 'music' ? G.musicDuck : G.sfxBus);
+  src.start();
+  return stats(await oc.startRendering());
+}
+async function renderEngine(label, u, isPlayer = true) {
+  const oc = new OfflineAudioContext(2, SR * 1.5, SR);
+  const G = M.buildMix(oc, S.vol);
+  const v = M.makeEngineVoice(oc, G);
+  const k = M.engineState(isPlayer ? 'orion' : 'grumblin', isPlayer);
+  Object.assign(k.u, { maxSpeed: 22, ...u });
+  M.setVoice(v, M.engineTargets(k, 0));
+  const out = await oc.startRendering();
+  return { label, ...stats(out, SR * 0.5, SR * 1.5) };
+}
+window.__audioTest = {
+  async decodeAll() {
+    const oc = new OfflineAudioContext(1, 1, 48000), res = { ok: 0, fail: [], files: 0 };
+    for (const f of await listFiles()) {
+      res.files++;
+      try { const b = await oc.decodeAudioData(await (await fetch(f.url)).arrayBuffer()); if (!(b.duration > 0.03)) throw new Error('empty ' + b.duration); res.ok++; }
+      catch (e) { res.fail.push(f.url + ': ' + (e.message || e)); }
+    }
+    return res;
+  },
+  async mix() {
+    await audio.loaded;
+    const rows = [];
+    for (const n of [...SFX_NAMES, ...VO_NAMES]) {
+      const variants = S.buffers.get(n) || [];
+      const fileBuf = S.fromFile.has(n) ? variants[0] : null;
+      const synth = n.startsWith('vo_') ? null : M.bakeSynth(n, S.ctx);
+      const r = { name: n, kind: n.startsWith('vo_') ? 'vo' : 'sfx', trim: M.TRIM[n] ?? 0 };
+      if (fileBuf) Object.assign(r, { file: await renderOne(r.kind, n, { buf: fileBuf }), dur: +fileBuf.duration.toFixed(2) });
+      if (synth) r.synth = await renderOne('sfx', n, { buf: synth });
+      rows.push(r);
+    }
+    const spatial = [];
+    const ex = (S.buffers.get('explode') || [])[0];
+    if (ex) for (const d of [0, 10, 30, 60, 100, 120]) spatial.push({ name: `explode @${d}m`, ...(await renderOne('sfx', 'explode', { buf: ex, at: d ? { x: 0, y: 0, z: d } : null })) });
+    const engines = [
+      await renderEngine('player idle', { speed: 0, throttle: 0 }),
+      await renderEngine('player half, throttle', { speed: 11, throttle: 1 }),
+      await renderEngine('player top speed', { speed: 22, throttle: 1 }),
+      await renderEngine('player drifting', { speed: 20, throttle: 1, drift: 1, charge: 0.5 }),
+      await renderEngine('player boosting', { speed: 29, throttle: 1, boost: 1 }),
+      await renderEngine('player offroad', { speed: 14, throttle: 1, offroad: true }),
+      await renderEngine('AI top @5m', { speed: 22, throttle: 1, pos: { x: 0, y: 0, z: 5 } }, false),
+      await renderEngine('AI top @15m', { speed: 22, throttle: 1, pos: { x: 0, y: 0, z: 15 } }, false),
+      await renderEngine('AI top @40m', { speed: 22, throttle: 1, pos: { x: 0, y: 0, z: 40 } }, false),
+    ];
+    const music = [];
+    const mus = await (await fetch('assets/audio/index.json', { cache: 'no-store' })).json();
+    const dec = new OfflineAudioContext(2, 1, SR);
+    for (const [n, m] of Object.entries(mus.music)) for (const f of [m.file, m.fallback]) {
+      if (!f) continue;
+      const b = await dec.decodeAudioData(await (await fetch('assets/audio/' + f)).arrayBuffer());
+      music.push({ name: `${n} (${f})`, dur: +b.duration.toFixed(1), ...(await renderOne('music', 'music:' + n, { buf: b, secs: b.duration })) });
+    }
+    return { vol: { ...S.vol }, rows, spatial, engines, music };
+  },
+};
+$('out').textContent = 'ready — window.__audioTest.decodeAll() / .mix()';
+</script>
+</body>
+</html>

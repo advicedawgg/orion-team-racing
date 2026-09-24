@@ -11,7 +11,7 @@ export function createHud(root) {
     <div class="h-lap"><small>LAP</small><b id="hLap">1/3</b></div>
     <div class="h-place" id="hPlace">1<sup>st</sup></div>
     <div class="h-time" id="hTime">0:00.00</div>
-    <div class="h-stars" id="hStars">⭐ 0</div>
+    <div class="h-stars" id="hStars">★ 0</div>
     <div class="h-speed"><b id="hSpd">0</b><small>km/h</small></div>
     <div class="h-meter" id="hMeter"><i id="hCharge"></i><span class="red" id="hRed"></span><div class="pips" id="hPips"><u></u><u></u><u></u></div></div>
     <div class="h-boost" id="hBoostWrap"><i id="hBoost"></i></div>
@@ -28,7 +28,7 @@ export function createHud(root) {
       set('lap', `${Math.min(v.lap, v.laps)}/${v.laps}`, x => el.lap.textContent = x);
       set('place', v.place, p => { el.place.innerHTML = `${p}<sup>${ORD(p).slice(-2)}</sup>`; el.place.dataset.p = p; });
       set('time', clock(v.raceTime).slice(0, -1), x => el.time.textContent = x);
-      set('stars', v.stars, x => el.stars.textContent = `⭐ ${x}`);
+      set('stars', v.stars, x => el.stars.textContent = `★ ${x}`);
       set('spd', Math.round(Math.abs(v.speed) * 3.6), x => el.spd.textContent = x);
       set('red', v.redStart, r => { el.red.style.left = (r * 100) + '%'; el.red.style.width = ((1 - r) * 100) + '%'; });
       el.charge.style.transform = `scaleX(${v.drift ? v.charge : 0})`;

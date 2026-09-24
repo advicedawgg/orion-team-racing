@@ -33,15 +33,18 @@ src/camera.js         chase camera                                              
 src/fx.js             particles: drift sparks, exhaust flames, dust, skid marks (core)
 src/trackmesh.js      track data → road/walls/terrain meshes                    (core → tracks agent)
 src/tracks/*.js       one file per track (data only)                            (tracks agents)
-src/scenery/*.js      per-theme scenery builders                               (tracks agents)
+src/tracks/index.js   track registry (TRACKS) — the gate races every entry      (core; tracks agents append)
+src/scenery/*.js      per-theme scenery builders (beach.js: core placeholder)  (tracks agents)
+src/kartbox.js        box-kart fallback if racers.js is missing/broken          (core)
 src/racers.js         roster + procedural kart & character models + animation  (characters agent)
 src/items.js          item boxes, stars, weapons, projectiles, effects          (items agent)
-src/hud.js            in-race HUD                                               (ui agent)
+src/hud.js            in-race HUD (core wrote a minimal stub first)             (ui agent)
 src/menu.js           title, mode/character/track select, results, podium       (ui agent)
 src/audio.js          SFX + music + synthesized engines                          (audio agent)
 src/save.js           localStorage save (unlocks, best times, settings)         (ui agent)
 tools/check.js        THE GATE: track checks + headless 8-AI race sim           (core, extended by all)
 tools/shot.mjs        screenshot through the GPU headless Chrome                 (core)
+tools/slide-test.mjs  scripted power slide in the real browser, 3 turbos + shots (core)
 assets/tex|ui|sfx|audio|models   generated assets
 ```
 
@@ -202,8 +205,10 @@ Hit reactions: bomb/rocket = kart flips up and spins (~1.2 s, lose ~3 stars); pu
 ## Tracks (tracks agents)
 
 Built from a closed spline of control points, each with `{x, y, z, w (road width), bank}`, plus
-per-segment tags. `track.js` samples it (every ~1 m) and answers `project(pos, hintS)` →
-`{s, lat, y, normal, onRoad, surface, wall}`. Themes from the Super Orion worlds:
+per-segment tags — see **Track data format** below (the contract for tracks agents). `track.js`
+samples it (every ~1 m) and answers `project(pos, hint)` → `{i, s, lat, y, cy, onRoad, surface,
+hw, limL, limR, wallL, wallR, gap, tx, tz, lx, lz, tb, slope, noRespawn, tunnel}`. Themes from the
+Super Orion worlds:
 
 1. **Bubbly Beach** — easy, wide, gentle sweepers, a jump over a lagoon inlet, palm trees.
 2. **Ice Cream Peaks** — snowy ice-cream mountain, hairpins that teach sliding, a big jump.
@@ -214,6 +219,92 @@ per-segment tags. `track.js` samples it (every ~1 m) and answers `project(pos, h
 A **lap** = crossing the start line after passing all checkpoints in order (the track defines
 them as `s` values). 3 laps. Race positions from `(lap, s)`. Offroad (grass/sand/snow) slows
 you (~35%) but never stops you; each track tags its offroad surface.
+
+## Track data format (core owns; tracks agents author against it)
+
+A track is **one data-only module** `src/tracks/<id>.js` exporting a plain object, registered in
+`src/tracks/index.js` (import it, append to `TRACKS`; the gate then races it). Worked example:
+`src/tracks/beach.js`. Everything is metres; the loop is closed automatically (don't repeat point 0).
+
+```js
+export default {
+  id: 'beach', name: 'Bubbly Beach', theme: 'beach',   // theme → src/scenery/<theme>.js + trackmesh THEMES
+  music: 'beach', laps: 3,
+  width: 17,                    // default road width (per-point `w` overrides, smoothly interpolated)
+  offroad: 'sand',              // default offroad surface name (physics SURFACES in track.js: sand, grass,
+                                //   snow, mud, dirt, ice, rock, lava, space — add yours there with a speed factor)
+  defaults: { offL: 9, offR: 9, wallL: 'fence', wallR: 'fence' },   // inherited props, see below
+  env: { skyTop, skyHorizon, fog, fogNear, fogFar, sunDir: [x,y,z], sunColor, sun, hemiSky, hemiGround, hemi,
+         clouds: true },        // all optional; trackmesh THEMES[theme] gives the defaults
+  tex: { road: 'road_beach', ground: 'sand', water: 'water', <surfaceName>: '<texName>' },   // optional
+  water: { y: -1.4, color, tint },   // optional sea/lake plane. Touching it off-road = rescue. Omit for none.
+  terrain: { base: 0.2, shore: 70, dunes: 1.6, cell: 4.5, grass: { above: 1.6, color },
+             carve: [{ type: 'lake', x, z, r, depth }, { type: 'channel', pts: [[x,z],…], w, depth }] },
+  points: [ { x, z, y, w, bank, …inherited props }, … ],   // DRIVING ORDER. Point 0 = start line.
+  start: 0,                     // optional: `at` of the start line (default point 0)
+  gaps:  [{ from: 12.06, to: 12.4 }],      // no road here (jump over water/void); needs a jump lip just before
+  jumps: [{ at: 12.04, vy: 9 }],           // ramp lip: a kart crossing it on the road is launched at ≥ vy m/s up
+  pads:  [{ at: 11.45, lat: 0, len: 7, w: 4.5 }],          // turbo pads (medium turbo)
+  items: [{ at: 1.3, n: 4, lat: 0 }],      // item-box ROWS across the road (n defaults from width)
+  stars: [{ at: 7.1, lat: 4.5, n: 6, spacing: 3.5, curve: 1.5 }],   // star rows ALONG the road (curve = sideways bow, m)
+  checkpoints: [2.5, 6, 9.5, 14],          // optional `at`s; default = checkpointCount (8) evenly spaced, never in a gap
+  noRespawn: [{ from, to }],               // optional stretches where the rescue must not drop you
+};
+```
+
+**Positions along the track are authored as `at` = control-point index + fraction** (`12.5` =
+halfway from point 12 to point 13) — you think in your own points, not in metres. `track.sOf(at)`
+converts to `s` (metres from the start line).
+
+**Control points** `{ x, z, y=0, w=width, bank=0 }`: centripetal Catmull-Rom through all of
+them. `y` = road height (hills, ramps); `bank` in **degrees, + = leans into a LEFT turn** (left
+edge low). Banking pivots on the low (inside) edge, which stays at `y`; the outside rises.
+Beyond the road edges the offroad stays level at the edge height. `+x` is to the LEFT of a kart
+driving `+z` (Y up, forward = `(sin yaw, 0, cos yaw)`, left = `(fz, 0, −fx)`, `lat` + = left).
+
+**Inherited props** — set on a point, they hold for every following segment until changed
+(like a pen), starting from `defaults`:
+| prop | meaning |
+|---|---|
+| `offL`, `offR` (`off` = both) | metres of drivable offroad beyond each road edge, then the boundary |
+| `wallL`, `wallR` (`wall` = both) | boundary kind: a visible style (`fence`, `beach`, `wood`, `rock`, `ice`, `castle`, `neon` — `WALLS` in trackmesh.js, add yours), `'none'` = invisible wall, `'fall'` = no boundary, you can fall off (Star Road) |
+| `surfL`, `surfR` (`surf` = both) | offroad surface name for that side |
+| `kerb` | `'auto'` (default: red/white kerbs where the corner is tighter than r≈55 m), `true`, `false` |
+| `bridge` | this stretch may pass over/under another stretch (≥5 m apart vertically) |
+| `tunnel` | roof over the road (flag only — scenery draws it) |
+
+**Resolved model** (`buildTrack(def)`): `length, n, ds` and per-sample typed arrays `X Y Z TX TZ
+TY HW TB CURV HEAD AIL OFFL OFFR FLAG U` (AIL = AI racing-line lateral offset; FLAG bits: 1 gap,
+2 bridge, 4 noRespawn, 8 tunnel, 16 jump run-up); `props[k]` (inherited props); `pads`,
+`jumps`, `gaps`, `checkpoints` (s), `grid` (8 slots `{s, lat, x, y, z, yaw}`, 0 = pole,
+two-wide staggered), and for the **items agent**:
+- `itemRows: [{ s, slots: [{ lat, x, y, z }] }]` — put an item box at each slot (y = road surface).
+- `starRows: [{ s, points: [{ s, lat, x, y, z }] }]` — put a star at each point.
+
+Helpers: `project(pos, hint, out?)`, `pointAt(s, lat)` → `{x,y,z,yaw}`, `frameAt(s)` → `{x,y,z,
+tx,tz,lx,lz,hw,tb,yaw,k}`, `sOf(at)`, `idx(s)`, `wrapS(s)`, `dS(a,b)` (signed shortest), 
+`respawnS(s)`, `turnAhead(s, a, b)` (heading change between s+a and s+b), `bounds`, `water`,
+`killY`. The gate checks: closed, 600–2000 m, widths 9–30, no self-overlap, slopes ≤35%,
+radius ≥10 m, pads/items/stars/grid on the road, every gap has a lip and is clearable at
+≤14 m/s, and an 8-AI race on easy/medium/hard finishes with nobody stuck.
+
+**Authoring tips (measured on Bubbly Beach):** base speed 22 m/s, so a ~1000 m lap is ~45 s.
+Corners of radius 25–45 m over 120°+ are the satisfying 3-turbo slides; radius < 20 m with a
+17 m road is a wall-banger for kids. Put a turbo pad ~30 m before a jump so everyone clears it;
+`vy` 9 over a 9 m gap gives ~0.7 s air (≥0.5 s = hang-time turbo). Keep `off` ≥ 5 on easy
+tracks — the sand is the forgiveness. Iterate with `node tools/check.js <id>` and an overview
+shot: `node tools/shot.mjs 'track=<id>&skip=1&hud=0&cam=x,y,z,tx,ty,tz' shots/o.png`.
+
+### Scenery hook (tracks agents)
+
+`src/scenery/<theme>.js` default-exports `build(ctx)` (may be async) → optional `{ update(dt, t) }`.
+A missing file is fine. `ctx = { THREE, group (add your meshes here), track, def, env, rng
+(seeded), loadTex(name, fallbackCanvasFn?, {repeat, file, onload}), groundAt(x,z) (terrain height),
+trackGroundAt(x,z) (road/offroad height where drivable, else terrain), isClear(x,z,r,margin)
+(outside the drivable corridor — never block the road), aboveWater(x,z,h), corridorInfo(x,z),
+bounds {x0,z0,x1,z1} }`. **Instance** repeated props, **merge** one-offs per material, and put
+props ON `groundAt` (nothing floats). `src/scenery/beach.js` is a worked example (palms,
+umbrellas, rocks, lighthouse, huts, boats, bunting ≈ 10 draw calls).
 
 ## Modes
 
@@ -240,8 +331,12 @@ you (~35%) but never stops you; each track tags its offroad surface.
   feature isn't done until you've seen it.
 - URL debug params (core provides, all extend): `?track=beach&racer=orion&skip=1` jumps straight
   into a race, `&cam=x,y,z,tx,ty,tz` pins the camera, `&t=12` fast-forwards the sim 12 s with AI
-  driving the player, `&ai=1` lets AI drive the player, `&hud=0`. `window.__OTR` exposes game
-  state for tests.
+  driving the player, `&ai=1` lets AI drive the player, `&hud=0`. Also `&diff=easy|medium|hard`,
+  `&slot=0..7` (player grid slot, default 6), `&laps=N`, `&seed=N`, `&touch=1` (force touch UI),
+  `&auto=1` (auto-accelerate), `&hd=1`, `&shadows=0`, `&fx=0`. `window.__OTR` exposes game
+  state for tests (see **Core runtime APIs**).
+- `node tools/slide-test.mjs` drives the player through a real power slide in the browser
+  (3 perfect turbos) and screenshots each flame colour to `shots/slide/`.
 
 ## Hard-won rules inherited from the sibling projects
 
@@ -294,7 +389,76 @@ export function renderPortrait(id, size) // -> HTMLCanvasElement (offscreen rend
 ```
 
 **Kart state** (`physics.js`, core owns — other modules read these fields, and items add
-effects through `physics.applyHit(kart, kind)` / `physics.addBoost(kart, secs, tier)`):
+effects through `physics.applyHit(kart, kind)` / `physics.addBoost(kart, secs, tier, kick)`):
 `pos, vel, yaw, speed, steer, drift, driftAngle, charge, turbos, boostT, air, airT, onRoad,
 surface, stars, item, itemCount, shieldT, invincT, hitT, hitKind, spinT, slowT, s, lap,
-lapsDone, place, finished, finishTime, racerId, isPlayer`.
+lapsDone, place, finished, finishTime, racerId, isPlayer`. Units/meaning:
+- `yaw` = direction of TRAVEL; the body is drawn at `yaw + drift·driftAngle` (the slide swing).
+  `speed` signed m/s along yaw; `vel` world m/s (incl. `push`, the decaying side-shove from walls
+  and bumps); `vy`, `air`, `airT` (s in the air), `landT` (s since landing), `hop` (this air is a hop).
+- slide: `drift` −1/0/+1 (+ = left), `driftBtn` 'a'|'b', `charge` 0..1, `inRed`, `turbos` 0..3
+  this slide, `overheat`, `fizzleT` (s of smoke left).
+- boost: `boostT` reserve seconds (decays 1/s, raises top speed, cap 3 s), `boostTier` 1..3
+  (3 = purple flames).
+- hits: `hitT` = **seconds left** of a flip (`hitDur` total; main passes progress `1 − hitT/hitDur`
+  to animateRacer), `spinT` seconds left of a spin-out, `slowT` wobble seconds, `stallT` start stall,
+  `shieldT`, `invincT` (super star: immune + knocks others aside + top speed), `stars` (≥10 = +8% top).
+- track/race: `s`, `si` (sample hint), `lat`, `ground` (surface y under the kart), `nrm` (smoothed
+  ground normal), `lap` (1-based current), `lapsDone`, `nextCp`, `progress` (m, for positions),
+  `place`, `finished`, `finishPlace`, `finishTime`, `lapTimes[]`, `frozen` (grid), `respawnT` /
+  `respawnAt` (rescue in progress and where it drops you), `ctrl` (last control used).
+- `ev[]` — this step's events (strings or `[name, value]`), see Core runtime APIs.
+
+## Core runtime APIs
+
+**`physics.js`** (pure): `DT`, `T` (every tuning number — read these, don't copy them),
+`createKart({racerId, stats, isPlayer, easyBoost, pace, index})`, `placeKart(k, slot, track)`,
+`stepKart(k, ctrl, track)`, `collideKarts(karts)`, `topSpeed(k)`, `baseTop(k)`, `redStart(k)`,
+`addBoost(k, secs, tier=1, kick=3)` (reserve + an instant speed kick), `applyHit(k, 'flip'|'spin'|
+'wobble')` → true if it landed (false if shielded/invincible; a shield pops), `beginRespawn(k, why,
+track, atS?)`. Control object (player and AI alike): `{ steer (−1..1, +left), throttle 0..1, brake
+0..1, hopA, hopB }` (shoulders are HELD booleans; physics does its own edge detection).
+Kart events (`k.ev`): `hop, land (air s), drift_start, drift_end, charge_red, turbo1, turbo2,
+turbo3, fizzle, overheat, pad, ramp, hang1, hang2, wall (0..1), bump (0..1), respawn ('splash'|
+'fall'), respawned, hit (kind), stars_lost (n), shield_pop`.
+
+**`race.js`** (pure): `createRace({ track, entrants: [{racerId, stats}], playerIndex (−1 = all AI),
+difficulty, laps, seed, easyBoost, noStall })` → `race` with `karts, brains, player, phase
+('countdown'|'race'|'done'), t (s; negative during the countdown), order (by place), laps,
+stats[] (per-kart gate stats), autoPlayer (AI drives the player)`, `race.step(playerCtrl)`,
+`race.events` (this step: `{type:'count', n}`, `{type:'go'}`, `{type:'lap', kart, lap}`,
+`{type:'final_lap', kart}`, `{type:'finish', kart, place}`, `{type:'race_done'}`, `{type:'stall',
+kart}`, `{type:'kart', kart, e, v}` for every kart event incl. `start_boost`),
+`race.addSystem(fn(race, dt))` (**items agent: hook item logic here** — runs every step after
+physics and kart bumping, before laps), `race.results()`. `simulate(race, {maxT, playerCtrl, onStep})`
+runs a whole race headless. Countdown = 3.6 s; start boost window −0.25..+0.1 s around GO
+(early mash = stall, not on Easy). After the player finishes the AI drives their kart; the race is
+called 20 s later (unfinished karts get estimated times).
+
+**`ai.js`** (pure): `DIFFICULTY` table (pace, P(slide), P(turbo), reaction, start boost, rubber
+band), `createBrain(kart, track, difficulty, seed)`, `drive(brain, race)` → control object.
+
+**`main.js`**: `setState(name)` / `onState(fn(state, prev))` — states `boot, title, countdown,
+race, finished, results` (the UI agent's menus hook here; `title` is a placeholder card).
+`window.__OTR`: `ready, state, race, track, player, G, scene, camera, renderer, chase, fx, audio,
+T, DT, override(ctrl|null)` (drive the player), `advance(secs)` (fast-forward, silent),
+`script(n, fn(k,i) → ctrl, {draw})` (step n frames with scripted controls; returns the player's
+kart events), `hold(bool)` (freeze the live loop), `render()`, `info()` (`renderer.info` calls/
+triangles), `loadTrack(id)`, `startRace()`.
+
+**`hud.js`** (core stub → UI agent): `createHud(el)` → `{ show(bool), update(view), count(n|'GO!'|null),
+banner(text, ms, cls), results(rows|null) }`; `view` = `{lap, laps, place, speed, charge, redStart,
+inRed, drift, overheat, turbos, boostT, boostMaxT, stars, finished, raceTime}`.
+
+**`input.js`**: `update()` once per frame; `controls` (same shape as the control object + `item`),
+`hit(name)` edges (`hopA hopB item pause mute fullscreen confirm back up down left right`),
+`settings.autoAccel`, `initTouch()` wires `[data-btn]` elements, `onGesture(fn)` (audio unlock).
+
+**`trackmesh.js`**: `buildTrackMesh(track)` → `{ group, env, sky, groundAt, isClear, aboveWater,
+update(dt,t) }`; `loadTex(name, fallback, opts)` (instant procedural canvas, upgrades to
+`assets/tex/<name>.jpg|png` when it loads); `PROC` (procedural textures), `THEMES`, `WALLS`,
+`mergeGeos(geos)`.
+
+**`fx.js`**: `createFx(scene)` → `{ kart(k, rig, dt, camPos), burst(kind, pos, opts), update(dt, camera),
+clearSkids() }`; burst kinds `land poof fizzle overheat wall splash turbo pad sparkle`; `FLAME`
+colours. Two particle draw calls + one skid-mark mesh; no lights.

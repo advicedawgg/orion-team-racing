@@ -287,7 +287,7 @@ export async function buildTrackMesh(track, { scene } = {}) {
   // ------------------------------------------------ terrain heightfield
   const T = def.terrain || {};
   const water = track.water;
-  const B = track.bounds, M = 170, CELL = 3.5;
+  const B = track.bounds, M = 170, CELL = def.terrain?.cell ?? 4.5;
   const x0 = B.minX - M, z0 = B.minZ - M, nx = Math.ceil((B.maxX - B.minX + 2 * M) / CELL) + 1, nz = Math.ceil((B.maxZ - B.minZ + 2 * M) / CELL) + 1;
   const H = new Float32Array(nx * nz);
   const baseH = T.base ?? 0, shore = T.shore ?? Infinity, dunes = T.dunes ?? 1;
@@ -404,6 +404,29 @@ export async function buildTrackMesh(track, { scene } = {}) {
     group.add(m);
     updaters.push(() => {}); // sky follows the camera in main (sky.position)
     group.userData.sky = m;
+  }
+
+  // ------------------------------------------------ sky clouds: a ring of soft billboards far out (1 draw call)
+  if (env.clouds !== false) {
+    const tex = loadTex('skycloud', () => cv(256, 128, (g, w, h) => {
+      for (let i = 0; i < 26; i++) {
+        const x = w * (0.15 + 0.7 * Math.random()), y = h * (0.45 + 0.25 * Math.random() - 0.1 * Math.sin(Math.PI * x / w)), r = 18 + Math.random() * 26 * Math.sin(Math.PI * x / w);
+        const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, 'rgba(255,255,255,.95)'); gr.addColorStop(0.7, 'rgba(255,255,255,.8)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+      }
+    }), { file: false });
+    const geos = [];
+    const cx = (B.minX + B.maxX) / 2, cz = (B.minZ + B.maxZ) / 2;
+    let seed = 7; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < 16; i++) {
+      const a = i / 16 * Math.PI * 2 + r() * 0.3, R = 700 + r() * 350, w = 160 + r() * 160;
+      const q = new THREE.PlaneGeometry(w, w * 0.45);
+      q.lookAt(new THREE.Vector3(-Math.cos(a), 0, -Math.sin(a)));
+      q.translate(cx + Math.cos(a) * R, 90 + r() * 160, cz + Math.sin(a) * R);
+      geos.push(q);
+    }
+    const m = new THREE.Mesh(mergeGeos(geos), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide, opacity: 0.95 }));
+    m.name = 'clouds'; m.renderOrder = -0.5; m.frustumCulled = false; group.add(m);
   }
 
   // ------------------------------------------------ start line decal + arch

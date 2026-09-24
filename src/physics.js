@@ -329,10 +329,9 @@ export function stepKart(k, c, track, dt = DT) {
   if (track.killY != null && k.pos.y < track.killY && (pr.gap || !pr.onRoad && ground < track.killY)) {
     // fell in a jump's gap: the helper carries you ACROSS (kid-first), not back to try again
     const g = pr.gap && track.gaps.find(g => { const d = track.dS(g.s0, k.s); return d >= -2 && d <= g.len + 2; });
-    beginRespawn(k, 'splash');
-    if (g) k.respawnAt = g.s0 + g.len + 8;
+    beginRespawn(k, 'splash', track, g ? g.s0 + g.len + 8 : null);
   }
-  else if (k.pos.y < (isFinite(ground) ? ground : pr.cy) - 12 || (!isFinite(ground) && k.pos.y < pr.cy - 8)) beginRespawn(k, 'fall');
+  else if (k.pos.y < (isFinite(ground) ? ground : pr.cy) - 12 || (!isFinite(ground) && k.pos.y < pr.cy - 8)) beginRespawn(k, 'fall', track);
   if (!k.air && !pr.noRespawn && pr.onRoad) k.lastGoodS = k.s;
 
   // ground normal (for render tilt) from slope + bank, smoothed
@@ -360,15 +359,18 @@ function land(k, c, ground) {
   } else k.hopBtn = null;
 }
 
-function beginRespawn(k, why) {
+/** Start the helper's rescue: the kart vanishes, and `respawnAt` (s on the centre line) is decided
+ *  NOW so the renderer can show the helper carrying it down there during respawnT. */
+export function beginRespawn(k, why, track, atS = null) {
   if (k.respawnT > 0) return;
+  k.respawnAt = track.wrapS(atS != null ? atS : track.respawnS(k.lastGoodS));
   endDrift(k);
   k.respawnT = T.RESPAWN_T; k.speed = 0; k.boostT = 0; k.boostTier = 0; k.push.x = k.push.z = 0;
   ev(k, ['respawn', why]);
 }
 /** Put a kart back on the centre line at its last good spot (called when respawnT runs out). */
 export function placeAtRespawn(k, track) {
-  const s = k.respawnAt != null ? track.wrapS(k.respawnAt) : track.respawnS(k.lastGoodS);
+  const s = k.respawnAt != null ? k.respawnAt : track.respawnS(k.lastGoodS);
   k.respawnAt = null;
   const p = track.pointAt(s, 0);
   k.pos.x = p.x; k.pos.z = p.z; k.pos.y = p.y + T.RESPAWN_DROP;

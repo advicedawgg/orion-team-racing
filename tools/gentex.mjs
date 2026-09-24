@@ -58,6 +58,9 @@ const ICON = `Chunky cartoon video-game item icon sticker, a single object centr
   + `cel-shaded, reads clearly at small size, isolated on a plain flat pure white background, no shadow on the background, `
   + `no text, no letters, no watermark`;
 
+// For icons the model tends to fill the frame edge to edge — ask for room.
+const SMALL = `The whole object is fully visible, drawn small in the centre of the frame, filling only about two thirds of it, with plenty of plain white space on every side`;
+
 const SCENE = `Bright joyful 3D cartoon kart-racing video game art, colourful stylised low-poly rendering like a family kart racer, `
   + `sunny saturated colours, no text, no letters, no logos, no watermark`;
 
@@ -73,18 +76,18 @@ export const ASSETS = {
   // ---------------------------------------------------------------- roads
   road_beach: { kind: 'tex', seed: 3111, luma: 160, prompt: `Light grey asphalt tarmac road surface seen from directly above, fine even gravel aggregate grain with tiny pale pebbles, sun-bleached warm light grey, a few faint wisps of blown sand, uniform all-over texture with no large shapes, ${ROADTONE}. ${STYLE}` },
   road_ice: { kind: 'tex', seed: 3112, luma: 185, prompt: `Smooth packed strawberry and vanilla ice cream road surface seen from directly above, soft pastel pink with small creamy white flecks and fine shallow scoop marks, evenly textured all over with no large swirls, a few tiny rainbow sprinkles, ${ROADTONE}. ${STYLE}` },
-  road_volcano: { kind: 'tex', seed: 3103, luma: 130, prompt: `Grey basalt paving stones road seen from directly above, irregular flat hexagonal flagstones in light slate grey and warm grey, thin faint warm orange glow in a few of the narrow cracks between the stones, mostly grey, ${ROADTONE}. ${STYLE}` },
-  road_castle: { kind: 'tex', seed: 3114, luma: 150, prompt: `Castle courtyard road of large rounded cobblestones seen from directly above, about eight cobbles across the frame, evenly sized and tightly packed, light warm grey and pale sandstone beige stones with thin mortar lines, ${ROADTONE}. ${STYLE}` },
+  road_volcano: { kind: 'tex', flat: true, seed: 3103, luma: 130, prompt: `Grey basalt paving stones road seen from directly above, irregular flat hexagonal flagstones in light slate grey and warm grey, thin faint warm orange glow in a few of the narrow cracks between the stones, mostly grey, ${ROADTONE}. ${STYLE}` },
+  road_castle: { kind: 'tex', flat: true, seed: 3114, luma: 150, prompt: `Castle courtyard road of large rounded cobblestones seen from directly above, about eight cobbles across the frame, evenly sized and tightly packed, light warm grey and pale sandstone beige stones with thin mortar lines, ${ROADTONE}. ${STYLE}` },
   road_star: { kind: 'tex', seed: 3125, luma: 190, prompt: `Shimmering opal rainbow road surface seen from directly above, smooth pearly surface with soft pastel pink, lilac, mint and sky blue colour patches blending gently, sprinkled all over with tiny white twinkling star sparkles and glitter. ${STYLE}` },
   // -------------------------------------------------------------- terrain
   sand: { kind: 'tex', seed: 3201, prompt: `Golden tropical beach sand from directly above, fine even grain with gentle wind ripple lines, warm cream and honey tones, a few tiny shell fragments. ${STYLE}` },
   grass: { kind: 'tex', seed: 3202, prompt: `Lush bright green grass lawn from directly above, short even blades, subtle patches of lighter yellow-green and darker green, tiny scattered clover. ${STYLE}` },
   snow: { kind: 'tex', seed: 3203, prompt: `Fresh soft white snow from directly above, gentle powdery drifts with very soft pale blue and lilac tints in the dips, fine sparkly glitter. ${STYLE}` },
-  waffle: { kind: 'tex', seed: 3204, prompt: `Ice cream cone waffle pattern seen straight on, a regular diagonal grid of square waffle cells with raised ridges, golden toasted biscuit and warm caramel tones. ${STYLE}` },
+  waffle: { kind: 'tex', flat: true, seed: 3204, prompt: `Ice cream cone waffle pattern seen straight on, a regular diagonal grid of square waffle cells with raised ridges, golden toasted biscuit and warm caramel tones. ${STYLE}` },
   lava: { kind: 'tex', seed: 3215, luma: 150, prompt: `Bright flowing molten lava from directly above, swirling glowing rivers of bright yellow and orange covering most of the surface, only a few small thin darker orange-red crust plates, very bright hot and luminous. ${STYLE}` },
   rock_volcanic: { kind: 'tex', seed: 3206, luma: 115, prompt: `Volcanic rock surface from directly above, chunky faceted angular stone in warm medium grey-brown and rusty reddish tones, a few small pits, not black. ${STYLE}` },
-  castle_wall: { kind: 'tex', seed: 3207, prompt: `Castle wall made of large rectangular stone blocks in a regular running-bond brick pattern seen straight on, light warm grey and sandy beige stones with slightly different tints, thin pale mortar lines. ${STYLE}` },
-  castle_floor: { kind: 'tex', seed: 3208, prompt: `Castle hall floor of large square polished stone tiles in a checkerboard of warm cream and soft terracotta red, thin grout lines, seen from directly above. ${STYLE}` },
+  castle_wall: { kind: 'tex', flat: true, seed: 3207, prompt: `Castle wall made of large rectangular stone blocks in a regular running-bond brick pattern seen straight on, light warm grey and sandy beige stones with slightly different tints, thin pale mortar lines. ${STYLE}` },
+  castle_floor: { kind: 'tex', flat: true, seed: 3208, prompt: `Castle hall floor of large square polished stone tiles in a checkerboard of warm cream and soft terracotta red, thin grout lines, seen from directly above. ${STYLE}` },
   water: { kind: 'tex', seed: 3209, prompt: `Tropical shallow lagoon water from directly above, gentle caustic light ripples, bright turquoise and aqua tones with soft white highlights, clean stylised waves. ${STYLE}` },
   wood: { kind: 'tex', seed: 3210, flat: true, prompt: `Warm timber boardwalk planks seen from directly above, straight parallel planks with visible grain and a few knots, honey and light chestnut brown tones, thin gaps between planks. ${STYLE}` },
   metal: { kind: 'tex', seed: 3221, luma: 150, flat: true, prompt: `Shiny steel diamond-plate metal panel from directly above, raised tread pattern, light cool silver grey, perfectly uniform even brightness everywhere with no gradients, clean and bright. ${STYLE}` },
@@ -102,9 +105,9 @@ export const ASSETS = {
   // ------------------------------------------------------------- key art
   title: {
     kind: 'title', seed: 3401, w: 1536, h: 864,
-    prompt: `Dynamic action scene from a colourful family kart racing game. In front, a happy young boy with short brown hair and a huge grin, wearing a blue racing jacket with orange stripes and a yellow star on the chest, `
-      + `drives a small bright blue and orange go-kart, leading the race towards the viewer. Close behind him a cheerful bald dad with a short black beard wearing a shiny golden crown drives a red kart, `
-      + `next to him a smiling mum with long brown hair in a purple kart, and a small black cat with bright mint-green eyes drives a tiny black kart. `
+    prompt: `Dynamic action scene from a colourful family kart racing game. In front, a happy fair-skinned young boy with short messy brown hair and a huge grin, wearing a blue hoodie with a big yellow star on the chest and orange racing stripes, `
+      + `drives a small bright blue go-kart with yellow and red trim, leading the race towards the viewer. Close behind him a cheerful big grown-up dad with pale pinkish-white skin, completely bald head with a short black beard wearing a shiny golden crown and a royal blue robe drives a red kart, `
+      + `next to him a smiling grown-up adult woman, his mum, with pale skin and long brown hair with a flower in it and a purple dress drives a purple kart, and a small black cat with bright mint-green eyes drives a tiny pink kart. `
       + `Tropical beach race track with palm trees, turquoise sea, golden sand, bunting flags, sparkles, speed lines and motion blur, drifting dust, bright sunny blue sky. ${SCENE}`,
   },
 
@@ -116,17 +119,17 @@ export const ASSETS = {
   track_star: { kind: 'track', seed: 3505, w: 1344, h: 768, prompt: `Star Road kart race track: a glowing rainbow road floating in outer space with no walls, looping through colourful nebula clouds, stars and small cartoon planets. ${SCENE}` },
 
   // ---------------------------------------------------------- item icons
-  item_taco_bomb: { kind: 'icon', seed: 3601, prompt: `A round black cartoon bomb with a lit sparkling fuse, wrapped in a crunchy yellow taco shell with lettuce and tomato poking out. ${ICON}` },
-  item_rocket: { kind: 'icon', seed: 3602, prompt: `A cartoon homing rocket missile pointing diagonally up-right, purple and silver body with a yellow star on its side, red fins, bright orange flame at the back. ${ICON}` },
-  item_tnt: { kind: 'icon', seed: 3603, prompt: `A red wooden crate with a big black and yellow warning stripe band and a small lit fuse on top, chunky cartoon explosive box. ${ICON}` },
+  item_taco_bomb: { kind: 'icon', seed: 3621, prompt: `A round black cartoon bomb with a short lit sparkling fuse, sitting inside a crunchy yellow taco shell with green lettuce and red tomato poking out. ${SMALL}. ${ICON}` },
+  item_rocket: { kind: 'icon', seed: 3622, prompt: `A small cartoon homing rocket missile flying diagonally up to the right, purple body with a yellow star on its side, silver nose cone, red fins, a bright orange flame puff at its tail. ${SMALL}. ${ICON}` },
+  item_tnt: { kind: 'icon', seed: 3623, prompt: `A small red wooden crate seen at a three-quarter angle, with a black and yellow warning stripe band around it and a short lit fuse sparking on top, chunky cartoon explosive box. ${SMALL}. ${ICON}` },
   item_nitro: { kind: 'icon', seed: 3604, prompt: `A bright green glowing cartoon crate with lightning bolt symbols on its sides, fizzing green sparks. ${ICON}` },
   item_icecream: { kind: 'icon', seed: 3605, prompt: `A big dropped scoop of melting strawberry ice cream splatting into a gooey pink puddle, with a waffle cone lying on its side and sprinkles. ${ICON}` },
   item_shield: { kind: 'icon', seed: 3606, prompt: `A big shiny translucent light blue soap bubble shield sphere with rainbow sheen and a white highlight, sparkles around it. ${ICON}` },
-  item_turbo: { kind: 'icon', seed: 3607, prompt: `A red and orange turbo boost rocket booster pointing right with big blue and orange fire blasting out behind it, speed lines. ${ICON}` },
+  item_turbo: { kind: 'icon', seed: 3637, prompt: `On a plain white background: a small red and orange cartoon turbo rocket booster pointing to the right with a big blue and orange flame blasting out of its back end, speed lines. ${SMALL}. ${ICON}` },
   item_superstar: { kind: 'icon', seed: 3608, prompt: `A big shining golden five-pointed star with a happy smiling face, rainbow sparkle trail swirling around it. ${ICON}` },
   item_remote: { kind: 'icon', seed: 3609, prompt: `A chunky black TV remote control with colourful round buttons and a big red pause button, a small golden crown sticker on it. ${ICON}` },
   item_warp: { kind: 'icon', seed: 3610, prompt: `A glowing magic blue and purple warp orb sphere with a swirling spiral inside and a tail of stars, crackling energy. ${ICON}` },
-  star: { kind: 'icon', seed: 3611, prompt: `A single chunky bright golden yellow five-pointed star collectible, glossy and puffy with rounded points, small white shine. ${ICON}` },
+  star: { kind: 'icon', seed: 3631, prompt: `A single chunky bright golden yellow five-pointed star collectible, glossy and puffy with rounded points, a small white shine, thick dark navy outline. ${SMALL}. ${ICON}` },
   itembox: { kind: 'icon', seed: 3612, prompt: `A floating translucent rainbow coloured cube item box with a big bold white question mark on its front face, glossy glass edges, sparkles. ${ICON}` },
 };
 
@@ -163,10 +166,16 @@ function specOf(name) {
   const s = ASSETS[name];
   return { w: 1024, h: 1024, ...s };
 }
-function rawPath(name) {
+function rawPath(name, model = BACKEND === 'openrouter' ? OR_MODEL : UNET) {
   const s = specOf(name);
-  const h = crypto.createHash('sha1').update(`${s.prompt}|${s.seed}|${s.w}x${s.h}|${BACKEND === 'openrouter' ? OR_MODEL : UNET}`).digest('hex').slice(0, 8);
+  const h = crypto.createHash('sha1').update(`${s.prompt}|${s.seed}|${s.w}x${s.h}|${model}`).digest('hex').slice(0, 8);
   return path.join(RAW, `${name}-${h}.png`);
+}
+// A cached raw of the SAME prompt from either backend counts (so --force
+// re-post-processing never needs the GPU or an API key); the current
+// backend's render wins when both exist.
+function cachedRaw(name) {
+  return [rawPath(name), rawPath(name, UNET), rawPath(name, OR_MODEL)].find(p => fs.existsSync(p));
 }
 
 async function submit(prompt) {
@@ -237,7 +246,7 @@ async function renderOpenRouter(name) {
   const key = process.env.OPENROUTER_API_KEY;
   if (!key) throw new Error('BACKEND=openrouter needs OPENROUTER_API_KEY');
   const r = s.w / s.h;
-  const aspect_ratio = r > 1.9 ? '2:1' : r > 1.6 ? '16:9' : '1:1';
+  const aspect_ratio = r > 1.6 ? '16:9' : '1:1';   // Krea accepts 1:1 4:3 3:2 16:9 4:5 2:3 9:16 — no 2:1; skies are cropped
   for (let attempt = 1; ; attempt++) {
     try {
       const res = await fetch('https://openrouter.ai/api/v1/images', {
@@ -293,10 +302,11 @@ async function one(name) {
   if (fs.existsSync(out) && !force && !regen) { console.log(`${name.padEnd(16)} exists, skip`); return; }
   let msg = `${name.padEnd(16)} `;
   try {
-    const raw = rawPath(name);
-    if (!fs.existsSync(raw) || regen) {
+    let raw = cachedRaw(name);
+    if (!raw || regen) {
       const t0 = Date.now();
       await render(name);
+      raw = rawPath(name);
       msg += `rendered ${((Date.now() - t0) / 1000).toFixed(0)}s  `;
     } else msg += 'cached raw  ';
     msg += execFileSync('python3', [path.join(ROOT, 'tools', 'texpost.py'), s.kind, raw, out, ...(s.luma ? ['--luma', String(s.luma)] : []), ...(s.flat ? ['--flat'] : [])], { encoding: 'utf8' }).trim();

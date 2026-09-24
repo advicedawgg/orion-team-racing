@@ -51,26 +51,26 @@ export default function build(ctx) {
   // ------------------------------------------------ palm tree: bent trunk + crown (two instanced meshes)
   {
     const trunkParts = [], crownParts = [];
-    const H = 7, segs = 7, lean = 1.8;
+    const H = 7, segs = 5, lean = 1.8;
     const bend = t => [lean * t * t, H * t, 0];
     for (let i = 0; i < segs; i++) {
       const t0 = i / segs, t1 = (i + 1) / segs, a = bend(t0), b = bend(t1);
       const r0 = 0.32 - 0.12 * t0, r1 = 0.32 - 0.12 * t1;
-      const g = new THREE.CylinderGeometry(r1, r0 * 1.08, Math.hypot(b[0] - a[0], b[1] - a[1]) * 1.02, 7, 1);
+      const g = new THREE.CylinderGeometry(r1, r0 * 1.08, Math.hypot(b[0] - a[0], b[1] - a[1]) * 1.02, 6, 1);
       g.rotateZ(-Math.atan2(b[0] - a[0], b[1] - a[1])); g.translate((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 0);
       trunkParts.push(paint(g, i % 2 ? 0x9a6b3f : 0xb07e4c));
     }
     const top = bend(1);
     for (let i = 0; i < 7; i++) {
       const ang = i / 7 * Math.PI * 2 + 0.3;
-      const frond = new THREE.PlaneGeometry(0.9, 3.4, 1, 4);
+      const frond = new THREE.PlaneGeometry(0.9, 3.4, 1, 3);
       const p = frond.attributes.position;
       for (let v = 0; v < p.count; v++) { const y = p.getY(v) + 1.7; p.setXYZ(v, p.getX(v) * (1 - y / 4.2), -0.28 * y * y, y); }
       frond.computeVertexNormals();
       frond.rotateY(ang); frond.translate(top[0], top[1], top[2]);
       crownParts.push(paint(frond, i % 2 ? 0x3fae4a : 0x55c455));
     }
-    for (let i = 0; i < 3; i++) { const c = new THREE.SphereGeometry(0.22, 6, 5); c.translate(top[0] + Math.cos(i * 2.1) * 0.3, top[1] - 0.3, Math.sin(i * 2.1) * 0.3); crownParts.push(paint(c, 0x6b4a2a)); }
+    for (let i = 0; i < 3; i++) { const c = new THREE.SphereGeometry(0.22, 5, 3); c.translate(top[0] + Math.cos(i * 2.1) * 0.3, top[1] - 0.3, Math.sin(i * 2.1) * 0.3); crownParts.push(paint(c, 0x6b4a2a)); }
     const trunkGeo = merge(trunkParts), crownGeo = merge(crownParts);
     const leafMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
     const trunks = new THREE.InstancedMesh(trunkGeo, vmat, palms.length), crowns = new THREE.InstancedMesh(crownGeo, leafMat, palms.length);
@@ -189,6 +189,14 @@ export default function build(ctx) {
         tri.computeVertexNormals();
         tri.rotateY(f.yaw); tri.translate(p.x, p.y + sag, p.z);
         parts.push(paint(tri, PAL[Math.abs(Math.round(s / 1.6)) % PAL.length]));
+        // rope to the next flag, and a pole every 8 m
+        const f2 = track.frameAt(s + 1.6), p2 = track.pointAt(s + 1.6, lat);
+        const sag2 = 2.6 - 0.25 * Math.sin(((s + 1.6 + 70) % 8) / 8 * Math.PI);
+        const a3 = new THREE.Vector3(p.x, p.y + sag, p.z), b3 = new THREE.Vector3(p2.x, p2.y + sag2, p2.z);
+        const rope = new THREE.CylinderGeometry(0.025, 0.025, a3.distanceTo(b3), 3);
+        rope.rotateX(Math.PI / 2); rope.lookAt(b3.clone().sub(a3)); rope.translate((a3.x + b3.x) / 2, (a3.y + b3.y) / 2, (a3.z + b3.z) / 2);
+        parts.push(paint(rope, 0xf5f5f5));
+        if (Math.abs((s + 70) % 8) < 1.6) { const pole = new THREE.CylinderGeometry(0.06, 0.06, 2.9, 5); pole.translate(p.x, p.y + 1.45, p.z); parts.push(paint(pole, 0xf5f5f5)); }
       }
     }
     const mesh = new THREE.Mesh(merge(parts), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));

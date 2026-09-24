@@ -70,9 +70,16 @@ export const BARKS = {
 // file's loudest 100 ms to a per-category target). Tune HERE, one stage at a time, then re-run
 // tools/mixprobe.mjs.
 export const TRIM = {
-  engine: 0, vo: 0,
-  countdown: -2, go: 0, menu_move: -6, menu_ok: -3, menu_back: -4, roulette: -6, tnt_tick: -3,
-  drift_loop: -8, offroad: -6, bomb_roll: -6, charge_red: -4, purr: -2,
+  engine: 0, vo: 2,
+  countdown: 1, go: 1, menu_move: -3, menu_ok: -3, menu_back: -3, roulette: 0, tnt_tick: -2,
+  drift_loop: -8, offroad: -6, bomb_roll: -4, charge_red: 2, purr: -2,
+};
+// Synth fallbacks are normalised (loudest 100 ms) to the same per-category targets
+// tools/gen-sfx.mjs gives the files, so a missing file changes the timbre, not the mix.
+const SYNTH_LEVEL = {
+  _: -16, explode: -10, nitro: -10, wall: -13, turbo1: -13, turbo2: -12, turbo3: -11, start_boost: -12, pad: -13,
+  countdown: -16, go: -15, menu_move: -18, menu_ok: -16, menu_back: -17, roulette: -18, tnt_tick: -16,
+  drift_loop: -18, bomb_roll: -17, charge_red: -17, purr: -17, win: -14, finish: -13, final_lap: -14, lose: -15,
 };
 // Random pitch variation per play (fraction), so repeated sounds don't machine-gun.
 const VARY = { hop: 0.06, land: 0.06, wall: 0.08, bump: 0.1, star: 0.03, item_box: 0.05, offroad: 0.1, splat: 0.05, explode: 0.05, meow: 0.08 };
@@ -91,7 +98,7 @@ export const PREFER_SYNTH = new Set([]);
 
 const S = {
   ctx: null, ready: false, unlocked: false, muted: false,
-  vol: { master: 0.9, music: 0.55, sfx: 1.0 },
+  vol: { master: 0.9, music: 0.7, sfx: 1.0 },
   sfxBus: null, sfxOut: null, musicBus: null, musicOut: null, engineBus: null, voBus: null,
   buffers: new Map(),       // name -> AudioBuffer[] (variants)
   fromFile: new Set(),      // names whose buffer came from a file
@@ -200,7 +207,7 @@ const C5 = 523.25;
 const RECIPES = {
   countdown: [0.3, d => { tone(d, { dur: 0.26, f0: 587, type: 'square', vol: 0.25, shape: 'hold' }); tone(d, { dur: 0.26, f0: 1174, vol: 0.15, shape: 'hold' }); }],
   go: [0.7, d => { tone(d, { dur: 0.65, f0: 1174, type: 'square', vol: 0.25, shape: 'hold' }); tone(d, { dur: 0.65, f0: 2348, vol: 0.12, shape: 'hold' }); tone(d, { dur: 0.65, f0: 880, type: 'saw', vol: 0.1, shape: 'hold' }); }],
-  hop: [0.3, d => { tone(d, { dur: 0.28, f0: 170, f1: 560, vol: 0.55, vib: 0.08, vibHz: 22, curve: 0.6 }); noise(d, { dur: 0.05, mode: 'lp', c0: 900, vol: 0.2 }); }],
+  hop: [0.3, d => { tone(d, { dur: 0.26, f0: 280, f1: 880, vol: 0.45, vib: 0.07, vibHz: 24, curve: 0.5 }); tone(d, { dur: 0.22, f0: 560, f1: 1760, type: 'tri', vol: 0.15, curve: 0.5 }); }],
   land: [0.22, d => { tone(d, { dur: 0.18, f0: 120, f1: 55, vol: 0.7 }); noise(d, { dur: 0.12, mode: 'lp', c0: 700, c1: 200, vol: 0.5 }); }],
   drift_start: [0.35, d => { noise(d, { dur: 0.32, mode: 'bp', c0: 2600, c1: 1900, q: 6, vol: 0.9, a: 0.01 }); tone(d, { dur: 0.25, f0: 1500, f1: 1200, type: 'saw', vol: 0.05 }); }],
   drift_loop: [1.25, d => {
@@ -237,7 +244,7 @@ const RECIPES = {
   shield_pop: [0.3, d => { tone(d, { dur: 0.08, f0: 380, f1: 1600, vol: 0.5 }); noise(d, { dur: 0.05, mode: 'hp', c0: 2000, vol: 0.4 }); sparkle(d, 0.03, 0.2, 5, 2000, 5000, 0.08); }],
   super_star: [1.5, d => { [0, 4, 7, 12, 16, 19, 24].forEach((k, i) => bell(d, i * 0.08, semi(C5, k), 0.6, 0.18)); sparkle(d, 0.1, 1.2, 24, 2500, 7000, 0.07); whoosh(d, 0, 1.2, 600, 3000, 0.3); }],
   remote: [0.6, d => { noise(d, { dur: 0.012, mode: 'bp', c0: 3000, q: 3, vol: 0.9 }); tone(d, { t0: 0.06, dur: 0.45, f0: 110, type: 'square', vol: 0.25, shape: 'hold', vib: 0.03, vibHz: 50 }); noise(d, { t0: 0.06, dur: 0.45, mode: 'hp', c0: 2500, vol: 0.25, shape: 'hold', am: 1, amHz: 60 }); }],
-  warp: [1.3, d => { whoosh(d, 0, 0.6, 300, 5000, 0.7, 2); whoosh(d, 0.5, 0.75, 5000, 400, 0.6, 2); tone(d, { dur: 1.2, f0: 200, f1: 1600, vol: 0.15, vib: 0.1, vibHz: 7, a: 0.2 }); }],
+  warp: [1.4, d => { whoosh(d, 0, 0.7, 300, 5000, 0.8, 1.5); whoosh(d, 0.55, 0.8, 5000, 400, 0.7, 1.5); tone(d, { dur: 1.3, f0: 200, f1: 1600, vol: 0.15, vib: 0.1, vibHz: 7, a: 0.3, shape: 'lin' }); sparkle(d, 0.3, 0.9, 14); }],
   flip: [0.6, d => { tone(d, { dur: 0.5, f0: 320, f1: 1300, vol: 0.3, vib: 0.05, vibHz: 12 }); noise(d, { dur: 0.3, mode: 'bp', c0: 800, c1: 2500, vol: 0.3 }); }],
   lap: [0.7, d => { bell(d, 0, 988, 0.4, 0.3); bell(d, 0.12, 1318, 0.55, 0.3); }],
   final_lap: [1.2, d => { brass(d, 0, semi(C5, 7), 0.14); brass(d, 0.16, semi(C5, 7), 0.14); brass(d, 0.32, semi(C5, 7), 0.14); brass(d, 0.48, semi(C5, 12), 0.6); }],
@@ -255,17 +262,23 @@ const RECIPES = {
   star_spill: [0.6, d => { for (let k = 0; k < 4; k++) bell(d, k * 0.09, 1976 - k * 180, 0.25, 0.18); }],
 };
 
-function bakeSynth(name) {
+function bakeSynth(name, ctx = S.ctx) {
   const r = RECIPES[name];
-  if (!r || !S.ctx) return null;
+  if (!r || !ctx) return null;
   seed = 12345 + name.length * 977;
   let d = new Float32Array(Math.ceil(r[0] * SR));
   const out = r[1](d);
   if (out) d = out;
-  // normalise peak to 0.9 so the synth sits at a level the TRIM table can reason about
-  let pk = 0; for (let i = 0; i < d.length; i++) pk = Math.max(pk, Math.abs(d[i]));
-  const g = pk > 0 ? 0.7 / pk : 1;
-  const buf = S.ctx.createBuffer(1, d.length, SR);
+  // normalise the loudest 100 ms to the category target (see SYNTH_LEVEL), peak capped at 0.95
+  let pk = 0, sum = 0, best = 0; const w = Math.min(d.length, Math.round(0.1 * SR));
+  for (let i = 0; i < d.length; i++) {
+    pk = Math.max(pk, Math.abs(d[i])); sum += d[i] * d[i];
+    if (i >= w) sum -= d[i - w] * d[i - w];
+    if (i >= w - 1) best = Math.max(best, sum / w);
+  }
+  const want = Math.pow(10, (SYNTH_LEVEL[name] ?? SYNTH_LEVEL._) / 20);
+  const g = pk > 0 ? Math.min(want / Math.sqrt(Math.max(best, 1e-12)), 0.95 / pk) : 1;
+  const buf = ctx.createBuffer(1, d.length, SR);
   const ch = buf.getChannelData(0);
   for (let i = 0; i < d.length; i++) ch[i] = d[i] * g;
   return buf;
@@ -295,21 +308,31 @@ function applyVolumes(ramp = 0.05) {
   S.musicBus.gain.setTargetAtTime(S.vol.music * (S.paused ? 0.45 : 1), t, ramp);
 }
 
-function buildGraph() {
-  const ctx = S.ctx;
-  S.sfxBus = ctx.createGain();
-  S.sfxOut = ctx.createGain();
-  S.sfxBus.connect(S.sfxOut).connect(softClip(ctx)).connect(ctx.destination);
-  S.engineBus = ctx.createGain(); S.engineBus.gain.value = dB(TRIM.engine); S.engineBus.connect(S.sfxBus);
-  S.voBus = ctx.createGain(); S.voBus.gain.value = dB(TRIM.vo); S.voBus.connect(S.sfxBus);
-  S.musicBus = ctx.createGain();          // user music volume * pause dip
-  S.musicDuck = ctx.createGain();         // turbo duck
-  S.musicOut = ctx.createGain();          // master
-  S.musicDuck.connect(S.musicBus).connect(S.musicOut).connect(ctx.destination);
+/**
+ * The mix graph. ONE function builds it for the live AudioContext and for tools/mixprobe.mjs's
+ * OfflineAudioContext, so the probe can never measure a stale copy. `vol` sets the faders
+ * statically (the live context then drives them through applyVolumes()).
+ */
+function buildMix(ctx, vol = S.vol) {
+  const G = {};
+  G.sfxBus = ctx.createGain(); G.sfxBus.gain.value = vol.sfx;          // user SFX fader
+  G.sfxOut = ctx.createGain(); G.sfxOut.gain.value = vol.master;       // master — BEFORE the clipper
+  G.sfxBus.connect(G.sfxOut).connect(softClip(ctx)).connect(ctx.destination);
+  G.engineBus = ctx.createGain(); G.engineBus.gain.value = dB(TRIM.engine); G.engineBus.connect(G.sfxBus);
+  G.voBus = ctx.createGain(); G.voBus.gain.value = dB(TRIM.vo); G.voBus.connect(G.sfxBus);
+  G.musicDuck = ctx.createGain();                                     // turbo/VO duck
+  G.musicBus = ctx.createGain(); G.musicBus.gain.value = vol.music;    // user music fader * pause dip
+  G.musicOut = ctx.createGain(); G.musicOut.gain.value = vol.master;   // master (no clipper: music has its own bus)
+  G.musicDuck.connect(G.musicBus).connect(G.musicOut).connect(ctx.destination);
   // a shared 2 s white-noise buffer for engine squeal/rumble layers
   const nb = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate), nd = nb.getChannelData(0);
   seed = 99; for (let i = 0; i < nd.length; i++) nd[i] = rnd() * 2 - 1;
-  S.noise = nb;
+  G.noise = nb;
+  return G;
+}
+
+function buildGraph() {
+  Object.assign(S, buildMix(S.ctx));
   applyVolumes(0.001);
 }
 
@@ -465,16 +488,15 @@ function duckMusic(level, hold) {
 export const ENGINE = {
   aiVoices: 4,          // nearest AI karts that get an engine voice
   idleHz: 52, topHz: 150, gears: 3, gearDip: 0.16,
-  playerVol: 0.34, aiVol: 0.3, aiRef: 5, aiMax: 60,
+  playerVol: 0.17, aiVol: 0.13, aiRef: 6, aiMax: 60,   // measured with tools/mixprobe.mjs: engine bed ~-23 dB rms, under the one-shots
 };
 
 function hashId(id) { let h = 7; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; }
 
-function makeEngineVoice() {
-  const ctx = S.ctx;
+function makeEngineVoice(ctx = S.ctx, G = S) {
   const out = ctx.createGain(); out.gain.value = 0;
   const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createGain();
-  out.connect(pan).connect(S.engineBus);
+  out.connect(pan).connect(G.engineBus);
   // body: saw + half-rate square, pushed through a soft drive then a lowpass
   const a = ctx.createOscillator(); a.type = 'sawtooth';
   const b = ctx.createOscillator(); b.type = 'square';
@@ -500,14 +522,14 @@ function makeEngineVoice() {
   const wg = ctx.createGain(); wg.gain.value = 0;
   w.connect(wg).connect(out);
   // tyre squeal (drift) and offroad rumble from the shared noise buffer
-  const nz = ctx.createBufferSource(); nz.buffer = S.noise; nz.loop = true;
+  const nz = ctx.createBufferSource(); nz.buffer = G.noise; nz.loop = true;
   const sq = ctx.createBiquadFilter(); sq.type = 'bandpass'; sq.Q.value = 9; sq.frequency.value = 2000;
   const sqg = ctx.createGain(); sqg.gain.value = 0;
   const rb = ctx.createBiquadFilter(); rb.type = 'lowpass'; rb.frequency.value = 380;
   const rbg = ctx.createGain(); rbg.gain.value = 0;
   nz.connect(sq).connect(sqg).connect(out);
   nz.connect(rb).connect(rbg).connect(out);
-  const t = now();
+  const t = ctx.currentTime;
   for (const o of [a, b, lfo, wob, w]) o.start(t);
   nz.start(t, Math.random() * 1.9);
   return { out, pan, a, b, lp, drive, lfo, wob, w, wg, sq, sqg, rbg, kart: null, gain: 0 };
@@ -524,8 +546,9 @@ function engineState(id, isPlayer) {
   };
 }
 
-function driveVoice(v, k) {
-  const ctx = S.ctx, t = now(), u = k.u;
+/** engine synth targets for kart state k at time t — pure numbers, shared with mixprobe */
+function engineTargets(k, t) {
+  const u = k.u;
   const n = clamp(Math.abs(u.speed) / Math.max(1, u.maxSpeed || 22), 0, 1.45);
   const boost = typeof u.boost === 'number' ? clamp(u.boost, 0, 1) : (u.boost ? 1 : 0);
   const thr = clamp(u.throttle ?? 0, 0, 1);
@@ -535,34 +558,53 @@ function driveVoice(v, k) {
   f *= k.pitch;
   f *= 1 + 0.1 * boost;
   if (u.air) f *= 1.14 + 0.1 * thr;                  // wheels free: revs flare
-  // doppler for AI passes (mild)
-  if (!k.isPlayer && k.vr) f *= clamp(343 / (343 + k.vr * 0.6), 0.85, 1.15);
-  const tc = k.isPlayer ? 0.04 : 0.08;
-  v.a.frequency.setTargetAtTime(f, t, tc);
-  v.b.frequency.setTargetAtTime(f * 0.5 * 1.006, t, tc);
-  v.lfo.frequency.setTargetAtTime(f * 0.5, t, tc);
-  v.wob.frequency.setTargetAtTime(k.wob + 4 * n, t, 0.2);
-  v.lp.frequency.setTargetAtTime(500 + 1700 * thr + 1400 * n + (u.air ? 800 : 0) + 1500 * boost, t, 0.06);
-  v.drive.gain.setTargetAtTime(0.9 + 1.8 * thr + 0.8 * boost, t, 0.06);
-  v.w.frequency.setTargetAtTime(f * 7 + 300 * boost, t, 0.05);
-  v.wg.gain.setTargetAtTime(0.1 * boost, t, 0.08);
+  if (!k.isPlayer && k.vr) f *= clamp(343 / (343 + k.vr * 0.6), 0.85, 1.15);   // mild doppler on AI passes
   const drifting = u.drift && !u.air && n > 0.15;
   const charge = clamp(u.charge ?? 0, 0, 1);
-  v.sq.frequency.setTargetAtTime(1700 + 900 * charge + 200 * Math.sin(t * 9), t, 0.05);
-  v.sqg.gain.setTargetAtTime(drifting ? 0.28 * Math.min(1, n * 1.4) : 0, t, drifting ? 0.03 : 0.06);
   const rough = u.offroad && !u.air && n > 0.05;
-  v.rbg.gain.setTargetAtTime(rough ? 0.5 * Math.min(1, n * 2) : 0, t, 0.05);
-  // loudness: throttle opens it up; AI distance-attenuated
   let g = (0.55 + 0.45 * thr) * (0.75 + 0.25 * Math.min(1, n));
   let pan = 0;
   if (k.isPlayer) g *= ENGINE.playerVol;
   else {
-    const s = u.pos ? spatial(u.pos, { ref: ENGINE.aiRef, roll: 1.3, max: ENGINE.aiMax, lpNear: 1e9 }) : null;
+    const s = u.pos ? spatial(u.pos, { ref: ENGINE.aiRef, roll: 1.0, max: ENGINE.aiMax, lpNear: 1e9 }) : null;
     g = s ? g * ENGINE.aiVol * s.g : 0; pan = s ? s.pan : 0;
   }
   if (S.paused) g = 0;
-  v.out.gain.setTargetAtTime(g, t, 0.05);
-  if (v.pan.pan) v.pan.pan.setTargetAtTime(pan, t, 0.05);
+  return {
+    f, wob: k.wob + 4 * n,
+    lp: 500 + 1700 * thr + 1400 * n + (u.air ? 800 : 0) + 1500 * boost,
+    drive: 0.9 + 1.8 * thr + 0.8 * boost,
+    whineF: f * 7 + 300 * boost, whineG: 0.1 * boost,
+    sqF: 1700 + 900 * charge + 200 * Math.sin(t * 9), sqG: drifting ? 0.28 * Math.min(1, n * 1.4) : 0, drifting,
+    rbG: rough ? 0.5 * Math.min(1, n * 2) : 0,
+    g, pan,
+  };
+}
+
+function driveVoice(v, k) {
+  const t = now(), e = engineTargets(k, t);
+  const tc = k.isPlayer ? 0.04 : 0.08;
+  v.a.frequency.setTargetAtTime(e.f, t, tc);
+  v.b.frequency.setTargetAtTime(e.f * 0.5 * 1.006, t, tc);
+  v.lfo.frequency.setTargetAtTime(e.f * 0.5, t, tc);
+  v.wob.frequency.setTargetAtTime(e.wob, t, 0.2);
+  v.lp.frequency.setTargetAtTime(e.lp, t, 0.06);
+  v.drive.gain.setTargetAtTime(e.drive, t, 0.06);
+  v.w.frequency.setTargetAtTime(e.whineF, t, 0.05);
+  v.wg.gain.setTargetAtTime(e.whineG, t, 0.08);
+  v.sq.frequency.setTargetAtTime(e.sqF, t, 0.05);
+  v.sqg.gain.setTargetAtTime(e.sqG, t, e.drifting ? 0.03 : 0.06);
+  v.rbg.gain.setTargetAtTime(e.rbG, t, 0.05);
+  v.out.gain.setTargetAtTime(e.g, t, 0.05);
+  if (v.pan.pan) v.pan.pan.setTargetAtTime(e.pan, t, 0.05);
+}
+
+/** set a voice's params immediately (offline rendering in mixprobe) */
+function setVoice(v, e) {
+  v.a.frequency.value = e.f; v.b.frequency.value = e.f * 0.5 * 1.006; v.lfo.frequency.value = e.f * 0.5;
+  v.wob.frequency.value = e.wob; v.lp.frequency.value = e.lp; v.drive.gain.value = e.drive;
+  v.w.frequency.value = e.whineF; v.wg.gain.value = e.whineG; v.sq.frequency.value = e.sqF;
+  v.sqg.gain.value = e.sqG; v.rbg.gain.value = e.rbG; v.out.gain.value = e.g;
 }
 
 function assignAIVoices() {
@@ -590,26 +632,46 @@ function assignAIVoices() {
  *  MUSIC — two <audio> decks, crossfaded, streamed (never decoded)
  * ==================================================================== */
 
-function musicInfo(name) {
+let opusOK = null;
+function canOpus() {
+  if (opusOK == null) { try { opusOK = !!new Audio().canPlayType('audio/ogg; codecs=opus'); } catch { opusOK = false; } }
+  return opusOK;
+}
+/** candidate URLs for a track, best first: primary (Opus or MP3), then the SO2 fallback */
+function musicUrls(name) {
   const m = S.musicIndex?.music?.[name];
-  if (typeof m === 'string') return { file: m, gain: 0 };
-  if (m) return { file: m.file, gain: m.gain ?? 0, fallback: m.fallback };
-  return { file: name + '.mp3', gain: 0 };
+  const o = canOpus();
+  const list = [];
+  if (m) {
+    if (m.file && (o || !m.file.endsWith('.ogg'))) list.push(m.file);
+    if (m.mp3) list.push(m.mp3);
+    if (m.fallback && (o || !m.fallback.endsWith('.ogg'))) list.push(m.fallback);
+    if (m.fallbackMp3) list.push(m.fallbackMp3);
+  } else list.push(name + (o ? '.ogg' : '.mp3'), name + '.mp3', name + '.so2.mp3');
+  return { urls: [...new Set(list)].map(f => ASSETS + 'audio/' + f), gain: m?.gain ?? 0 };
 }
 
 function makeDeck() {
   const el = new Audio();
-  el.preload = 'auto'; el.loop = true;
+  el.preload = 'auto'; el.loop = true;   // every file is a seamless loop body (tools/gen-music.mjs)
   const src = S.ctx.createMediaElementSource(el);
   const g = S.ctx.createGain(); g.gain.value = 0;
   src.connect(g).connect(S.musicDuck);
-  const d = { el, g, name: null, stopTimer: 0 };
+  const d = { el, g, name: null, stopTimer: 0, urls: [], ui: 0 };
   el.addEventListener('error', () => {
-    // file missing or undecodable: try the fallback once
-    const info = musicInfo(d.name);
-    if (info.fallback && !el.src.endsWith(info.fallback)) { el.src = ASSETS + 'audio/' + info.fallback; el.play().catch(() => { }); }
+    // missing / undecodable: walk down the candidate list (Opus → MP3 → SO2 fallback)
+    if (!d.name || d.ui + 1 >= d.urls.length) return;
+    d.ui++;
+    el.src = d.urls[d.ui];
+    el.play().then(() => rampIn(d), () => { });
   });
   return d;
+}
+
+function rampIn(d) {
+  if (!d.name || S.decks[S.deck] !== d) return;
+  const t = now();
+  d.g.gain.cancelScheduledValues(t); d.g.gain.setValueAtTime(0, t); d.g.gain.linearRampToValueAtTime(d.target ?? 1, t + 0.7);
 }
 
 function startMusic(name) {
@@ -632,16 +694,12 @@ function startMusic(name) {
   S.deck = (S.deck + 1) % 2;
   const d = S.decks[S.deck];
   clearTimeout(d.stopTimer);
-  const info = musicInfo(name);
-  d.name = name;
-  d.el.src = ASSETS + 'audio/' + info.file;
-  d.el.currentTime = 0;
+  const info = musicUrls(name);
+  d.name = name; d.urls = info.urls; d.ui = 0;
+  d.el.src = d.urls[0];
   d.g.gain.cancelScheduledValues(t); d.g.gain.setValueAtTime(0, t);
-  const target = dB(info.gain || 0);
-  d.el.play().then(() => {
-    const t2 = now();
-    d.g.gain.setValueAtTime(0, t2); d.g.gain.linearRampToValueAtTime(target, t2 + 0.7);
-  }).catch(() => { S.musicName = null; });  // autoplay refused: retried on unlock()
+  d.target = dB(info.gain || 0);
+  d.el.play().then(() => rampIn(d)).catch(e => { if (e?.name === 'NotAllowedError') S.musicName = null; });  // autoplay refused: retried on unlock(); load errors walk the fallback list
 }
 
 /* ======================================================================
@@ -775,8 +833,9 @@ export const audio = {
 
   /** true once generated files are in (tests) */
   get loaded() { return S.loading || Promise.resolve(); },
-  /** introspection for audio-test.html / mixprobe */
+  /** introspection for audio-test.html / tools/mixprobe.mjs */
   get _debug() { return S; },
+  _mix: { buildMix, makeEngineVoice, engineTargets, engineState, setVoice, bakeSynth, spatial, TRIM, SPATIAL, ENGINE, DUCK },
 };
 
 function playBark(name, at) {

@@ -13,7 +13,7 @@ import { DT, T, redStart, baseTop } from './physics.js';
 import { buildTrack } from './track.js';
 import { TRACKS, trackById } from './tracks/index.js';
 import { createRace, COUNTDOWN } from './race.js';
-import { buildTrackMesh } from './trackmesh.js';
+import { buildTrackMesh, mergeGeos } from './trackmesh.js';
 import { ChaseCam } from './camera.js';
 import { createFx } from './fx.js';
 import { createHud } from './hud.js';
@@ -37,7 +37,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
 const SHADOWS = Q.get('shadows') !== '0';
 renderer.shadowMap.enabled = SHADOWS;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;   // r185: PCFSoft is deprecated (falls back to this anyway)
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(66, 1, 0.3, 2400);
 const hemi = new THREE.HemisphereLight(0xd8f0ff, 0xc8a870, 1.05);
@@ -97,16 +97,47 @@ function entrantsFor(playerId) {
   return { ids, slot };
 }
 function buildVisuals(ids) {
-  for (const v of G.visuals) { scene.remove(v.root); }
+  for (const v of G.visuals) { scene.remove(v.root); try { R.disposeTree?.(v.root); } catch { /* not ours to fix */ } }
   G.visuals = ids.map(id => {
     let built;
     try { built = R.buildRacer(id, { hd: G.hd }); } catch (e) { console.warn('[otr] buildRacer failed for', id, e); built = null; }
     if (!built) built = { root: new THREE.Group(), rig: null };
-    built.root.traverse(o => { if (o.isMesh) { o.castShadow = true; } });
+    // Only the player's kart casts a real shadow (draw calls are the Deck's budget: a racer is
+    // ~12 meshes, and the shadow pass would draw every one again). Everyone gets a blob shadow.
+    const isP = ids.indexOf(id) === G.slotIndex;
+    built.root.traverse(o => { if (o.isMesh) { o.castShadow = isP; } });
     scene.add(built.root);
     return { id, root: built.root, rig: built.rig, px: 0, py: 0, pz: 0, pyaw: 0, anim: {} };
   });
 }
+
+/* ------------------------------------------------------------------ blob shadows (1 draw call for all karts) */
+const blob = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 4, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(0,0,0,.6)'); gr.addColorStop(0.65, 'rgba(0,0,0,.5)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+  const tex = new THREE.CanvasTexture(c);
+  const geo = new THREE.PlaneGeometry(2.2, 2.9); geo.rotateX(-Math.PI / 2);
+  const mesh = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -8, polygonOffsetUnits: -8 }), 8);
+  mesh.name = 'blobshadows'; mesh.frustumCulled = false; mesh.renderOrder = 1;
+  scene.add(mesh);
+  return mesh;
+})();
+const _bm = new THREE.Matrix4(), _bq = new THREE.Quaternion(), _bs = new THREE.Vector3(), _bp = new THREE.Vector3();
+
+/* ------------------------------------------------------------------ the rescue cloud (falls/splashes) */
+// A friendly puffy cloud carries the kart back down onto the centre line (DESIGN: "a friendly
+// helper drops you back within 1.5 s"). One merged mesh, one per kart, hidden when idle.
+const makeCloud = () => {
+  const geos = [];
+  for (const [x, y, z, r] of [[0, 0, 0, 0.9], [0.8, -0.1, 0.1, 0.7], [-0.8, -0.1, -0.1, 0.7], [0.3, 0.35, -0.3, 0.6], [-0.35, 0.3, 0.35, 0.6], [0, -0.2, 0.7, 0.55], [0, -0.2, -0.7, 0.55]]) {
+    const g = new THREE.SphereGeometry(r, 10, 7); g.translate(x, y, z); geos.push(g);
+  }
+  const m = new THREE.Mesh(mergeGeos(geos), new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x8899aa }));
+  m.visible = false; m.name = 'rescuecloud'; scene.add(m); return m;
+};
+const clouds = [];
 
 /* ------------------------------------------------------------------ race */
 async function startRace() {
@@ -116,12 +147,14 @@ async function startRace() {
     difficulty: G.difficulty, laps: G.laps, seed: G.seed });
   if (Q.get('ai') === '1') G.race.autoPlayer = true;
   In.settings.autoAccel = Q.has('auto') ? Q.get('auto') === '1' : false;
+  G.slotIndex = slot;
   buildVisuals(ids);
   for (const [i, k] of G.race.karts.entries()) snapVisual(i, k);
   chase.snap(G.race.player);
   fx?.clearSkids();
   hud.results(null); hud.count(null);
   hud.show(Q.get('hud') !== '0');
+  audio.enginesOff?.();
   for (const k of G.race.karts) audio.engineStart(k.index, k.isPlayer);
   audio.music(G.track.def.music || G.track.theme);
   G.acc = 0; G.t = 0;
@@ -146,7 +179,8 @@ function stepSim() {
 /** Fast-forward N seconds synchronously (tests / ?t=). Renders nothing. */
 function advance(secs) {
   const n = Math.round(secs / DT);
-  for (let i = 0; i < n && G.race.phase !== 'done'; i++) stepSim();
+  G.ff = true;
+  try { for (let i = 0; i < n && G.race.phase !== 'done'; i++) stepSim(); } finally { G.ff = false; }
 }
 
 /* ------------------------------------------------------------------ events → audio / fx / hud */
@@ -154,6 +188,14 @@ const PNAME = id => (R.RACERS.find(r => r.id === id) || { name: id }).name;
 let driftLoop = null, offLoop = null;
 function handleEvents(events) {
   const race = G.race, P = race.player;
+  if (G.ff) {   // fast-forwarding: keep the state machine right, skip the sound and fury
+    for (const e of events) {
+      if (e.type === 'go' && G.state === 'countdown') setState('race');
+      else if (e.type === 'finish' && e.kart === P) setState('finished');
+      else if (e.type === 'race_done') showResults();
+    }
+    return;
+  }
   for (const e of events) {
     const k = e.kart, me = k && k === P;
     const at = k && !me ? k.pos : null;
@@ -217,16 +259,41 @@ function snapVisual(i, k) { const v = G.visuals[i]; v.px = k.pos.x; v.py = k.pos
 const lerpAng = (a, b, t) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return a + d * t; };
 function drawKarts(alpha, dt) {
   const race = G.race;
+  blob.count = race.karts.length; blob.instanceMatrix.needsUpdate = true;
   for (const [i, k] of race.karts.entries()) {
     const v = G.visuals[i], root = v.root;
-    root.visible = !(k.respawnT > 0 && k.respawnT < T.RESPAWN_T - 0.25);
-    const x = v.px + (k.pos.x - v.px) * alpha, y = v.py + (k.pos.y - v.py) * alpha, z = v.pz + (k.pos.z - v.pz) * alpha;
-    const yaw = lerpAng(v.pyaw, k.yaw + k.drift * k.driftAngle, alpha);
+    let x = v.px + (k.pos.x - v.px) * alpha, y = v.py + (k.pos.y - v.py) * alpha, z = v.pz + (k.pos.z - v.pz) * alpha;
+    let yaw = lerpAng(v.pyaw, k.yaw + k.drift * k.driftAngle, alpha);
+    // rescue: sink out of sight for a beat, then ride the cloud down to the drop point
+    const cloud = clouds[i] || (clouds[i] = makeCloud());
+    cloud.visible = false;
+    root.visible = true;
+    if (k.respawnT > 0 && k.respawnAt != null) {
+      const ride = T.RESPAWN_T - 0.3;                         // seconds of cloud ride at the end
+      if (k.respawnT > ride) root.visible = false;
+      else {
+        const p = G.track.pointAt(k.respawnAt, 0), u = k.respawnT / ride;   // 1 → 0
+        x = p.x; z = p.z; y = p.y + T.RESPAWN_DROP + u * u * 9; yaw = p.yaw;
+        cloud.visible = true; cloud.position.set(x, y + 2.2, z); cloud.rotation.y = G.t * 0.8;
+      }
+      v.px = x; v.py = y; v.pz = z; v.pyaw = yaw;
+    } else if (k.air && k.hop && k.vy < 0 && k.pos.y - k.ground > 1.5 && !k.hitT) {
+      // just released by the cloud: let it float up and away
+      const cl = clouds[i]; cl.visible = true; cl.position.set(x, k.ground + T.RESPAWN_DROP + 2.2 + (T.RESPAWN_DROP - (y - k.ground)) * 2.5, z);
+    }
     root.position.set(x, y, z);
     _up.set(k.nrm.x, k.nrm.y, k.nrm.z).normalize();
     _qa.setFromUnitVectors(_Y, _up); _qy.setFromAxisAngle(_Y, yaw);
     root.quaternion.copy(_qa).multiply(_qy);
     v.ix = x; v.iy = y; v.iz = z; v.iyaw = k.yaw;
+    // far karts: skip drawing (fog hides them anyway; saves ~12 draw calls each)
+    const far = (x - camera.position.x) ** 2 + (z - camera.position.z) ** 2 > 230 * 230;
+    if (far) root.visible = false;
+    // blob shadow on the ground under the kart (not for the player: it has a real one)
+    const gy = isFinite(k.ground) ? k.ground : y;
+    const hgt = Math.max(0, y - gy), sc = root.visible && i !== race.playerIndex ? Math.max(0.35, 1 - hgt * 0.18) : 0;
+    _bq.setFromAxisAngle(_Y, yaw); _bs.set(sc, 1, sc); _bp.set(x, gy + 0.15, z);   // 4 cm lost the depth fight with the road's polygonOffset at grazing angles
+    blob.setMatrixAt(i, _bm.compose(_bp, _bq, _bs));
     if (v.rig && R.animateRacer) {
       const a = v.anim;
       a.speed = k.speed; a.maxSpeed = baseTop(k); a.steer = k.steer; a.throttle = k.throttle; a.drift = k.drift; a.driftAngle = k.driftAngle;
@@ -265,7 +332,17 @@ function tick(dt) {
   if (steps === 10) G.acc = 0;
 }
 function render(dt) {
-  if (!G.race) { renderer.render(scene, camera); return; }
+  if (!G.race) {
+    // title / loading: a slow orbit around the start arch
+    if (G.track) {
+      G.t += dt; const f = G.track.frameAt(0), a = G.t * 0.12;
+      camera.position.set(f.x + Math.cos(a) * 34, f.y + 9, f.z + Math.sin(a) * 34); camera.lookAt(f.x, f.y + 3, f.z);
+      if (G.tm.sky) G.tm.sky.position.copy(camera.position);
+      G.tm.update(dt, G.t);
+      sun.target.position.set(f.x, f.y, f.z); sun.position.copy(sun.target.position).addScaledVector(G.sunDir, 120);
+    }
+    renderer.render(scene, camera); return;
+  }
   const alpha = Math.min(1, G.acc / DT);
   drawKarts(G.paused ? 1 : alpha, G.paused ? 0 : dt);
   const P = G.race.player, pv = G.visuals[G.race.playerIndex];
