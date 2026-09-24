@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OTR racers</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html, body { margin: 0; height: 100%; background: #8fd0ff; overflow: hidden; font: 700 14px system-ui, sans-serif; }
+  canvas#c { display: block; width: 100%; height: 100%; }
+  .lab { position: absolute; color: #fff; text-shadow: 0 1px 2px #000, 0 0 4px #000; pointer-events: none; padding: 4px 8px; line-height: 1.2; }
+  .lab small { font-weight: 600; opacity: .9; }
+  #info { position: absolute; right: 8px; bottom: 6px; color: #fff; text-shadow: 0 1px 2px #000; white-space: pre; text-align: right; font: 600 12px ui-monospace, monospace; }
+  #portraits { position: absolute; left: 8px; bottom: 8px; display: flex; gap: 8px; }
+  #help { position: absolute; left: 8px; top: 6px; color: #fff; text-shadow: 0 1px 2px #000; font: 600 12px system-ui; white-space: pre; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="info"></div>
+<div id="portraits"></div>
+<script type="module">
+// Racer preview / turntable (characters agent). Query params:
+//   grid=roster (default)  all 8 racers, one cell each        grid=poses&id=kingdad  one racer, every pose
+//   grid=one&id=orion      one big view                        grid=sheet  contact sheet: columns = racers, rows = views
+//   pose=idle|drive|leanL|leanR|slideL|slideR|turbo|air|land|hit|spin|wobble|cheer|sad|cycle (default drive)
+//   p=0..1    phase for hit / spin (default .3)
+//   cam=chase|behind|front34|front|side|face|top|x,y,z,tx,ty,tz  (racer-relative; default front34)
+//   still=1   deterministic: simulate the pose at fixed 60 Hz, render once, set window.__ready
+//   hd=1      ask for HD drivers (racers.js hook)    portraits=1  show renderPortrait() row
+//   tm=aces   ACES tone mapping (default: none, like SO2)    turn=1  slow turntable
+//   any state field overrides the pose: steer, drift, speed, charge, boostT, air, hitT, spinT, cheer, sad
+import * as THREE from 'three';
+import { RACERS, buildRacer, animateRacer, renderPortrait, racerStats } from './src/racers.js';
+
+const Q = new URLSearchParams(location.search);
+const GRID = Q.get('grid') || 'roster';
+const STILL = Q.get('still') === '1';
+const P = Q.has('p') ? +Q.get('p') : .3;
+
+/* ---------------------------------------------------------------- poses */
+// Each pose is a little script: state at time `u` seconds since it started. `dur` = settle time
+// for a still (the frame captured is the state at u = dur).
+const POSES = {
+  idle:   { dur: 1.2, f: u => ({ speed: 0 }) },
+  drive:  { dur: 1.2, f: u => ({ speed: 18, throttle: 1 }) },
+  leanL:  { dur: 1.2, f: u => ({ speed: 18, throttle: 1, steer: 1 }) },
+  leanR:  { dur: 1.2, f: u => ({ speed: 18, throttle: 1, steer: -1 }) },
+  slideL: { dur: 1.2, f: u => ({ speed: 18, throttle: 1, steer: .5, drift: 1, driftAngle: .5, charge: Math.min(1, u / 1.1) }) },
+  slideR: { dur: 1.2, f: u => ({ speed: 18, throttle: 1, steer: -.5, drift: -1, driftAngle: -.5, charge: Math.min(1, u / 1.1) }) },
+  turbo:  { dur: 1.25, f: u => u < 1 ? { speed: 18, throttle: 1 } : { speed: 18 + (u - 1) * 60, throttle: 1, boostT: 1 } },
+  air:    { dur: .8, f: u => u < .5 ? { speed: 18 } : { speed: 18, air: true, airT: u - .5 } },
+  land:   { dur: 1.37, f: u => u < .5 ? { speed: 18 } : u < 1.3 ? { speed: 18, air: true, airT: u - .5 } : { speed: 18, landT: u - 1.3 } },
+  hit:    { dur: 1, f: u => u < .6 ? { speed: 18 } : { speed: 6, hitT: Math.min(P, (u - .6) / .4 * P), hitKind: 'bomb' } },
+  spin:   { dur: 1, f: u => u < .6 ? { speed: 18 } : { speed: 6, spinT: 1 - Math.min(P, (u - .6) / .4 * P), hitKind: 'splat' } },
+  wobble: { dur: 1.1, f: u => ({ speed: 12, slowT: 2 }) },
+  cheer:  { dur: 1.3, f: u => ({ speed: 0, cheer: true }) },
+  sad:    { dur: 1.5, f: u => ({ speed: 0, sad: true }) },
+};
+const CYCLE = ['idle', 'drive', 'leanL', 'leanR', 'slideL', 'slideR', 'turbo', 'air', 'land', 'hit', 'spin', 'wobble', 'cheer', 'sad'];
+const BASE = { speed: 0, maxSpeed: 22, steer: 0, throttle: 0, drift: 0, driftAngle: 0, charge: 0, boostT: 0,
+  air: false, airT: 0, landT: 9, hitT: 0, hitKind: null, spinT: 0, cheer: false, sad: false };
+function stateFor(name, u) {
+  const s = { ...BASE, ...(POSES[name] || POSES.drive).f(u) };
+  for (const k of Object.keys(BASE)) if (Q.has(k)) {
+    const v = Q.get(k); s[k] = v === 'true' || v === '1' && typeof BASE[k] === 'boolean' ? true : v === 'false' ? false : isNaN(+v) ? v : +v;
+  }
+  if (s.air && !Q.has('airT')) s.airT = s.airT || .3;
+  return s;
+}
+
+/* ---------------------------------------------------------------- cameras (racer-relative) */
+const CAMS = {
+  chase:   [0, 2.3, -6.8, 0, .8, 2.5],       // the in-game chase view: behind, above, ~7 m
+  behind:  [0, 1.5, -3.2, 0, .75, 0],
+  front34: [2.3, 1.55, 2.9, 0, .7, 0],
+  front:   [0, 1.2, 3.4, 0, .75, 0],
+  side:    [3.6, 1.0, 0, 0, .65, 0],
+  face:    [.7, 1.35, 1.7, 0, 1.0, 0],
+  top:     [0, 5.2, -.4, 0, 0, 0],
+};
+const camSpec = n => /,/.test(n) ? n.split(',').map(Number) : CAMS[n] || CAMS.front34;
+
+/* ---------------------------------------------------------------- renderer + stage */
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
+if (Q.get('tm') === 'aces') { renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1; }
+renderer.setScissorTest(true);
+
+function makeStage() {
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x8fd0ff);
+  scene.add(new THREE.HemisphereLight(0xcfe6ff, 0x50603a, 1.15));      // SO2's rig
+  const sun = new THREE.DirectionalLight(0xfff4dd, 2.1);
+  sun.position.set(4, 8, 3); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
+  Object.assign(sun.shadow.camera, { left: -4, right: 4, top: 4, bottom: -4, near: .5, far: 20 });
+  sun.shadow.bias = -.0008; sun.shadow.normalBias = .02;
+  scene.add(sun, sun.target);
+  // asphalt pad with a white racing line + grass around
+  const grass = new THREE.Mesh(new THREE.CircleGeometry(40, 32), new THREE.MeshLambertMaterial({ color: 0x5fae4a }));
+  grass.rotation.x = -Math.PI / 2; grass.position.y = -.01; grass.receiveShadow = true; scene.add(grass);
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(9, 40), new THREE.MeshLambertMaterial({ color: 0x6d6f78 }));
+  road.rotation.x = -Math.PI / 2; road.receiveShadow = true; scene.add(road);
+  for (let z = -18; z < 20; z += 3) {
+    const l = new THREE.Mesh(new THREE.PlaneGeometry(.15, 1.4), new THREE.MeshBasicMaterial({ color: 0xf4f4f4 }));
+    l.rotation.x = -Math.PI / 2; l.position.set(1.8, .005, z); scene.add(l);
+  }
+  const cam = new THREE.PerspectiveCamera(Q.has('fov') ? +Q.get('fov') : 40, 1, .05, 200);
+  return { scene, cam };
+}
+
+/* ---------------------------------------------------------------- cells */
+const cells = [];     // { id, pose, cam, stage, root, rig, label }
+const add = (id, pose, cam, label) => {
+  const stage = makeStage();
+  const { root, rig } = buildRacer(id, { hd: Q.get('hd') === '1' });
+  stage.scene.add(root);
+  cells.push({ id, pose, cam, stage, root, rig, label, u: 0 });
+};
+const ids = Q.get('ids') ? Q.get('ids').split(',') : RACERS.map(r => r.id);
+const id1 = Q.get('id') || 'orion';
+const pose0 = Q.get('pose') || (GRID === 'sheet' ? 'drive' : 'drive');
+const cam0 = Q.get('cam') || 'front34';
+let cols = 4;
+if (GRID === 'roster') for (const id of ids) add(id, pose0, cam0, name(id));
+else if (GRID === 'poses') { for (const p of (Q.get('poses') ? Q.get('poses').split(',') : CYCLE)) add(id1, p, cam0, p); }
+else if (GRID === 'sheet') {                            // contact sheet: rows = racers, cols = views
+  const views = (Q.get('views') || 'front34,behind,face').split(',');
+  cols = ids.length;
+  for (const v of views) for (const id of ids) add(id, Q.get('pose') || (v === 'face' ? 'idle' : 'leanL'), v, v === views[0] ? name(id) : '');
+} else { add(id1, pose0, cam0, name(id1)); cols = 1; }
+if (Q.has('cols')) cols = +Q.get('cols');
+const rows = Math.ceil(cells.length / cols);
+function name(id) { const r = RACERS.find(r => r.id === id); return r ? `${r.name} <small>${r.stats.speed}/${r.stats.accel}/${r.stats.turn}</small>` : id; }
+
+for (const c of cells) {
+  const d = document.createElement('div'); d.className = 'lab'; d.innerHTML = c.label; document.body.appendChild(d); c.el = d;
+}
+
+/* ---------------------------------------------------------------- layout + render */
+function layout() {
+  const W = innerWidth, H = innerHeight;
+  renderer.setSize(W, H, false);
+  cells.forEach((c, i) => {
+    const cw = W / cols, ch = H / rows, x = (i % cols) * cw, y = Math.floor(i / cols) * ch;
+    c.rect = [x, H - y - ch, cw, ch];
+    c.el.style.left = x + 'px'; c.el.style.top = y + 'px';
+    c.stage.cam.aspect = cw / ch; c.stage.cam.updateProjectionMatrix();
+  });
+}
+addEventListener('resize', layout); layout();
+
+function placeCam(c, spin = 0) {
+  const [x, y, z, tx, ty, tz] = camSpec(c.cam), k = c.rig.size;
+  const cs = Math.cos(spin), sn = Math.sin(spin);
+  c.stage.cam.position.set((x * cs + z * sn) * k, y * k, (-x * sn + z * cs) * k);
+  c.stage.cam.lookAt(tx * k, ty * k, tz * k);
+}
+function draw(spin = 0) {
+  let calls = 0;
+  for (const c of cells) {
+    placeCam(c, spin);
+    renderer.setViewport(...c.rect); renderer.setScissor(...c.rect);
+    renderer.render(c.stage.scene, c.stage.cam);
+    calls += renderer.info.render.calls;
+  }
+  return calls;
+}
+
+function step(c, dt) {
+  let pose = c.pose;
+  if (pose === 'cycle') {
+    const total = CYCLE.length * 2.2, k = Math.floor((c.u % total) / 2.2);
+    pose = CYCLE[k]; const u = (c.u % total) - k * 2.2;
+    animateRacer(c.rig, stateFor(pose, u), dt);
+    c.el.innerHTML = c.label + ' <small>' + pose + '</small>';
+  } else animateRacer(c.rig, stateFor(pose, c.u), dt);
+  c.u += dt;
+}
+
+// per-racer stats
+const stats = {};
+for (const c of cells) if (!stats[c.id]) stats[c.id] = racerStats(c.root);
+window.__stats = stats;
+
+if (Q.get('portraits') === '1') {
+  const box = document.getElementById('portraits');
+  for (const r of RACERS) box.appendChild(renderPortrait(r.id, +(Q.get('psize') || 96)));
+}
+
+if (STILL) {
+  for (const c of cells) {
+    const dur = (POSES[c.pose] || POSES.drive).dur;
+    const n = Math.round(dur * 60);
+    for (let i = 0; i < n; i++) step(c, 1 / 60);
+  }
+  draw();
+  document.getElementById('info').textContent = Object.entries(stats).map(([k, v]) => `${k} ${v.draws} draws ${v.tris} tris`).join('\n');
+  window.__ready = true;
+} else {
+  let last = performance.now(), spin = 0;
+  const loop = now => {
+    const dt = Math.min(.05, (now - last) / 1000); last = now;
+    for (const c of cells) step(c, dt);
+    if (Q.get('turn') === '1') spin += dt * .4;
+    draw(spin);
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+  window.__ready = true;
+}
+</script>
+</body>
+</html>

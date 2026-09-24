@@ -1,0 +1,314 @@
+{
+ "vo_1": {
+  "heard": "One!",
+  "delivery": "energetic countdown callout",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_final_lap": {
+  "heard": "Final lap!",
+  "delivery": "Energetic, excited, and kid-friendly announcer voice",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_ready": {
+  "heard": "Ready?",
+  "delivery": "enthusiastic and upbeat",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_go": {
+  "heard": "GO!",
+  "delivery": "high-energy and enthusiastic callout",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_2": {
+  "heard": "Two!",
+  "delivery": "Energetic and punchy",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_3": {
+  "heard": "Three!",
+  "delivery": "Energetic countdown callout",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_new_record": {
+  "heard": "New record!",
+  "delivery": "Energetic and enthusiastic announcer",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_great_race": {
+  "heard": "Great race!",
+  "delivery": "warm, cheerful and encouraging",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_so_close": {
+  "heard": "So close! Try again!",
+  "delivery": "cheerful and encouraging",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_you_win": {
+  "heard": "You win!",
+  "delivery": "Energetic, playful, and cartoonish",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_title": {
+  "heard": "Orion Team Racing!",
+  "delivery": "energetic and cheerful",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_lap_2": {
+  "heard": "Lap two!",
+  "delivery": "enthusiastic and upbeat",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_great_slide": {
+  "heard": "Great slide!",
+  "delivery": "enthusiastic and upbeat",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_ouch": {
+  "heard": "Ouch",
+  "delivery": "energetic and playful",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_orion_cup": {
+  "heard": "The Orion Cup!",
+  "delivery": "Energetic and enthusiastic announcer",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_super_turbo": {
+  "heard": "Super turbo!",
+  "delivery": "cheerful and energetic",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_nice_shot": {
+  "heard": "Nice shot!",
+  "delivery": "Energetic and enthusiastic",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_choose": {
+  "heard": "Choose your racer.",
+  "delivery": "Energetic and friendly announcer",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_rocket": {
+  "heard": "Cosmic Rocket!",
+  "delivery": "Energetic and cheerful announcer style",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_taco_bomb": {
+  "heard": "Taco bomb!",
+  "delivery": "cheerful and energetic cartoon voice",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_tnt": {
+  "heard": "T! N! T!",
+  "delivery": "punchy and energetic",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_ice_cream": {
+  "heard": "Ice Cream Splat!",
+  "delivery": "cheerful and high-energy",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_whoa": {
+  "heard": "Whoa!",
+  "delivery": "energetic and playful exclamation",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_boom": {
+  "heard": "Boom!",
+  "delivery": "playful and energetic",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_warp_star": {
+  "heard": "Warp star!",
+  "delivery": "Energetic and playful",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_tv_remote": {
+  "heard": "TV remote",
+  "delivery": "lively and upbeat",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_super_star": {
+  "heard": "Super star!",
+  "delivery": "bright, energetic, and kid-friendly",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_turbo": {
+  "heard": "Turbo rocket!",
+  "delivery": "enthusiastic cartoon style",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_ten_stars": {
+  "heard": "Ten stars! Super power!",
+  "delivery": "enthusiastic and playful",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_shield": {
+  "heard": "Bubble shield!",
+  "delivery": "cheerful and energetic",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_orion_wins": {
+  "heard": "Orion wins!",
+  "delivery": "enthusiastic and upbeat racing announcer",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_hardhat_wins": {
+  "heard": "Hard hat wins!",
+  "delivery": "energetic and celebratory",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_kingdad_wins": {
+  "heard": "King Dad wins!",
+  "delivery": "cheerful and energetic announcer",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_grumblin_wins": {
+  "heard": "Grumblin wins!",
+  "delivery": "gruff and enthusiastic character voice",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_mum_wins": {
+  "heard": "Mum wins!",
+  "delivery": "bright, cheerful, and cartoonishly energetic",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_sootie_wins": {
+  "heard": "Sootie wins!",
+  "delivery": "cheerful and enthusiastic",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_jelly_wins": {
+  "heard": "Jelly wins!",
+  "delivery": "bright, energetic announcement",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_orion_yeah": {
+  "heard": "Yeah!",
+  "delivery": "excited and energetic shout",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_zapdrone_wins": {
+  "heard": "Zapdrone wins!",
+  "delivery": "energetic kart race announcer shout",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_orion_uhoh": {
+  "heard": "Uh-oh!",
+  "delivery": "playful and cartoony",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_kingdad_count": {
+  "heard": "Don't make me count to three!",
+  "delivery": "playful and energetic",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_orion_woohoo": {
+  "heard": "Woo-hoo!",
+  "delivery": "cheerful and energetic",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_mum_wheee": {
+  "heard": "Wheee!",
+  "delivery": "cheerful and playful",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_mum_goodjob": {
+  "heard": "Good job, sweetheart!",
+  "delivery": "Warm and encouraging",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_kingdad_remote": {
+  "heard": "Everybody... pause!",
+  "delivery": "Dramatic build-up with a punchy, energetic finish",
+  "score": 9,
+  "defects": ""
+ },
+ "vo_kingdad_back": {
+  "heard": "Ooh, my back!",
+  "delivery": "comically exaggerated cartoon groan",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_mum_careful": {
+  "heard": "Careful, darling!",
+  "delivery": "warm and playful warning",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_kingdad_haha": {
+  "heard": "Ha ha! The King is fast!",
+  "delivery": "cheerful and confident",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_jelly_wobble": {
+  "heard": "Boing, boing, wobble!",
+  "delivery": "playful bouncy cartoon",
+  "score": 9,
+  "defects": ""
+ },
+ "vo_hardhat_beep": {
+  "heard": "",
+  "delivery": "bright and comedic cartoon horn honks",
+  "score": 9,
+  "defects": ""
+ },
+ "vo_grumblin_grr": {
+  "heard": "Grrr",
+  "delivery": "grumpy cartoon growl",
+  "score": 9,
+  "defects": ""
+ },
+ "vo_zapdrone_zap": {
+  "heard": "[electric zap] beep-boop!",
+  "delivery": "cheerful and cute robotic chirp",
+  "score": 10,
+  "defects": ""
+ }
+}

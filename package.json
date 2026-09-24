@@ -1,0 +1,12 @@
+{
+  "name": "orion-team-racing",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "node tools/serve.mjs 8960",
+    "check": "node tools/check.js"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.63.0"
+  }
+}

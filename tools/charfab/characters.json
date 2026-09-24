@@ -1,0 +1,64 @@
+{
+  "style": "3D CGI character render like a modern family animated movie, stylized chunky kid-friendly proportions with a big oversized head, short body and big expressive eyes, cheerful friendly expression, bright saturated colours, soft global illumination, smooth rounded 3D forms with soft shading, high detail, centered composition",
+  "poses": {
+    "apose": {
+      "text": "full body from head to feet, standing upright in a relaxed A-pose with both arms held straight and slightly away from the body, palms facing inward, empty hands, feet shoulder-width apart, facing the camera directly, plain flat white background, even soft studio lighting, no props, no text",
+      "width": 832,
+      "height": 1216
+    },
+    "seated": {
+      "text": "full body, sitting on the floor in a go-kart driving pose, knees bent up in front of the body, feet forward, both arms reaching forward at chest height gripping an invisible steering wheel, leaning slightly forward, facing the camera, seen from the front and slightly above, plain flat white background, even soft studio lighting, no kart, no vehicle, no chair, no text",
+      "width": 1024,
+      "height": 1024
+    },
+    "creature": {
+      "text": "full body, facing the camera, three-quarter front view from slightly above, plain flat white background, even soft studio lighting, no props, no text",
+      "width": 1024,
+      "height": 1024
+    }
+  },
+  "negative": "2D, flat illustration, drawing, line art, black outlines, cel shading, sketch, anime, realistic, photograph, scary, horror, creepy, cropped, cut off, out of frame, multiple characters, text, watermark, logo, weapon, background scenery, floor shadow, side view, back view, blurry, lowres",
+  "characters": [
+    {
+      "slug": "orion",
+      "kind": "human",
+      "desc": "a cheerful 7 year old cartoon boy with short dark brown hair and a neat fringe, big brown eyes, rosy cheeks and a huge happy grin, wearing a bright royal blue t-shirt with a big yellow star printed on the chest, bright red shorts, white socks and white sneakers"
+    },
+    {
+      "slug": "kingdad",
+      "kind": "human",
+      "desc": "a big friendly bald cartoon dad, shiny smooth bald scalp like a bowling ball, short neat black beard, warm cheeky smile, a small shiny golden crown perched on his bald scalp, a short red royal cape with a white fur collar over his shoulders reaching his waist, a casual slate blue t-shirt, dark grey jeans and brown sneakers, a round tummy and broad shoulders",
+      "neg": "hairstyle, haircut, hair, sideburns, floor-length cape"
+    },
+    {
+      "slug": "mum",
+      "kind": "human",
+      "desc": "a kind cheerful cartoon mum with long wavy chocolate brown hair past her shoulders, a warm smile, wearing a bright orchid purple long-sleeved top, purple leggings and white sneakers"
+    },
+    {
+      "slug": "sootie",
+      "kind": "human",
+      "desc": "a cute fluffy all-black cartoon cat standing upright on two legs like a person, soft fluffy black fur, huge round mint green eyes, a small pink nose, white whiskers, pointy ears with pink insides, a long fluffy black tail, wearing a tiny mint green racing jacket"
+    },
+    {
+      "slug": "grumblin",
+      "kind": "creature",
+      "desc": "a grumpy but cute little green gremlin monster sitting in a driving pose holding an invisible steering wheel, a chunky rounded boxy green body, big white eyes with small black pupils, a grumpy frown, stubby little arms, stubby dark green feet"
+    },
+    {
+      "slug": "hardhat",
+      "kind": "creature",
+      "desc": "a grumpy but cute little green gremlin monster wearing a big shiny yellow construction hard hat and a small orange safety vest, sitting in a driving pose holding an invisible steering wheel, big white eyes with angry cross eyebrows, stubby arms, stubby dark green feet"
+    },
+    {
+      "slug": "jelly",
+      "kind": "creature",
+      "desc": "a cute cartoon pink jellyfish with a round glossy bell-shaped pink body and a pale pink cap on top, big friendly cartoon eyes and a cheeky smile, six short wiggly red-pink tentacles curling underneath"
+    },
+    {
+      "slug": "zapdrone",
+      "kind": "creature",
+      "desc": "a cute little cartoon robot drone shaped like a chunky grey metal diamond octahedron, one big glowing red round eye in the middle, two glowing light blue electric rings orbiting around it, small antenna on top"
+    }
+  ]
+}

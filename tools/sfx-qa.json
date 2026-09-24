@@ -1,0 +1,292 @@
+{
+ "countdown": {
+  "heard": "A single, clean, short electronic synth beep with a bright retro arcade tone.",
+  "score": 10,
+  "defects": ""
+ },
+ "cheer": {
+  "heard": "A short, cheerful sound of a small group of children yelling 'Yay!' together.",
+  "score": 10,
+  "defects": ""
+ },
+ "bomb_roll": {
+  "heard": "A rapid, low-end rumble of a heavy ball or wheel rolling continuously across a hard road surface.",
+  "score": 8,
+  "defects": ""
+ },
+ "charge_red": {
+  "heard": "A single bright, high-pitched metallic chime ding with a crisp attack and brief decay.",
+  "score": 10,
+  "defects": ""
+ },
+ "bump": {
+  "heard": "A short, muted rubbery cartoon thump or low bonk.",
+  "score": 8,
+  "defects": ""
+ },
+ "bump.v2": {
+  "heard": "A soft, bouncy rubber bonk sound with a slight squeaky, cartoony impact tone.",
+  "score": 9,
+  "defects": ""
+ },
+ "drift_start": {
+  "heard": "A sharp, cartoony rubber tire screech and chirp indicating a quick slide or turn.",
+  "score": 10,
+  "defects": ""
+ },
+ "finish": {
+  "heard": "A short, bright brass fanfare flourish ending on an upbeat triumphant chord with percussion, styled like a video game jingle.",
+  "score": 10,
+  "defects": ""
+ },
+ "explode": {
+  "heard": "A punchy low-frequency thump layered with a breezy cartoon poof and a light sizzle of dissipating smoke.",
+  "score": 9,
+  "defects": ""
+ },
+ "drift_loop": {
+  "heard": "A high-pitched, continuous cartoonish tire squeal and screech that ends with a brief reverb tail.",
+  "score": 8,
+  "defects": "abrupt ending, not seamlessly loopable"
+ },
+ "final_lap": {
+  "heard": "A bright, triumphant brass trumpet fanfare flourish suitable for a celebratory video game jingle.",
+  "score": 9,
+  "defects": ""
+ },
+ "explode.v2": {
+  "heard": "A punchy, low-end cartoon impact boom that quickly gives way to an airy dissipating poof of smoke.",
+  "score": 9,
+  "defects": ""
+ },
+ "item_box": {
+  "heard": "A crisp, playful pop accompanied by bright, ascending magical sparkles and chimes.",
+  "score": 10,
+  "defects": ""
+ },
+ "hop.v2": {
+  "heard": "A quick, bright, bouncy cartoon rising pitch boing sound effect.",
+  "score": 10,
+  "defects": ""
+ },
+ "hop": {
+  "heard": "A short, bright, and bouncy cartoon spring boing with a rising pitch.",
+  "score": 10,
+  "defects": ""
+ },
+ "flip": {
+  "heard": "A rapid cartoon slide whistle whoosh immediately followed by a comical resonant spring boing.",
+  "score": 10,
+  "defects": ""
+ },
+ "fizzle": {
+  "heard": "A short, cartoonish muffled puff and soft pop with a subtle airy fizzle.",
+  "score": 9,
+  "defects": ""
+ },
+ "go": {
+  "heard": "A single, bright, high-pitched retro electronic beep that sustains clearly for about a second.",
+  "score": 10,
+  "defects": ""
+ },
+ "lap": {
+  "heard": "Two bright, resonant bell chimes play in quick ascending succession with a clean, sparkly decay.",
+  "score": 10,
+  "defects": ""
+ },
+ "item_get": {
+  "heard": "A bright, happy two-note ascending chime that sounds like an item pickup in a video game.",
+  "score": 10,
+  "defects": ""
+ },
+ "lose": {
+  "heard": "A classic cartoon sad trombone playing the iconic descending four-note 'wah-wah-wah-wahhh' failure sound effect with a mute.",
+  "score": 10,
+  "defects": ""
+ },
+ "menu_back": {
+  "heard": "A short, clean, descending two-note electronic blip.",
+  "score": 10,
+  "defects": ""
+ },
+ "land": {
+  "heard": "A playful, rubbery cartoon thud with a subtle springy pitch bend, perfectly evoking a light landing.",
+  "score": 10,
+  "defects": ""
+ },
+ "land.v2": {
+  "heard": "A soft, rubbery cartoon thud layered with a gentle springy bounce effect.",
+  "score": 10,
+  "defects": ""
+ },
+ "menu_ok": {
+  "heard": "A clean, bright, ascending two-note electronic chime that sounds like a classic video game menu confirmation.",
+  "score": 10,
+  "defects": ""
+ },
+ "menu_move": {
+  "heard": "A soft, crisp digital blip with a quick decay, ideal for navigating UI menus.",
+  "score": 10,
+  "defects": ""
+ },
+ "meow": {
+  "heard": "A short, clean, and friendly close-up recording of a real cat meowing.",
+  "score": 9,
+  "defects": ""
+ },
+ "nitro": {
+  "heard": "A quick cartoon burst featuring bubbly fizzing textures and a bright popping whoosh.",
+  "score": 7,
+  "defects": ""
+ },
+ "offroad": {
+  "heard": "A low mechanical rumble blended with crunchy, rattling gravel sounds mimicking a vehicle rolling over rough off-road terrain.",
+  "score": 8,
+  "defects": ""
+ },
+ "meow.v2": {
+  "heard": "A high-pitched, playful human vocal imitation of a cartoony cat meowing.",
+  "score": 8,
+  "defects": ""
+ },
+ "respawn": {
+  "heard": "A bright, ascending magical chime glissando with sparkling cartoon bell tones and a light poof sound.",
+  "score": 9,
+  "defects": ""
+ },
+ "pad": {
+  "heard": "A bright, cartoony electronic whoosh sweeps upwards in pitch with a zappy, bubbly energy and a clean tail.",
+  "score": 10,
+  "defects": ""
+ },
+ "rocket": {
+  "heard": "A quick airy whoosh and sizzling fizz of a cartoon firework rocket launching.",
+  "score": 9,
+  "defects": ""
+ },
+ "purr": {
+  "heard": "A close-up recording of a real domestic cat loudly purring with rhythmic breathing cycles.",
+  "score": 8,
+  "defects": ""
+ },
+ "overheat": {
+  "heard": "A short, high-pitched mechanical whirring sound that quickly fades out.",
+  "score": 4,
+  "defects": ""
+ },
+ "remote": {
+  "heard": "A short, high-pitched electronic buzzing sound.",
+  "score": 8,
+  "defects": ""
+ },
+ "shield_pop": {
+  "heard": "A playful cartoon bubble pop followed immediately by bright, twinkling chimes.",
+  "score": 10,
+  "defects": ""
+ },
+ "spinout": {
+  "heard": "A classic cartoon slide whistle sliding downwards in pitch with a comedic vibrato wobble.",
+  "score": 10,
+  "defects": ""
+ },
+ "rocket_lock": {
+  "heard": "Two rapid, high-pitched digital beeps in quick succession, sounding like a classic video game lock-on alert.",
+  "score": 10,
+  "defects": ""
+ },
+ "shield_up": {
+  "heard": "A short, cartoonish rising gurgle with a shimmering, bubbly glissando.",
+  "score": 9,
+  "defects": ""
+ },
+ "splash": {
+  "heard": "A bright, crisp water splash with bubbly droplets dispersing after an initial whoosh.",
+  "score": 9,
+  "defects": ""
+ },
+ "roulette": {
+  "heard": "A very brief, dry, high-pitched plastic clicking sound, like a small ratchet or pawl mechanism snapping into place.",
+  "score": 9,
+  "defects": ""
+ },
+ "star": {
+  "heard": "A bright, resonant bubble-like pop with a cheerful, sparkling chime twinkle.",
+  "score": 10,
+  "defects": ""
+ },
+ "splat": {
+  "heard": "A short, wet, and squelchy cartoon splat sound that evokes gooey mud or melted ice cream hitting a surface.",
+  "score": 9,
+  "defects": ""
+ },
+ "star_spill": {
+  "heard": "A rapid cascade of bright, cartoonish twinkly chimes and metallic pings scattering downwards.",
+  "score": 10,
+  "defects": ""
+ },
+ "super_star": {
+  "heard": "A rapid, bright synth chime arpeggio that rises energetically and sparkles before fading out smoothly.",
+  "score": 9,
+  "defects": ""
+ },
+ "star.v2": {
+  "heard": "A bright, sparkly chime arpeggio with high-pitched twinkling resonance, evoking a shiny item pickup.",
+  "score": 10,
+  "defects": ""
+ },
+ "start_boost": {
+  "heard": "A high-pitched cartoon engine revs and launches forward with a futuristic rocket boost whoosh.",
+  "score": 9,
+  "defects": ""
+ },
+ "tnt_tick": {
+  "heard": "A single, isolated dry wooden click with a hollow percussive pop.",
+  "score": 10,
+  "defects": ""
+ },
+ "turbo1": {
+  "heard": "A short, energetic jet-like whoosh with a rising synth tone that sweeps upward in pitch and quickly decays.",
+  "score": 10,
+  "defects": ""
+ },
+ "turbo2": {
+  "heard": "A very short, low-frequency whooshing sound that resembles a muffled impact or a quick swipe.",
+  "score": 3,
+  "defects": "Lacks the rising pitch, high-frequency 'jet' character, and duration needed for a turbo boost; sounds more like a UI transition or a dull thud."
+ },
+ "turbo3": {
+  "heard": "A very loud, deep, and heavily distorted explosion sound with a low-frequency rumble.",
+  "score": 2,
+  "defects": "harshness, clipping, wrong genre (sounds like a dark sci-fi explosion rather than a bright, cartoony rocket boost)"
+ },
+ "tnt_on_head": {
+  "heard": "A short, hollow wooden bonk sound.",
+  "score": 7,
+  "defects": "The springy boing described in the prompt is missing."
+ },
+ "tnt_drop": {
+  "heard": "A playful cartoon sound effect with a descending pitch drop ending in a light, hollow wooden thunk.",
+  "score": 9,
+  "defects": ""
+ },
+ "wall.v2": {
+  "heard": "A short, low-pitched, hollow thud with a slight woody or plastic resonance.",
+  "score": 8,
+  "defects": ""
+ },
+ "warp": {
+  "heard": "A high-pitched, ascending cartoon slide whistle whoosh layered with a bright, magical sparkling chime.",
+  "score": 10,
+  "defects": ""
+ },
+ "wall": {
+  "heard": "A short, punchy cartoon impact sound combining a rubbery bonk with a hollow plastic clunk.",
+  "score": 10,
+  "defects": ""
+ },
+ "win": {
+  "heard": "A short, bright brass and twinkling bells victory fanfare that resolves into a triumphant celebratory chord.",
+  "score": 10,
+  "defects": ""
+ }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "otr-charfab",
+  "private": true,
+  "type": "module",
+  "description": "Dev-only HD character pipeline for OTR (not shipped). See README in assets/models.",
+  "devDependencies": {
+    "@gltf-transform/core": "^4.5.0",
+    "@gltf-transform/extensions": "^4.5.0",
+    "@gltf-transform/functions": "^4.5.0",
+    "meshoptimizer": "^1.2.0",
+    "playwright-core": "^1.62.1",
+    "sharp": "^0.34.0"
+  }
+}

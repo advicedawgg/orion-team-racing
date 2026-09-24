@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OTR HD racers</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html, body { margin: 0; height: 100%; background: #7cc4ff; overflow: hidden; font: 600 13px system-ui, sans-serif; }
+  canvas { display: block; }
+  .lab { position: absolute; color: #fff; text-shadow: 0 1px 2px #000, 0 0 3px #000; pointer-events: none; padding: 3px 6px; }
+  #info { position: absolute; right: 6px; bottom: 4px; color: #fff; text-shadow: 0 1px 2px #000; white-space: pre; text-align: right; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
+</script>
+</head>
+<body>
+<div id="info"></div>
+<script type="module">
+// HD racer viewer. Query:
+//   ?ids=orion,kingdad   racers (default: every HD model)       &hd=0 procedural drivers instead
+//   &poses=idle,left,right,slideL,slideR,hit,cheer,boost,sad     (rows)
+//   &views=chase,front,side,close                                 (columns)
+//   &cell=360x300   cell size in px     &perf=1  8-kart draw-time benchmark (window.__perf)
+//   &skel=1  skeleton helper   &nowheel=1  hide the HD steering wheel
+import * as THREE from 'three';
+import { buildRacer, animateRacer } from './src/racers.js';
+import { hasHD, loadHDRacer, animateHD, HD_MODELS } from './src/hdracers.js';
+
+const Q = new URLSearchParams(location.search);
+// dev: &devurl=<glb>&devkind=rig|static&devh=1.4 loads that file as the first id's HD model
+if (Q.get('devurl')) HD_MODELS[(Q.get('ids') || 'orion').split(',')[0]] = { kind: Q.get('devkind') || 'rig', height: +(Q.get('devh') || 1.4), yaw: +(Q.get('devyaw') || 0), url: Q.get('devurl') };
+const ids = (Q.get('ids') || Object.keys(HD_MODELS).join(',')).split(',').filter(Boolean);
+const poses = (Q.get('poses') || 'idle').split(',');
+const views = (Q.get('views') || 'chase,front').split(',');
+const [CW, CH] = (Q.get('cell') || '360x300').split('x').map(Number);
+const useHD = Q.get('hd') !== '0';
+
+const POSES = {
+  idle: { speed: 0 },
+  drive: { speed: 18, throttle: 1 },
+  left: { speed: 18, steer: 1, throttle: 1 },
+  right: { speed: 18, steer: -1, throttle: 1 },
+  slideL: { speed: 18, steer: 1, drift: 1, driftAngle: 0.5, charge: 0.8 },
+  slideR: { speed: 18, steer: -1, drift: -1, driftAngle: -0.5, charge: 0.8 },
+  hit: { speed: 6, hitT: 0.12, hitKind: 'bomb', t: 0.37 },
+  spin: { speed: 4, spinT: 0.4, t: 0.21 },
+  cheer: { speed: 0, cheer: true, t: 0.4 },
+  boost: { speed: 28, boostT: 1, throttle: 1 },
+  land: { speed: 18, landT: 0.08 },
+  sad: { speed: 0, sad: true },
+};
+const VIEWS = {
+  chase: [[0, 2.0, -3.6], [0, 0.85, 1.0], 42],
+  front: [[2.3, 1.5, 3.0], [0, 0.75, 0], 38],
+  side: [[3.6, 1.1, 0.2], [0, 0.75, 0], 36],
+  close: [[1.1, 1.35, 1.9], [0, 1.0, 0], 34],
+  back: [[1.8, 1.4, -2.6], [0, 0.8, 0], 38],
+};
+
+const perf = Q.get('perf') === '1';
+const cols = perf ? 1 : views.length, rows = perf ? 1 : poses.length * ids.length;
+const W = perf ? 1280 : cols * CW, H = perf ? 800 : rows * CH;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1); renderer.setSize(W, H);
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x7cc4ff);
+scene.fog = new THREE.Fog(0x7cc4ff, 30, 90);
+scene.add(new THREE.HemisphereLight(0xdff1ff, 0x5a7a3a, 1.4));
+const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+sun.position.set(4, 9, 3); sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12, near: 0.5, far: 30 });
+scene.add(sun, sun.target);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: 0x8a8f99, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+const grid = new THREE.GridHelper(40, 40, 0x6d727c, 0x7d828c); grid.position.y = 0.002; scene.add(grid);
+
+const info = document.getElementById('info');
+const errs = [];
+window.addEventListener('error', e => errs.push(String(e.message)));
+
+async function makeRacer(id) {
+  const { root, rig } = buildRacer(id);
+  let hd = null;
+  if (useHD && hasHD(id)) {
+    try {
+      const t0 = performance.now();
+      hd = await loadHDRacer(id, { wheel: Q.get('nowheel') !== '1' });
+      hd.loadMs = performance.now() - t0;
+      for (const c of [...rig.driver.children]) c.visible = false;   // hide the procedural driver
+      rig.driver.add(hd.root);
+      if (Q.get('skel') === '1') scene.add(new THREE.SkeletonHelper(hd.root));
+    } catch (e) { errs.push(`hd ${id}: ${e.message}`); }
+  }
+  scene.add(root);
+  return { id, root, rig, hd };
+}
+function setPose(r, name) {
+  const s = { t: 0, ...(POSES[name] || POSES.idle) };
+  r.root.rotation.set(0, s.driftAngle || 0, 0);
+  animateRacer(r.rig, s, 1);
+  if (r.hd) animateHD(r.hd.rig, s, 1);
+}
+
+const racers = [];
+for (const id of ids) racers.push(await makeRacer(id));
+let tris = 0;
+for (const r of racers) r.hd?.root.traverse(o => { if (o.isMesh) tris += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; });
+
+const cam = new THREE.PerspectiveCamera(40, CW / CH, 0.05, 200);
+function aim(view, off = new THREE.Vector3()) {
+  const [p, tg, fov] = VIEWS[view] || VIEWS.chase;
+  cam.fov = fov; cam.position.set(p[0], p[1], p[2]).add(off); cam.lookAt(tg[0] + off.x, tg[1] + off.y, tg[2] + off.z); cam.updateProjectionMatrix();
+}
+
+if (!perf) {
+  renderer.setScissorTest(true);
+  let row = 0;
+  for (const r of racers) {
+    for (const r2 of racers) r2.root.visible = r2 === r;
+    for (const pose of poses) {
+      setPose(r, pose);
+      views.forEach((v, col) => {
+        const x = col * CW, y = H - (row + 1) * CH;
+        renderer.setViewport(x, y, CW, CH); renderer.setScissor(x, y, CW, CH);
+        cam.aspect = CW / CH; aim(v);
+        renderer.render(scene, cam);
+        const d = document.createElement('div'); d.className = 'lab';
+        d.style.left = x + 'px'; d.style.top = row * CH + 'px';
+        d.textContent = `${r.id}${r.hd ? ' HD' : ''} · ${pose} · ${v}`; document.body.appendChild(d);
+      });
+      row++;
+    }
+  }
+  info.textContent = `${racers.filter(r => r.hd).length}/${racers.length} HD, ${Math.round(tris / Math.max(1, racers.filter(r => r.hd).length))} tris each` + (errs.length ? '\n' + errs.join('\n') : '');
+  window.__ready = true;
+} else {
+  // 8 karts in race formation from the chase camera; time N frames with a GPU sync per frame
+  const all = [];
+  for (let i = 0; i < 8; i++) {
+    const src = racers[i % racers.length];
+    const r = i < racers.length ? src : await makeRacer(src.id);
+    r.root.position.set((i % 4 - 1.5) * 2.2, 0, Math.floor(i / 4) * 3.2 + 2);
+    setPose(r, ['left', 'slideL', 'right', 'drive'][i % 4]);
+    all.push(r);
+  }
+  cam.aspect = W / H; aim('chase', new THREE.Vector3(0, 0.8, -1.5));
+  const gl = renderer.getContext(), px = new Uint8Array(4);
+  const frame = (i) => { for (const r of all) { if (r.hd) animateHD(r.hd.rig, { steer: Math.sin(i * 0.05), speed: 18, t: i / 60 }, 1 / 60); } renderer.render(scene, cam); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); };
+  for (let i = 0; i < 20; i++) frame(i);
+  const N = 120, t0 = performance.now();
+  for (let i = 0; i < N; i++) frame(i);
+  const ms = (performance.now() - t0) / N;
+  const ri = renderer.info.render;
+  let hdTris = 0; for (const r of all) r.hd?.root.traverse(o => { if (o.isMesh) hdTris += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; });
+  window.__perf = { msPerFrame: +ms.toFixed(2), calls: ri.calls, triangles: ri.triangles, hdTris, hd: useHD, gpu: gl.getParameter(gl.getExtension('WEBGL_debug_renderer_info')?.UNMASKED_RENDERER_WEBGL ?? gl.RENDERER) };
+  info.textContent = JSON.stringify(window.__perf, null, 1) + (errs.length ? '\n' + errs.join('\n') : '');
+  window.__ready = true;
+}
+window.__errs = errs;
+</script>
+</body>
+</html>

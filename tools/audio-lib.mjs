@@ -1,0 +1,129 @@
+// Shared helpers for tools/gen-sfx.mjs, gen-vo.mjs, gen-music.mjs and mixprobe.mjs (audio agent).
+//
+// Lessons carried over from DAWG ARENA (memory project_dawgfps_arena):
+// * keep RAW API responses (tools/sfx-raw/) so re-processing never re-bills;
+// * tail fade = `areverse,afade=t=in,areverse` — `afade=t=out:st=0` silences the whole clip;
+// * normalise the LOUDEST 100 ms window to a per-category target (+ alimiter), not the peak:
+//   a transient and a chime at equal peak are ~12 dB apart to the ear.
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+export const run = promisify(execFile);
+export const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+export const SFX_DIR = path.join(ROOT, 'assets/sfx');
+export const MUSIC_DIR = path.join(ROOT, 'assets/audio');
+export const RAW_DIR = path.join(ROOT, 'tools/sfx-raw');
+
+/** ELEVENLABS_API_KEY from the env or /home/ws/studio/.env. Never printed. */
+export async function loadKey() {
+  if (process.env.ELEVENLABS_API_KEY) return process.env.ELEVENLABS_API_KEY;
+  try {
+    const txt = await fs.readFile('/home/ws/studio/.env', 'utf8');
+    const m = txt.match(/^\s*(?:export\s+)?ELEVENLABS_API_KEY\s*=\s*["']?([^"'\s]+)/m);
+    if (m) return m[1];
+  } catch { /* fallthrough */ }
+  console.error('ELEVENLABS_API_KEY not set (env or /home/ws/studio/.env)');
+  process.exit(1);
+}
+
+export async function credits(key) {
+  const r = await fetch('https://api.elevenlabs.io/v1/user/subscription', { headers: { 'xi-api-key': key } });
+  if (!r.ok) return null;
+  const d = await r.json();
+  return { used: d.character_count, limit: d.character_limit };
+}
+
+export const exists = p => fs.access(p).then(() => true, () => false);
+
+/** mono float PCM at `sr` */
+export async function pcm(file, sr = 24000) {
+  const { stdout } = await run('ffmpeg', ['-v', 'error', '-i', file, '-f', 'f32le', '-ac', '1', '-ar', String(sr), '-'],
+    { maxBuffer: 1 << 28, encoding: 'buffer' });
+  return new Float32Array(stdout.buffer, stdout.byteOffset, stdout.length >> 2);
+}
+
+/** loudness (dBFS RMS) of the loudest `win` seconds, plus the peak */
+export async function loudness(file, win = 0.1) {
+  const sr = 24000, d = await pcm(file, sr);
+  const n = d.length;
+  if (!n) return { loud: -99, peak: -99, dur: 0 };
+  const w = Math.min(n, Math.round(win * sr));
+  let sum = 0, best = 0, pk = 0;
+  for (let i = 0; i < n; i++) {
+    const v = d[i]; sum += v * v; pk = Math.max(pk, Math.abs(v));
+    if (i >= w) sum -= d[i - w] * d[i - w];
+    if (i >= w - 1) best = Math.max(best, sum / w);
+  }
+  return { loud: 10 * Math.log10(Math.max(1e-12, best)), peak: 20 * Math.log10(Math.max(1e-9, pk)), dur: n / sr };
+}
+
+/**
+ * Trim leading/trailing silence, fade the tail, normalise the loudest 100 ms to `target` dB and
+ * encode mono MP3 (Chrome trims the encoder delay exactly — measured: a click at 100 ms decodes
+ * at 100.98 ms from WAV and from MP3 alike).
+ * `maxDur` hard-trims (with a real st= for the out-fade). `loop` skips all trimming/fading so a
+ * seamless loop from the API stays seamless.
+ */
+export async function processClip(raw, out, { target = -14, maxDur = 0, loop = false, lead = -50, tail = -55, pre = '' } = {}) {
+  const stage = out + '.stage.wav';
+  let af;
+  if (loop) af = 'anull';
+  else {
+    af = [
+      `silenceremove=start_periods=1:start_duration=0.005:start_threshold=${lead}dB:detection=peak`,
+      'areverse',
+      `silenceremove=start_periods=1:start_duration=0.02:start_threshold=${tail}dB:detection=peak`,
+      'afade=t=in:d=0.02',
+      'areverse',
+      'afade=t=in:d=0.002',
+    ].join(',');
+    if (pre) af = pre + ',' + af;
+    if (maxDur) af += `,atrim=0:${maxDur},areverse,afade=t=in:d=${Math.min(0.04, maxDur / 4).toFixed(3)},areverse`;
+  }
+  await run('ffmpeg', ['-y', '-v', 'error', '-i', raw, '-af', af, '-ac', '1', '-ar', '44100', '-sample_fmt', 's16', stage], { maxBuffer: 1 << 26 });
+  const { loud } = await loudness(stage);
+  const gain = Math.max(-30, Math.min(36, target - loud));
+  await run('ffmpeg', ['-y', '-v', 'error', '-i', stage, '-af', `volume=${gain.toFixed(2)}dB,alimiter=limit=0.94:attack=1:release=30:level=0:latency=1`,
+    '-ac', '1', '-ar', '44100', '-c:a', 'libmp3lame', '-b:a', '96k', out], { maxBuffer: 1 << 26 });
+  await fs.unlink(stage);
+  const m = await loudness(out);
+  return { ...m, gain };
+}
+
+/** rebuild assets/sfx/index.json from what's on disk: name -> [files] (variants are name.v2.mp3) */
+export async function writeSfxIndex() {
+  const files = (await fs.readdir(SFX_DIR)).filter(f => f.endsWith('.mp3')).sort();
+  const idx = {};
+  for (const f of files) {
+    const name = f.split('.')[0];
+    (idx[name] ||= []).push(f);
+  }
+  await fs.writeFile(path.join(SFX_DIR, 'index.json'), JSON.stringify({
+    note: 'generated by tools/gen-sfx.mjs / gen-vo.mjs — src/audio.js loads these over its synth fallbacks',
+    files: idx,
+  }, null, 1) + '\n');
+  return Object.keys(idx).length;
+}
+
+export async function elevenPost(key, url, body, { tries = 3, accept = 'audio/mpeg' } = {}) {
+  for (let attempt = 1; attempt <= tries; attempt++) {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'xi-api-key': key, 'content-type': 'application/json', accept },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const txt = (await r.text()).slice(0, 300);
+      console.warn(`  HTTP ${r.status} (attempt ${attempt}): ${txt}`);
+      if (r.status === 401 || r.status === 402 || r.status === 403 || r.status === 422 || r.status === 400) return { error: r.status, text: txt };
+      await new Promise(res => setTimeout(res, 1500 * attempt));
+      continue;
+    }
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (buf.length < 1200) { console.warn(`  suspiciously small (${buf.length}B)`); continue; }
+    return { buf, headers: r.headers };
+  }
+  return { error: 'retries' };
+}
