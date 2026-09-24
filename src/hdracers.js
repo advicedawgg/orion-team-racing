@@ -13,9 +13,10 @@
 //              the hands grip (opts.wheel === false to omit it and use the kart's own).
 //       rig  : opaque state for animateHD. rig.head is an Object3D (child of root) that tracks the
 //              top of the head every frame — for TNT-on-head. rig.wheel is the steering wheel group.
-//       opts : { height } standing height in m (default per racer, ~1.2-1.6),
-//              { wheel } bool, { wheelAt: [x,y,z] } wheel centre in root space (default: from the
-//              driver's own arm length), { lean } multiplier on the corner lean (default 1).
+//       opts : { height } standing height in m (default per racer, see HD_MODELS),
+//              { wheel } bool, { wheelAt: [x,y,z], wheelR, wheelTilt } wheel centre in root space
+//              (default [0,.21,.37] r .15 tilt .5 = racers.js WHEEL relative to its HIP pivot; pulled
+//              toward the shoulders if the arms can't reach), { lean } multiplier on the lean (default 1).
 //   animateHD(rig, s, dt)        -> same state object as racers.js animateRacer(rig, s, dt).
 //              Leans the spine INTO the corner (+steer = left = lean toward +X), exaggerates in a
 //              slide, turns the head into the turn, hands stay on the wheel which turns with steer,
@@ -37,7 +38,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 /** Shipped HD models. `height` = standing height in metres the model is scaled to. `yaw` fixes a
  *  static model's facing (radians about +Y). Keep in sync with assets/models/README.md. */
 export const HD_MODELS = {
-  orion:   { kind: 'rig', height: 1.30 },
+  orion:   { kind: 'rig', height: 1.50 },
   kingdad: { kind: 'rig', height: 1.62 },
   mum:     { kind: 'rig', height: 1.50 },
   sootie:  { kind: 'rig', height: 1.20 },
@@ -235,11 +236,14 @@ export async function loadHDRacer(id, opts = {}) {
     const get = n => inner.getObjectByName(B(n));
     rig.bones = {}; for (const n of ANIM_BONES) { const b = get(n); if (b) rig.bones[n] = b; }
     for (const n of ['LeftForeArm', 'RightForeArm', 'LeftHand', 'RightHand']) rig.bones[n] = get(n);
-    // wheel: centre in front of the chest at a comfortable reach
+    // wheel: where racers.js puts the kart's own steering wheel (WHEEL.c relative to the HIP pivot the
+    // root hangs from), pulled back toward the shoulders only if this driver's arms cannot reach it
     const L = t.armLen * k, sm = t.shoulderMid.clone().multiplyScalar(k);
-    const wc = opts.wheelAt ? new THREE.Vector3(...opts.wheelAt) : new THREE.Vector3(sm.x, sm.y - L * 0.42, sm.z + L * 0.68);
-    rig.wheelR = Math.max(0.1, Math.min(0.2, t.shoulderHalf * k * 0.95));
-    rig.wheelTilt = 0.45;   // top of the wheel leans back toward the driver
+    const wc = new THREE.Vector3(...(opts.wheelAt || [0, 0.21, 0.37]));
+    const reach = L * 0.9, d = wc.distanceTo(sm);
+    if (d > reach) wc.sub(sm).multiplyScalar(reach / d).add(sm);
+    rig.wheelR = opts.wheelR || 0.15;
+    rig.wheelTilt = opts.wheelTilt ?? 0.5;   // top of the wheel leans back toward the driver
     rig.wheelC = wc;
     if (opts.wheel !== false) {
       rig.wheel = makeWheel(rig.wheelR); rig.wheel.position.copy(wc); rig.wheel.rotation.x = -rig.wheelTilt; root.add(rig.wheel);
@@ -336,7 +340,7 @@ export function animateHD(rig, s = {}, dt = 1 / 60) {
     const sh = up.getWorldPosition(new THREE.Vector3()); rig.root.worldToLocal(sh);
     if (sp.cheer > 0.01 || sp.arms > 0.01) {
       const wave = Math.sin(t * 9 + sx) * 0.25;
-      _tb.set(sh.x + sx * L * (0.35 + wave * 0.3), sh.y + L * 0.85, sh.z + L * 0.15);
+      _tb.set(sh.x + sx * L * (0.62 + wave * 0.2), sh.y + L * 0.78, sh.z + L * 0.12);   // a wide V: big heads, short arms
       const fl = _v4.set(sh.x + sx * L * (0.8 + Math.sin(t * 19 + sx * 2) * 0.2), sh.y + L * (0.3 + Math.sin(t * 23 + sx) * 0.5), sh.z + L * 0.2 * Math.cos(t * 15));
       _tb.lerp(fl, sp.arms / Math.max(1e-3, sp.arms + sp.cheer));
       _ta.lerp(_tb, Math.min(1, sp.cheer + sp.arms));
