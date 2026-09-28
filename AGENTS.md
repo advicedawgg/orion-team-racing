@@ -167,7 +167,11 @@ wrangler's OAuth only exists on **maxpowa**, so deploys go from a plain copy at 
 (not a git checkout — the hub repo is canonical). Ship from a COMMIT, never the working tree (another agent's
 half-done files would go live): `git archive HEAD index.html ui.css src vendor assets wrangler.jsonc .assetsignore`
 → tar → scp → extract over that copy → `npx wrangler deploy`. Then check a changed file on the live URL with curl.
-The Steam Deck does NOT have this game yet (its updater pulls GitHub tarballs; this repo has no remote).
+**Steam Deck (since 2026-09-28): `git push` is what reaches the Deck, not wrangler.** Remote = public
+github.com/advicedawgg/orion-team-racing (`master`). The Deck's `~/games/super-orion/update.sh` (boot + daily)
+pulls this repo's tarball into `site/3/` (drops `tools/` + `server/`), served on 127.0.0.1:8777 — which is why
+`menu.js` points the games link at `../` on localhost. Own Steam tile "Orion Team Racing" (appid 2758520879)
+runs `~/games/orion-team-racing/launch.sh` (kiosk Chrome, own profile, autoplay flag). Online races use PROD_SERVER.
 
 **Online game server (live since 2026-09-25):** container `otr-server` on Unraid (host net, restart always) —
 HTTP/WS :8955 behind Cloudflare tunnel `otr` (container `cloudflared-otr`) = https://orion3-net.advicedawg.com
