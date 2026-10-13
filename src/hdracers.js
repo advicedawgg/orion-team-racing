@@ -365,7 +365,7 @@ export function animateHD(rig, s = {}, dt = 1 / 60) {
     const sh = up.getWorldPosition(new THREE.Vector3()); rig.root.worldToLocal(sh);
     if (sp.cheer > 0.01 || sp.arms > 0.01) {
       const wave = Math.sin(t * 9 + sx) * 0.25;
-      _tb.set(sh.x + sx * L * (1.1 + wave * 0.15), sh.y + L * 0.9, sh.z + L * 0.1);   // a wide V, a little forward: big heads, short arms
+      _tb.set(sh.x + sx * L * (1.1 + wave * 0.15), sh.y + L * 0.9, sh.z + L * 0.1);   // a wide V, ~40° up: higher and the auto-rigged upper-arm skin kinks
       const fl = _v4.set(sh.x + sx * L * (0.8 + Math.sin(t * 19 + sx * 2) * 0.2), sh.y + L * (0.3 + Math.sin(t * 23 + sx) * 0.5), sh.z + L * 0.2 * Math.cos(t * 15));
       _tb.lerp(fl, sp.arms / Math.max(1e-3, sp.arms + sp.cheer));
       _ta.lerp(_tb, Math.min(1, sp.cheer + sp.arms) * (rig.t.def.armsUp ?? 1));
