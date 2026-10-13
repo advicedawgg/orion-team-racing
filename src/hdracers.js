@@ -98,6 +98,7 @@ const SEAT = {
   spineLean: 0.10,   // rad forward
 };
 const SPINE = ['Spine', 'Spine1', 'Spine2'];
+const SHRUG = 0.3;
 const ANIM_BONES = ['Hips', ...SPINE, 'Neck', 'Head', 'LeftShoulder', 'RightShoulder', 'LeftArm', 'RightArm', 'LeftForeArm', 'RightForeArm', 'LeftHand', 'RightHand'];
 
 function prepMaterials(obj) {
@@ -353,6 +354,10 @@ export function animateHD(rig, s = {}, dt = 1 / 60) {
     const side = sx > 0 ? 'Left' : 'Right';
     const up = bn[side + 'Arm'], lo = bn[side + 'ForeArm'], hand = bn[side + 'Hand'];
     if (!up || !lo || !hand) continue;
+    // cheering: shrug the collarbone up so the raised arm leaves the shoulder upward (a level
+    // collarbone + an arm pointing up skins as a goalpost elbow at the shoulder)
+    const cw = sp.cheer * (1 - sp.arms), clav = bn[side + 'Shoulder'];
+    if (cw > 0.01 && clav) { clav.quaternion.multiply(localAxisRot(clav, Z, sx * SHRUG * cw * (rig.t.def.armsUp ?? 1), _qa)); clav.updateMatrixWorld(true); }
     // grip at 9-and-3 on the rim, rotated by the wheel angle (top of the wheel moves toward +x on +a)
     const u0 = sx * R * 0.95, cu = Math.cos(a), su = Math.sin(a);
     const u = u0 * cu, v = -u0 * su;
@@ -360,7 +365,7 @@ export function animateHD(rig, s = {}, dt = 1 / 60) {
     const sh = up.getWorldPosition(new THREE.Vector3()); rig.root.worldToLocal(sh);
     if (sp.cheer > 0.01 || sp.arms > 0.01) {
       const wave = Math.sin(t * 9 + sx) * 0.25;
-      _tb.set(sh.x + sx * L * (0.75 + wave * 0.15), sh.y + L * 1.1, sh.z + L * 0.1);   // a wide V: big heads, short arms
+      _tb.set(sh.x + sx * L * (1.1 + wave * 0.15), sh.y + L * 0.9, sh.z + L * 0.1);   // a wide V, a little forward: big heads, short arms
       const fl = _v4.set(sh.x + sx * L * (0.8 + Math.sin(t * 19 + sx * 2) * 0.2), sh.y + L * (0.3 + Math.sin(t * 23 + sx) * 0.5), sh.z + L * 0.2 * Math.cos(t * 15));
       _tb.lerp(fl, sp.arms / Math.max(1e-3, sp.arms + sp.cheer));
       _ta.lerp(_tb, Math.min(1, sp.cheer + sp.arms) * (rig.t.def.armsUp ?? 1));
@@ -370,7 +375,6 @@ export function animateHD(rig, s = {}, dt = 1 / 60) {
     ik2(up, lo, hand, _ta, _pole);
     // cheering: roll the arm about its own axis so the palm faces forward and the thumb points OUT
     // (the plain IK swing leaves the T-pose roll: backs of the hands to the camera, thumbs down)
-    const cw = sp.cheer * (1 - sp.arms);
     if (cw > 0.01 && rig.t.thumb) {
       const ax = hand.getWorldPosition(_v5).sub(lo.getWorldPosition(_v6)).normalize();
       const th = _v6.copy(rig.t.thumb[side]).applyQuaternion(hand.getWorldQuaternion(_q4));
@@ -378,7 +382,7 @@ export function animateHD(rig, s = {}, dt = 1 / 60) {
       th.addScaledVector(ax, -th.dot(ax)); want.addScaledVector(ax, -want.dot(ax));
       if (th.lengthSq() > 1e-6 && want.lengthSq() > 1e-6) {
         const ang = Math.atan2(ax.dot(_v8.crossVectors(th, want)), th.dot(want)) * cw;
-        twistBone(up, ax, ang * 0.5); twistBone(lo, ax, ang * 0.5);   // split so the wrist skin doesn't candy-wrap
+        twistBone(up, ax, ang * 0.25); twistBone(lo, ax, ang * 0.75);   // mostly the forearm: rolling the upper arm wrings the shoulder skin
       }
     }
   }
