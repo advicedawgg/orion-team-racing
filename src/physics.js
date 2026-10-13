@@ -69,7 +69,7 @@ export function createKart({ racerId = 'orion', stats = { speed: 3, accel: 3, tu
     // boost
     boostT: 0, boostTier: 0, boostMaxT: 0,
     // items / hits (items agent drives these through applyHit/addBoost)
-    stars: 0, item: null, itemCount: 0, shieldT: 0, invincT: 0,
+    stars: 0, item: null, itemCount: 0, shieldT: 0, shieldSuper: false, invincT: 0,
     hitT: 0, hitDur: 1, hitKind: null, spinT: 0, slowT: 0, stallT: 0,
     // track / race
     s: 0, si: -1, lat: 0, lap: 1, lapsDone: 0, nextCp: 0, place: 1, progress: 0,
@@ -123,7 +123,7 @@ export function addBoost(k, secs, tier = 1, kick = 3) {
  *  Returns true if it landed (false if shielded/invincible). */
 export function applyHit(k, kind) {
   if (k.invincT > 0 || k.respawnT > 0 || k.finished && !k.isPlayer && false) return false;
-  if (k.shieldT > 0) { k.shieldT = 0; ev(k, 'shield_pop'); return false; }
+  if (k.shieldT > 0) { k.shieldT = 0; k.shieldSuper = false; ev(k, 'shield_pop'); return false; }
   const h = T.HIT[kind] || T.HIT.spin;
   endDrift(k);
   if (kind === 'wobble') { k.slowT = h.t; ev(k, ['hit', kind]); return true; }
@@ -158,7 +158,9 @@ export const redStart = k => 1 - (k.easyBoost ? T.RED_EASY : T.RED);
 export function stepKart(k, c, track, dt = DT) {
   // timers
   k.fizzleT = Math.max(0, k.fizzleT - dt);
-  k.shieldT = Math.max(0, k.shieldT - dt); k.invincT = Math.max(0, k.invincT - dt);
+  if (!k.shieldSuper) k.shieldT = Math.max(0, k.shieldT - dt);   // a super (10-star) shield lasts until it's hit or fired
+  if (k.shieldT <= 0) k.shieldSuper = false;
+  k.invincT = Math.max(0, k.invincT - dt);
   k.slowT = Math.max(0, k.slowT - dt); k.stallT = Math.max(0, k.stallT - dt);
   k.wallT = Math.max(0, k.wallT - dt); k.bumpT = Math.max(0, k.bumpT - dt);
   k.landT += dt;
@@ -400,9 +402,11 @@ export function placeAtRespawn(k, track) {
   ev(k, 'respawned');
 }
 
-/** Circle-circle bumping between all karts. Mass from racer stats. `starHit(victim, by)` (optional,
- *  online) replaces the super-star bump's applyHit(victim, 'spin') — the game server routes hits on
- *  humans through items.hitKart so the victim's own device hears about it; a client skips them. */
+/** Circle-circle bumping between all karts. Mass from racer stats. A super-star kart, or one in a
+ *  bubble shield, spins out whoever it touches; a plain shield pops doing it, a super (10-star)
+ *  shield keeps going. `starHit(victim, by, item)` (optional, online) replaces those bumps'
+ *  applyHit(victim, 'spin') — the game server routes hits on humans through items.hitKart so the
+ *  victim's own device hears about it; a client skips them. */
 export function collideKarts(karts, starHit = null) {
   const R2 = T.KART_R * 2;
   for (let i = 0; i < karts.length; i++) {
@@ -428,10 +432,18 @@ export function collideKarts(karts, starHit = null) {
         if (-rv > 2 && b.bumpT <= 0) { ev(b, ['bump', Math.min(1, -rv / 12)]); b.bumpT = 0.3; }
       }
       // a super-star kart knocks others aside
-      if (a.invincT > 0 && b.invincT <= 0) { if (starHit) starHit(b, a); else applyHit(b, 'spin'); }
-      else if (b.invincT > 0 && a.invincT <= 0) { if (starHit) starHit(a, b); else applyHit(a, 'spin'); }
+      if (a.invincT > 0 && b.invincT <= 0) { if (starHit) starHit(b, a, 'superstar'); else applyHit(b, 'spin'); }
+      else if (b.invincT > 0 && a.invincT <= 0) { if (starHit) starHit(a, b, 'superstar'); else applyHit(a, 'spin'); }
+      // a bubble shield bonks whoever touches it
+      else if (a.shieldT > 0 && b.shieldT <= 0 && a.invincT <= 0 && b.invincT <= 0) shieldBonk(a, b, starHit);
+      else if (b.shieldT > 0 && a.shieldT <= 0 && a.invincT <= 0 && b.invincT <= 0) shieldBonk(b, a, starHit);
     }
   }
+}
+function shieldBonk(owner, victim, starHit) {
+  if (victim.hitT > 0 || victim.spinT > 0 || victim.finished) return;
+  if (starHit) starHit(victim, owner, 'shield'); else applyHit(victim, 'spin');
+  if (!owner.shieldSuper) { owner.shieldT = 0; ev(owner, 'shield_pop'); }
 }
 function impulse(k, dvx, dvz) {
   const fx = Math.sin(k.yaw), fz = Math.cos(k.yaw);

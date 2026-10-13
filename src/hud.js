@@ -9,7 +9,7 @@
 //
 // Extras for other modules:
 //   hud.event(text, { ms, cls, icon })  — a secondary callout under the banner (item events:
-//                                          "KING DAD PRESSED PAUSE!", "ZAPPED!"…); never clobbers
+//                                          "MUM PRESSED PAUSE!", "ZAPPED!"…); never clobbers
 //                                          FINAL LAP.  cls: 'good' | 'bad' | 'item' | 'warn'.
 //   hud.warn(key, text|null)            — a persistent flashing warning while text is set
 //                                          (e.g. hud.warn('rocket', 'ROCKET!') / hud.warn('rocket', null)).
@@ -207,7 +207,7 @@ export function createHud(root, { pn = 0 } = {}) {
     for (const e of itemQ.splice(0)) {
       const me = e.kart === P, byMe = e.by === P;
       switch (e.e) {
-        case 'remote': if (!me) api.event(e.text || 'KING DAD PRESSED PAUSE!', { cls: 'bad', ms: 2600, icon: 'assets/ui/item_remote.png' }); else api.event('EVERYONE ELSE PAUSED!', { cls: 'good', ms: 2200, icon: 'assets/ui/item_remote.png' }); break;
+        case 'remote': if (!me) api.event(e.kart?.racerId ? `${racerName(e.kart.racerId).toUpperCase()} PRESSED PAUSE!` : e.text || 'PAUSE ATTACK!', { cls: 'bad', ms: 2600, icon: 'assets/ui/item_remote.png' }); else api.event('EVERYONE ELSE PAUSED!', { cls: 'good', ms: 2200, icon: 'assets/ui/item_remote.png' }); break;
         case 'hit': if (byMe && !me) api.event('GOT \'EM!', { cls: 'good', ms: 1300 }); break;
         case 'super': if (me) api.event('SUPER STARS!', { cls: 'good', ms: 1800, icon: 'assets/ui/star.png' }); break;
         case 'super_star': if (me) api.event('SUPER STAR!', { cls: 'good', ms: 1800, icon: 'assets/ui/item_superstar.png' }); break;

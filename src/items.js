@@ -40,6 +40,10 @@ export const IT = {
   FULL_PASS: true,                                         // a kart at 10 stars drives through stars without taking them (balance)
   SPILL: { life: 9, grace: 0.45, ownerGrace: 1.3, v: 6, vy: 7 },
   HAZ_DY: 1.3,                                             // a jump clears a hazard, a hop doesn't
+  // Bombs and rockets fly LINE OF SIGHT (straight, in the world), not along the road: a bomb rolls
+  // straight ahead over the ground and goes off against a wall; a rocket flies straight and only
+  // turns toward its target while it can SEE it (no wall in between), at `turn`·homing rad/s.
+  LOS: { wall: 0.4, look: 0.1, step: 4, turn: 0.13, grav: 25 },
   BOMB: { speed: 36, overOwner: 10, back: 16, range: 170, life: 6, r: 1.4, blast: 4.5, blastSuper: 7.5, y: 0.5 },
   ROCKET: { speed: 40, over: 12, life: 9, r: 1.35, y: 0.75, lost: 150 },
   TNT: { r: 1.25, fuse: 3, hops: 5, life: 45, arm: 1.2, nitroBlast: 3 },
@@ -50,7 +54,7 @@ export const IT = {
   REMOTE: { t: 3, tSuper: 4.5 },
   WARP: { speed: 60, speedSuper: 85, r: 2.5, life: 20, y: 1.1 },
   HIT_DY: 2.2,
-  REMOTE_TEXT: 'KING DAD PRESSED PAUSE!',
+  REMOTE_TEXT: 'PAUSE ATTACK!',                           // hud.js names whoever pressed it ("MUM PRESSED PAUSE!"); anyone can roll the remote
 };
 
 /** Roulette odds by race position (8-kart field; other field sizes are mapped onto it).
@@ -216,8 +220,8 @@ function useItem(W, k, back = false) {
       addHazard(W, 'puddle', k, k.pos.x - f.x * 2.8, k.pos.z - f.z * 2.8, sup ? IT.PUDDLE.rSuper : IT.PUDDLE.r, IT.PUDDLE.life, IT.PUDDLE.arm).super = sup;
       break;
     }
-    case 'shield':
-      k.shieldT = sup ? IT.SHIELD.tSuper : IT.SHIELD.t; k.shieldArmed = true;
+    case 'shield':   // super: gold, and shieldT stays put (physics) until it's hit or fired
+      k.shieldT = sup ? IT.SHIELD.tSuper : IT.SHIELD.t; k.shieldSuper = sup; k.shieldArmed = true;
       emit(W, 'shield_up', k, { super: sup });
       break;
     case 'turbo':
@@ -253,10 +257,11 @@ function useItem(W, k, back = false) {
 }
 
 function fireShield(W, k, back) {
-  k.shieldT = 0; k.shieldArmed = false;
+  const sup = k.shieldSuper;
+  k.shieldT = 0; k.shieldSuper = false; k.shieldArmed = false;
   const S = IT.SHIELD;
   const p = spawnProj(W, 'shield_shot', k, back ? -2.4 : 2.4, back ? -S.shotSpeed * 0.6 : Math.max(S.shotSpeed, k.speed + 10));
-  p.life = S.shotLife; p.r = S.r; p.yOff = 0.8;
+  p.life = S.shotLife; p.r = S.r; p.yOff = 0.8; p.super = sup;
   bump(W.stats.used, 'shield_shot');
   emit(W, 'shield_fire', k, { back });
 }
@@ -269,8 +274,12 @@ function spawnProj(W, kind, k, ahead, v) {
   const p = { id: W.nextId++, kind, owner: k, alive: true, s, lat, v, t: 0, life: 5, r: 1.3, yOff: 0.6, travelled: 0, range: Infinity,
     target: null, homing: 0, blast: 0, super: false, x: 0, y: 0, z: 0, px: 0, py: 0, pz: 0, yaw: 0, dy: 0, hitSet: null };
   trackPoint(tr, s, lat, p);
+  p.si = p.i;
   p.y += p.yOff; p.dy = Math.max(0, k.pos.y - (p.y - p.yOff));   // launched from an airborne kart: settle down to the road
   p.y += p.dy;
+  if (kind === 'taco_bomb' || kind === 'rocket') {   // line of sight: straight out of the kart's nose (or tail)
+    p.los = true; p.yaw = v < 0 ? k.yaw + Math.PI : k.yaw; p.vy = 0; p.seen = false; p.lookT = 0;
+  }
   p.px = p.x; p.py = p.y; p.pz = p.z;
   W.projs.push(p);
   return p;
@@ -461,23 +470,11 @@ function stepTnt(W, k, dt) {
   }
 }
 
-const _tp = {};
-function stepProj(W, p, dt) {
-  const tr = W.track, race = W.race, L = tr.length;
-  p.px = p.x; p.py = p.y; p.pz = p.z;
-  p.t += dt;
-  if (p.t > p.life) { endProj(W, p, p.kind === 'taco_bomb' || p.kind === 'rocket'); return; }
 
-  // ---- steering along the road
+/** warp star / fired bubble: fly along the road (s, lat), steering across lanes */
+function stepAlongRoad(W, p, dt) {
+  const tr = W.track, race = W.race, L = tr.length;
   let wantLat = p.lat, latRate = 0, wantY = null;
-  const tg = p.target;
-  if (tg && (tg.finished || tg.respawnT > 0)) {
-    tg.lockedBy = Math.max(0, tg.lockedBy - 1); p.target = null;
-    if (p.kind === 'warp') {            // the leader vanished: chase the new one
-      const nt = race.order.find(o => o !== p.owner && !o.finished && o.respawnT <= 0 && !p.hitSet.has(o));
-      if (nt) { p.target = nt; nt.lockedBy++; }
-    }
-  }
   if (p.target) {
     const t = p.target;
     const fwd = tr.wrapS(t.s - p.s);
@@ -516,6 +513,81 @@ function stepProj(W, p, dt) {
   else p.y = y + p.dy;
   if (!isFinite(p.y)) p.y = y;
   p.x = _tp.x; p.z = _tp.z; p.yaw = p.v >= 0 ? _tp.yaw : _tp.yaw + Math.PI;
+}
+
+/** bomb / rocket: straight through the world (line of sight). Returns false if it ended. */
+const _lp = {}, _lq = { x: 0, y: 0, z: 0 };
+function stepLos(W, p, dt) {
+  const tr = W.track, L = tr.length, LS = IT.LOS;
+  const t = p.target;
+  let wantY = null;
+  if (t) {
+    const fwd = tr.wrapS(t.s - p.s);
+    if (fwd > L - 8) {                  // flew past it: give up the lock, fly on
+      t.lockedBy = Math.max(0, t.lockedBy - 1); p.target = null; p.range = p.travelled + IT.ROCKET.lost;
+    } else {
+      t.lockDist = Math.min(t.lockDist, fwd);
+      p.v = Math.max(IT.ROCKET.speed, t.speed + IT.ROCKET.over);
+      p.lookT -= dt;
+      if (p.lookT <= 0) { p.lookT = LS.look; p.seen = canSee(tr, p, t.pos, p.si); }
+      if (p.seen) {                     // home: turn the nose toward it
+        const want = Math.atan2(t.pos.x - p.x, t.pos.z - p.z);
+        let d = want - p.yaw; d -= Math.round(d / (2 * Math.PI)) * 2 * Math.PI;
+        p.yaw += clamp(d, -p.homing * LS.turn * dt, p.homing * LS.turn * dt);
+        if (h2(t.pos, p) < 25 * 25) wantY = t.pos.y + p.yOff;
+      }
+    }
+  } else if (p.kind === 'rocket' && p.range === Infinity) p.range = IT.ROCKET.lost;
+  const sp = Math.abs(p.v), ds = sp * dt;
+  p.x += Math.sin(p.yaw) * ds; p.z += Math.cos(p.yaw) * ds; p.travelled += ds;
+  const pr = tr.project(p, p.si, _lp); p.si = pr.i; p.s = pr.s; p.lat = pr.lat;
+  // a wall: the bomb goes off against it, the rocket bursts on it
+  const lim = pr.lat > 0 ? pr.limL : pr.limR;
+  if (Math.abs(pr.lat) > lim - LS.wall) { endProj(W, p, true); return false; }
+  const g = isFinite(pr.y) && !pr.gap ? pr.y : null;   // null: over a gap / off the edge
+  if (p.kind === 'taco_bomb') {          // rolls on the ground, carries a ramp's lift, falls into gaps
+    const y0 = p.y - p.yOff;
+    if (g != null && y0 <= g + 0.15 && p.vy <= 0.5) { const ny = g; p.vy = Math.min(9, (ny - y0) / dt); p.y = ny + p.yOff; }
+    else { p.vy -= LS.grav * dt; p.y += p.vy * dt; if (g != null && p.y - p.yOff < g) { p.y = g + p.yOff; p.vy = 0; } }
+  } else {                               // rocket: hugs the ground (or rises to its target), keeps height over gaps
+    const y = (g ?? p.y - p.yOff) + p.yOff;
+    p.y += ((wantY != null ? Math.max(y, wantY) : y) - p.y) * Math.min(1, dt * 8);
+  }
+  if (p.y < (tr.killY ?? -1e9) || p.y < pr.cy - 15) { endProj(W, p, false); emit(W, 'fizzle', p.owner, { pos: { x: p.x, y: p.y, z: p.z }, item: p.kind }); return false; }
+  return true;
+}
+/** Is the straight line from projectile p to point q clear of walls and ground? */
+function canSee(tr, p, q, hint) {
+  const dx = q.x - p.x, dz = q.z - p.z, dy = q.y + 0.6 - p.y, d = Math.hypot(dx, dz);
+  const n = Math.ceil(d / IT.LOS.step);
+  for (let i = 1; i < n; i++) {
+    const f = i / n;
+    _lq.x = p.x + dx * f; _lq.y = p.y + dy * f; _lq.z = p.z + dz * f;
+    const pr = tr.project(_lq, hint, _lp); hint = pr.i;
+    if (Math.abs(pr.lat) > (pr.lat > 0 ? pr.limL : pr.limR)) return false;    // through a wall
+    if (isFinite(pr.y) && !pr.gap && _lq.y < pr.y - 0.5) return false;          // through a hill / crest
+  }
+  return true;
+}
+
+const _tp = {};
+function stepProj(W, p, dt) {
+  const race = W.race;
+  p.px = p.x; p.py = p.y; p.pz = p.z;
+  p.t += dt;
+  if (p.t > p.life) { endProj(W, p, p.kind === 'taco_bomb' || p.kind === 'rocket'); return; }
+
+  const tg = p.target;
+  if (tg && (tg.finished || tg.respawnT > 0)) {
+    tg.lockedBy = Math.max(0, tg.lockedBy - 1); p.target = null;
+    if (p.kind === 'warp') {            // the leader vanished: chase the new one
+      const nt = race.order.find(o => o !== p.owner && !o.finished && o.respawnT <= 0 && !p.hitSet.has(o));
+      if (nt) { p.target = nt; nt.lockedBy++; }
+    }
+  }
+  if (p.los) { if (!stepLos(W, p, dt)) return; }
+  else stepAlongRoad(W, p, dt);
+  if (!p.alive) return;
 
   // ---- contact
   for (const k of race.karts) {

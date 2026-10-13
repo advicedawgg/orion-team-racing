@@ -1,6 +1,6 @@
 // Item unit checks for the gate (tools/check.js imports runItemChecks). Everything runs through
 // the REAL items.js + physics.js + race.js; scenarios teleport karts and step the item system.
-import { DT, T, stepKart, baseTop } from '../src/physics.js';
+import { DT, T, stepKart, baseTop, collideKarts } from '../src/physics.js';
 import { createRace } from '../src/race.js';
 import { createItems, IT, ODDS } from '../src/items.js';
 
@@ -21,6 +21,29 @@ function put(tr, k, s, lat = 0, speed = 0) {
   const p = tr.pointAt(s, lat);
   k.pos.x = p.x; k.pos.y = p.y; k.pos.z = p.z; k.yaw = p.yaw; k.s = tr.wrapS(s); k.lat = lat; k.si = tr.idx(s);
   k.speed = speed; k.air = false; k.vy = 0; k.hitT = 0; k.spinT = 0;
+}
+/** Bombs and rockets fly line of sight, so their scenarios need a straight bit of road: the gap-free
+ *  stretch [s-10, s+len] that turns least in total (|Δheading| summed), away from where park() puts karts. */
+function straightest(tr, len) {
+  let best = 0, bv = Infinity;
+  for (let s = 10; s < tr.length; s += 5) {
+    if (tr.dS(tr.length * 0.5 - 20, s) > 0 && tr.dS(tr.length * 0.5 + 100, s) < 0) continue;
+    let turn = 0, gap = false;
+    for (let d = -10; d <= len && !gap; d += 2) { gap = (tr.FLAG[tr.idx(s + d)] & 1) !== 0; turn += Math.abs(tr.turnAhead(s + d, 0, 2)); }
+    if (!gap && turn < bv) { bv = turn; best = s; }
+  }
+  return best;
+}
+/** the tightest gap-free bend (most heading change over 40 m) */
+function tightest(tr) {
+  let best = 0, bv = -1;
+  for (let s = 10; s < tr.length; s += 5) {
+    if (tr.dS(tr.length * 0.5 - 20, s) > 0 && tr.dS(tr.length * 0.5 + 100, s) < 0) continue;
+    let gap = false; for (let d = -5; d <= 60 && !gap; d += 2) gap = (tr.FLAG[tr.idx(s + d)] & 1) !== 0;
+    const v = Math.abs(tr.turnAhead(s, 0, 40));
+    if (!gap && v > bv) { bv = v; best = s; }
+  }
+  return best;
 }
 const park = (tr, K, from = 1) => K.slice(from).forEach((k, i) => put(tr, k, tr.length * 0.5 + i * 12, 0));
 /** Step only the item system (karts stay put) n frames; returns the item events. */
@@ -86,6 +109,26 @@ export function runItemChecks(tr, ok) {
     ok('items: bubble shield (10 s) absorbs one hit, the next lands', up && !r1 && r2 && k.hitT > 0 && k.shieldT === 0);
     void race;
   }
+  // 4b. a bubble shield bonks (spins out) whoever touches it and pops; a super (10-star) shield is
+  //     gold, never runs out, bonks without popping, and is only lost to a hit (or firing it)
+  {
+    const { race, W, K } = setup(tr); const [a, b, c] = K; park(tr, K, 3);
+    put(tr, a, 100, 0, 0); put(tr, b, 100, 1.2, 0);
+    W.give(a, 'shield'); W.use(a);
+    collideKarts([a, b]);
+    const plain = b.spinT > 0 && a.shieldT === 0 && a.ev.includes('shield_pop');
+    a.stars = 10; W.give(a, 'shield'); W.use(a);
+    const sup = a.shieldSuper && a.shieldT > 0;
+    for (let i = 0; i < 40 / DT; i++) { a.ev.length = 0; stepKart(a, NOC, tr); }
+    const lasts = a.shieldT > 0 && a.shieldSuper;
+    put(tr, a, 160, 0, 0); put(tr, c, 160, -1.2, 0);
+    collideKarts([a, c]);
+    const keeps = c.spinT > 0 && a.shieldT > 0;
+    const blocked = !W.hitKart(a, 'flip', b, 'rocket');
+    ok('items: bubble shield bonks karts that touch it (and pops); super shield lasts until hit', plain && sup && lasts && keeps && blocked && a.shieldT === 0 && !a.shieldSuper,
+      `plain ${plain}, super ${sup}, after 40 s ${lasts}, bonk+keep ${keeps}, hit pops it ${blocked}`);
+    void race;
+  }
   // 5. armed shield fires forward and spins the kart ahead
   {
     const { race, W, K } = setup(tr); const [a, b] = K; park(tr, K, 2);
@@ -137,7 +180,8 @@ export function runItemChecks(tr, ok) {
     const { race, W, K } = setup(tr, { diff: 'hard' });
     const a = K[0], b = K[1];
     park(tr, K, 2);
-    put(tr, a, 120, -4, 20); put(tr, b, 185, 4.5, 20);
+    const s0 = straightest(tr, 80);
+    put(tr, a, s0, -4, 20); put(tr, b, s0 + 65, 4.5, 20);
     for (const k of K) { k.item = null; k.stars = 0; k.lapsDone = 0; k.nextCp = 0; }
     race.step(NOC);                              // positions update
     W.give(a, 'rocket');
@@ -154,7 +198,8 @@ export function runItemChecks(tr, ok) {
   // 9. taco bomb: rolls ahead, a second press detonates it early; blast flips karts nearby
   {
     const { race, W, K } = setup(tr); const [a, b] = K; park(tr, K, 2);
-    put(tr, a, 400, 0, 20); put(tr, b, 428, 3.2, 0);
+    const s0 = straightest(tr, 40);
+    put(tr, a, s0, 0, 20); put(tr, b, s0 + 28, 3.2, 0);
     W.give(a, 'taco_bomb'); W.use(a);
     let evs = itemSteps(race, W, 40);            // ~0.66 s × 36 m/s ≈ 24 m + start 2.4 m ahead → b is 3.5 m to the side, inside the 4.5 m blast
     const bomb = W.projs.find(p => p.kind === 'taco_bomb');
@@ -166,7 +211,22 @@ export function runItemChecks(tr, ok) {
     W.give(a, 'taco_bomb'); W.use(a, true);
     const back = W.projs.find(p => p.kind === 'taco_bomb' && p.alive);
     itemSteps(race, W, 30);
-    ok('items: ↓ + item rolls the bomb backward', back && tr.dS(400, back.s) < -5, `at ${tr.dS(400, back?.s ?? 400).toFixed(1)} m`);
+    ok('items: ↓ + item rolls the bomb backward', back && tr.dS(s0, back.s) < -5, `at ${tr.dS(s0, back?.s ?? s0).toFixed(1)} m`);
+  }
+  // 9b. line of sight: a bomb fired into a bend goes straight on and ends at the edge (wall or drop),
+  //     instead of following the road round it
+  {
+    const { race, W, K } = setup(tr); const [a] = K; park(tr, K, 1);
+    const s0 = tightest(tr);
+    put(tr, a, s0, 0, 20);
+    W.give(a, 'taco_bomb'); W.use(a);
+    const bomb = W.projs.find(p => p.kind === 'taco_bomb');
+    const yaw0 = bomb.yaw;
+    let maxOff = 0;
+    itemSteps(race, W, Math.ceil(IT.BOMB.life / DT), () => { if (bomb.alive) maxOff = Math.max(maxOff, Math.abs(bomb.lat)); });
+    const turn = tr.turnAhead(s0, 0, 40);
+    ok('items: bombs fly line of sight — straight into a bend\'s edge, not round it', !bomb.alive && bomb.yaw === yaw0 && bomb.travelled < IT.BOMB.range - 1,
+      `bend ${(turn * 57.3).toFixed(0)}° over 40 m at s=${s0}, ended after ${bomb.travelled.toFixed(1)} m, ${maxOff.toFixed(1)} m off the centre line`);
   }
   // 10. ice cream puddle spins out whoever drives in, once
   {
@@ -202,7 +262,7 @@ export function runItemChecks(tr, ok) {
     race.events.length = 0;
     W.give(a, 'remote'); W.use(a);
     const banner = race.events.find(e => e.type === 'item' && e.e === 'remote');
-    ok('items: TV remote slows everyone else 3 s + "KING DAD PRESSED PAUSE!" event', K.slice(1).every(k => k.slowT >= IT.REMOTE.t - 1e-6) && a.slowT === 0 && banner?.text === IT.REMOTE_TEXT);
+    ok('items: TV remote slows everyone else 3 s + "PAUSE ATTACK!" event', K.slice(1).every(k => k.slowT >= IT.REMOTE.t - 1e-6) && a.slowT === 0 && banner?.text === IT.REMOTE_TEXT);
     W.give(a, 'superstar'); W.use(a);
     const blocked = !W.hitKart(a, 'flip', K[1], 'rocket');
     ok('items: super star = 7 s invincible', a.invincT === IT.STAR.t && blocked);

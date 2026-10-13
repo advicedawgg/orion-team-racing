@@ -12,7 +12,7 @@
 // See DESIGN.md "Online" for the model: each human simulates their OWN kart locally with the exact
 // single-player physics and reports it; the server runs everything else (bots, items, laps, results).
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;   // 2: kart flag 64 = super (10-star) shield
 
 /** Production game server (HTTP/WS through the Cloudflare tunnel; WebRTC UDP straight to the box). */
 export const PROD_SERVER = 'https://orion3-net.advicedawg.com';
@@ -174,7 +174,7 @@ function rKartPhys(r, o) {
 }
 function wKartAuth(w, k, human) {
   const tn = k.tnt;
-  w.u8((k.finished ? 1 : 0) | (k.shieldArmed ? 2 : 0) | (tn ? 4 : 0) | (human ? 8 : 0) | (k.bomb && k.bomb.alive ? 16 : 0) | (k.estimated ? 32 : 0));
+  w.u8((k.finished ? 1 : 0) | (k.shieldArmed ? 2 : 0) | (tn ? 4 : 0) | (human ? 8 : 0) | (k.bomb && k.bomb.alive ? 16 : 0) | (k.estimated ? 32 : 0) | (k.shieldSuper && k.shieldT > 0 ? 64 : 0));
   w.u8(Math.min(5.1, k.slowT) * 50); w.u8(Math.min(15.9, k.shieldT) * 16); w.u8(Math.min(15.9, k.invincT) * 16);
   w.u8(k.stars); w.u8(itemCode(k.item)); w.u8(k.itemCount); w.u8(Math.min(2.55, k.roulT || 0) * 100); w.u8(Math.min(2.55, k.roulDur || 1.5) * 100);
   w.u8(k.lockedBy || 0); w.u16(isFinite(k.lockDist) ? Math.min(6553, k.lockDist) * 10 : INF16);
@@ -183,7 +183,7 @@ function wKartAuth(w, k, human) {
 }
 function rKartAuth(r, o) {
   const f = r.u8();
-  o.finished = !!(f & 1); o.shieldArmed = !!(f & 2); o.human = !!(f & 8); o.bombAlive = !!(f & 16); o.estimated = !!(f & 32);
+  o.finished = !!(f & 1); o.shieldArmed = !!(f & 2); o.human = !!(f & 8); o.bombAlive = !!(f & 16); o.estimated = !!(f & 32); o.shieldSuper = !!(f & 64);
   o.slowT = r.u8() / 50; o.shieldT = r.u8() / 16; o.invincT = r.u8() / 16;
   o.stars = r.u8(); o.item = ITEM_CODES[r.u8()] ?? null; o.itemCount = r.u8(); o.roulT = r.u8() / 100; o.roulDur = r.u8() / 100 || 1.5;
   o.lockedBy = r.u8(); const ld = r.u16(); o.lockDist = ld === INF16 ? Infinity : ld / 10;

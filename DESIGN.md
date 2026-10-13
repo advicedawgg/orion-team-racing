@@ -228,14 +228,14 @@ without taking them** (`IT.FULL_PASS`), so they stay for the pack (**Balance**).
 
 | item (`id` = icon `assets/ui/item_<id>.png`) | as built | super (10⭐) |
 |---|---|---|
-| Taco Bomb `taco_bomb` | rolls along the road (s/lat, follows every curve) at ≥36 m/s (owner speed + 10); ↓ + item rolls it backward at 16 m/s; explodes on contact (r 1.4 m) or after 170 m / 6 s; press item again to set it off early. Blast r 4.5 m flips everyone in it except the thrower | blast 7.5 m, bigger bomb |
-| Cosmic Rocket `rocket` | locks the racer directly ahead (place − 1) the moment it's fired (`target.lockedBy++` → HUD warning + red reticle over the target), follows the road at ≥ target speed + 12 m/s, steers across lanes onto it, rises to meet it over jumps; hits anyone it touches (flip). No one ahead = flies straight 150 m. AI rockets on Easy steer weaker when the target is the kid | 3 rockets (×3 badge) |
+| Taco Bomb `taco_bomb` | rolls **line of sight**: straight out of the kart's nose over the ground (ramps launch it, gaps swallow it; never follows a curve) at ≥36 m/s (owner speed + 10), goes off against a wall; ↓ + item rolls it backward at 16 m/s; explodes on contact (r 1.4 m) or after 170 m / 6 s; press item again to set it off early. Blast r 4.5 m flips everyone in it except the thrower | blast 7.5 m, bigger bomb |
+| Cosmic Rocket `rocket` | locks the racer directly ahead (place − 1) the moment it's fired (`target.lockedBy++` → HUD warning + red reticle over the target), flies **line of sight** at ≥ target speed + 12 m/s: straight, turning toward the target only while it can see it (no wall/crest in between, `IT.LOS`), bursts on a wall; rises to meet it over jumps; hits anyone it touches (flip). No one ahead = flies straight 150 m. AI rockets on Easy steer weaker when the target is the kid | 3 rockets (×3 badge) |
 | TNT Crate `tnt` | dropped 2.6 m behind (owner immune 1.2 s). Touching it puts it **on your head** (`kart.tnt = {t, hops, need:5}`): ticks 3-2-1 (big world-space number + HUD), **5 hops shake it off**, else BOOM (flip). A super star or a shield (popped) just knocks it away | **Nitro** `nitro`: explodes on contact, r 3 m (catches the dropper too) |
 | Ice Cream Splat `icecream` | puddle dropped behind (r 2 m hazard, drawn 2.4 m): spin-out, then it's gone; lasts 35 s | r 3.1 m |
-| Bubble Shield `shield` | `shieldT` 10 s absorbs one hit (physics pops it); while armed, **item fires the bubble forward** (↓: backward) — it spins out the first kart it touches | 15 s |
+| Bubble Shield `shield` | `shieldT` 10 s absorbs one hit (physics pops it); a kart that touches the bubble is spun out and the bubble pops (physics `collideKarts`); while armed, **item fires the bubble forward** (↓: backward) — it spins out the first kart it touches | **gold** (`kart.shieldSuper`, wire flag 64), never times out: lasts until a hit pops it or it's fired, bonks touching karts without popping |
 | Turbo Rocket `turbo` | `addBoost(2.2 s, tier 3, kick 6)` (purple flames) | 3.0 s, kick 8 |
 | Super Star `superstar` | `invincT` 7 s: immune, top speed, bumps others into spin-outs (physics); knocks TNT off your head. **Sootie's spirit** (a little black cat, mint eyes, glowing) orbits you, gold aura + rainbow sparkles | 10 s |
-| TV Remote `remote` | everyone else (unless shielded/starred) `wobble` → `slowT` 3 s, "pause" sign over their heads; event `remote` with `text: 'KING DAD PRESSED PAUSE!'` | 4.5 s |
+| TV Remote `remote` | everyone else (unless shielded/starred) `wobble` → `slowT` 3 s, "pause" sign over their heads; event `remote` with `text: 'PAUSE ATTACK!'`; the HUD names whoever pressed it ("MUM PRESSED PAUSE!"), King Dad's "Everybody... PAUSE!" plays only when he's the one using it | 4.5 s |
 | Warp Star `warp` | flies up the course at 60 m/s to the **leader** (lock-on warning for them), swerves into anyone it's about to pass (flips everyone in its path), done when it hits the leader. Not rollable in 1st | 85 m/s |
 
 Hit reactions (physics `applyHit`): bomb/rocket/TNT/Nitro/warp = flip (1.2 s, −3 stars); ice
@@ -347,7 +347,8 @@ winner still usually Super (it's the reward), field spread below.
 | | easy | medium | hard |
 |---|---|---|---|
 | pace / P(slide) / P(turbo) | 0.86 / 0.45 / 0.4 | 0.94 / 0.8 / 0.72 | 1.0 / 1.0 / 0.93 |
-| rubber band vs the human (× pace at full effect) | ahead 0.86 by 65 m, behind 1.2 by 55 m | 0.95 / 1.05 over 120 / 150 m | 0.985 / 1.02 over 120 / 150 m |
+| rubber band vs the human (× pace at full effect) | ahead 0.84 by 60 m, behind 1.24 by 50 m | 0.92 / 1.1 over 100 / 110 m | 0.96 / 1.06 over 110 / 130 m |
+| `catchup`: EVERY kart (AI or human, offline) behind the race leader gets top speed × (1 + lift), ramped from → full | +10 %, 25 → 140 m | +8 %, 30 → 160 m | +6 %, 40 → 180 m |
 | `grab`: sideways detour for a ? box (empty slot) / star (< 10) | 2 m | 3.5 m | 5 m |
 | `dodge`: P(notices a puddle/TNT/Nitro ahead, or a bomb/bubble rolling back, and steers round) | 0.25 | 0.7 | 0.95 |
 - Slides end early when even full counter-steer would carry the kart into a wall / off a `fall` edge
@@ -644,7 +645,7 @@ time); flashing warnings "ROCKET! WATCH OUT!" (`P.lockedBy > 0`) and "HOP! HOP! 
 `race.ui.push({ text, ms, cls, icon, kart })` (kart = only show for that kart; `warn:true, key,
 on` = a warning) — drained every frame; (5) the HUD also listens to items.js events
 `{type:'item', e, kart, by}` itself (collected per sim step by a `race.addSystem` hook): `remote`
-→ "KING DAD PRESSED PAUSE!" (e.text), player hits → "GOT 'EM!", `super` → "SUPER STARS!",
+→ "<RACER> PRESSED PAUSE!" (the user's name), player hits → "GOT 'EM!", `super` → "SUPER STARS!",
 `super_star`, shield blocks, TNT shaken off.
 
 **URL**: `?screen=title|menu|select|tracks|settings|controls|standings|podium|unlock|results|pause`

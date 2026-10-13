@@ -15,10 +15,11 @@ export const DIFFICULTY = {
   // start = P(start boost); band = rubber band vs the human: pace × [ahead, behind] at full effect, reached
   // bandD = [m ahead, m behind] (race.js ramps linearly; Easy keeps the pack round the kid); line = racing-line commitment;
   // wobble = steering sway; grab = m of sideways detour it takes for an item box / star (balance agent);
-  // dodge = P(it notices a hazard ahead and steers round it)
-  easy:   { pace: 0.86, slide: 0.45, turbo: 0.4,  react: [0.10, 0.25], start: 0.15, band: [0.86, 1.2], bandD: [65, 55], line: 0.75, wobble: 1.6, grab: 2.0, dodge: 0.25 },
-  medium: { pace: 0.94, slide: 0.8,  turbo: 0.72, react: [0.04, 0.15], start: 0.45, band: [0.95, 1.05], bandD: [120, 150], line: 0.9,  wobble: 0.9, grab: 3.5, dodge: 0.7 },
-  hard:   { pace: 1.0,  slide: 1.0,  turbo: 0.93, react: [0.00, 0.07], start: 0.8,  band: [0.985, 1.02], bandD: [120, 150], line: 1.0, wobble: 0.4, grab: 5.0, dodge: 0.95 },
+  // dodge = P(it notices a hazard ahead and steers round it); catchup = [lift, from m, full at m]: EVERY kart (AI or
+  // human) that far behind the race leader gets top speed × (1 + lift), ramped (race.js) — the pack reels a runaway in
+  easy:   { pace: 0.86, slide: 0.45, turbo: 0.4,  react: [0.10, 0.25], start: 0.15, band: [0.84, 1.24], bandD: [60, 50], catchup: [0.10, 25, 140], line: 0.75, wobble: 1.6, grab: 2.0, dodge: 0.25 },
+  medium: { pace: 0.94, slide: 0.8,  turbo: 0.72, react: [0.04, 0.15], start: 0.45, band: [0.92, 1.1], bandD: [100, 110], catchup: [0.08, 30, 160], line: 0.9,  wobble: 0.9, grab: 3.5, dodge: 0.7 },
+  hard:   { pace: 1.0,  slide: 1.0,  turbo: 0.93, react: [0.00, 0.07], start: 0.8,  band: [0.96, 1.06], bandD: [110, 130], catchup: [0.06, 40, 180], line: 1.0, wobble: 0.4, grab: 5.0, dodge: 0.95 },
 };
 
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;

@@ -18,8 +18,8 @@
 // skips its physics, start boost and ev reset (whoever owns it sets its state and ev before the
 // step). The game server marks the humans remote (their own devices simulate them); a client marks
 // every kart but its own remote and sets `race.netClient = true`, which also skips laps, positions,
-// the rubber band and the end of the race (the server's are mirrored in). `race.starHit(victim, by)`,
-// if set, replaces the super-star bump's applyHit (physics collideKarts).
+// the rubber band and the end of the race (the server's are mirrored in). `race.starHit(victim, by, item)`,
+// if set, replaces the super-star / bubble-shield bump's applyHit (physics collideKarts).
 
 import { DT, createKart, placeKart, stepKart, collideKarts, addBoost, T } from './physics.js';
 import { createBrain, drive, DIFFICULTY, kidAssist } from './ai.js';
@@ -126,14 +126,23 @@ function stepRace(race, playerCtrl = NOCTRL) {
   // other AI against the TRAILING human, so the pack stays round the kid. 1P: the distance to the
   // player, as before. Measured (tools/check.js 2P + a 15-race probe, wobbly kid + a medium-AI
   // "dad" on Easy): kid's mean place 6.1 vs 7.5 with a nearest-human band; 1P wobbly kid ~5.6.
-  let hLo = Infinity, hHi = -Infinity;
+  // Pack catch-up on top (cfg.catchup): every kart well behind the race LEADER — AI or human — gets a
+  // top-speed lift that grows with the gap, so whoever breaks away gets reeled in by the pack.
+  let hLo = Infinity, hHi = -Infinity, lead = -Infinity;
   for (const h of race.humans) { if (h.progress < hLo) hLo = h.progress; if (h.progress > hHi) hHi = h.progress; }
-  if (race.humans.length && !race.netClient) for (const k of karts) {
-    if (k.isPlayer) continue;
-    const d = k.progress > hHi ? k.progress - hHi : k.progress - hLo;   // + = AI ahead
-    const [ahead, behind] = race.cfg.band, [dA, dB] = race.cfg.bandD || [120, 150];   // full effect at dA m ahead / dB m behind
-    const f = d > 0 ? 1 + (ahead - 1) * Math.min(1, d / dA) : 1 + (behind - 1) * Math.min(1, -d / dB);
-    k.pace = race.cfg.pace * f;
+  for (const k of karts) if (!k.finished && k.progress > lead) lead = k.progress;
+  const [lift, c0, c1] = race.cfg.catchup || [0, 1, 2];
+  if (!race.netClient) for (const k of karts) {
+    if (k.remote) continue;             // online humans: their own device's physics
+    const catchF = k.finished ? 1 : 1 + lift * Math.min(1, Math.max(0, (lead - k.progress - c0) / (c1 - c0)));
+    if (k.isPlayer) { k.pace = catchF; continue; }
+    let f = 1;
+    if (race.humans.length) {
+      const d = k.progress > hHi ? k.progress - hHi : k.progress - hLo;   // + = AI ahead
+      const [ahead, behind] = race.cfg.band, [dA, dB] = race.cfg.bandD || [120, 150];   // full effect at dA m ahead / dB m behind
+      f = d > 0 ? 1 + (ahead - 1) * Math.min(1, d / dA) : 1 + (behind - 1) * Math.min(1, -d / dB);
+    }
+    k.pace = race.cfg.pace * f * catchF;
   }
 
   // ---------------------------------------------------------------- drive

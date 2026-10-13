@@ -190,7 +190,7 @@ export class Lobby {
     race.seedN = seed;
     const W = createItems(race, { seed: seed + 11 });
     for (const m of racers) { const k = race.karts[m.slot]; k.remote = true; k.netHuman = true; k.ctrl = NOC; k._evSeq = 0; }
-    race.starHit = (v, by) => { if (v.remote) W.hitKart(v, 'spin', by, 'superstar'); else applyHit(v, 'spin'); };
+    race.starHit = (v, by, item = 'superstar') => { if (v.remote) W.hitKart(v, 'spin', by, item); else applyHit(v, 'spin'); };
     for (const k of race.karts) { k._relay = []; k._relaySeq = 0; }
     this.race = race; this.W = W; this.raceSeq = (this.raceSeq + 1) & 0xffff; this.pending = [];
     this.raceStartMs = now + this.T.LOAD_S * 1000;             // race.t = -COUNTDOWN here
@@ -238,7 +238,9 @@ export class Lobby {
       if (!k.remote) continue;
       k.ev.length = 0;
       // server-authoritative timers stepKart would have run
-      k.shieldT = Math.max(0, k.shieldT - DT); k.invincT = Math.max(0, k.invincT - DT); k.slowT = Math.max(0, k.slowT - DT);
+      if (!k.shieldSuper) k.shieldT = Math.max(0, k.shieldT - DT);
+      if (k.shieldT <= 0) k.shieldSuper = false;
+      k.invincT = Math.max(0, k.invincT - DT); k.slowT = Math.max(0, k.slowT - DT);
       const st = m.rep;
       const live = !k.frozen && k.respawnT <= 0 && race.phase !== 'countdown';
       if (st && live && !m.repNew && race.t - (m.repAt ?? -9) < 0.5) {                  // dead reckoning (no fresh report; ≤ 0.5 s — a hidden tab stops sending, the kart waits)

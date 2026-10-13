@@ -211,12 +211,13 @@ function spiritGeo() {
 
 const SHIELD_VS = `varying vec3 vN; varying vec3 vV; varying vec3 vP;
 void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); vP = position; gl_Position = projectionMatrix * mv; }`;
-const SHIELD_FS = `uniform float uT; uniform float uA; varying vec3 vN; varying vec3 vV; varying vec3 vP;
+const SHIELD_FS = `uniform float uT; uniform float uA; uniform float uS; varying vec3 vN; varying vec3 vV; varying vec3 vP;
 void main(){
   float f = 1.0 - abs(dot(normalize(vN), normalize(vV)));
   float rim = pow(f, 2.2);
   vec3 rainbow = 0.55 + 0.45 * cos(6.2831 * (rim * 0.9 + vP.y * 0.25 + uT * 0.2 + vec3(0.0, 0.33, 0.67)));
   vec3 c = mix(vec3(0.75, 0.95, 1.0), rainbow, 0.65);
+  c = mix(c, mix(vec3(1.0, 0.72, 0.12), vec3(1.0, 0.95, 0.55), rim + 0.3 * rainbow.r), uS);   // super (10 stars): gold
   float shine = smoothstep(0.93, 0.985, dot(normalize(vN), normalize(vec3(-0.45, 0.65, 0.6)))) * 0.7;
   gl_FragColor = vec4(c * (0.35 + rim * 1.2) + shine * 0.9, (0.1 + rim * 0.8 + shine * 0.6) * uA);
 }`;
@@ -247,7 +248,7 @@ export function createItemViews({ scene, fx = null, audio = null, chase = null, 
   // the ? boxes glow in their own (per-instance rainbow) colour, so they read in any light
   M.box.onBeforeCompile = sh => { sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += diffuseColor.rgb * 0.55;'); };
   M.box.customProgramCacheKey = () => 'otr-itembox';
-  const shieldMat = () => new THREE.ShaderMaterial({ vertexShader: SHIELD_VS, fragmentShader: SHIELD_FS, uniforms: { uT: { value: 0 }, uA: { value: 1 } }, transparent: true, depthWrite: false });
+  const shieldMat = () => new THREE.ShaderMaterial({ vertexShader: SHIELD_VS, fragmentShader: SHIELD_FS, uniforms: { uT: { value: 0 }, uA: { value: 1 }, uS: { value: 0 } }, transparent: true, depthWrite: false });
   const spriteMat = (map, o = {}) => new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false, toneMapped: false, ...o });
 
   // ---------------------------------------------------------------- geometry (shared)
@@ -484,8 +485,8 @@ export function createItemViews({ scene, fx = null, audio = null, chase = null, 
           }
           break;
         case 'remote':
-          au.play('remote'); au.play('vo_kingdad_remote');
-          // hud.js shows e.text ("KING DAD PRESSED PAUSE!") from the item event itself
+          au.play('remote');   // King Dad's own "Everybody... PAUSE!" only when he's the one pressing it (useFx)
+          // hud.js names whoever pressed it ("MUM PRESSED PAUSE!")
           for (const h of H) shake(h, 0.2);
           break;
         case 'splat':
@@ -554,7 +555,7 @@ export function createItemViews({ scene, fx = null, audio = null, chase = null, 
       } else if (p.kind === 'shield_shot' && ns < shots.length) {
         const m = shots[ns++]; m.visible = true;
         m.position.set(x, y + 0.2, z); m.scale.setScalar(1.0 + Math.sin(p.t * 20) * 0.06);
-        m.material.uniforms.uT.value = t; m.material.uniforms.uA.value = 1;
+        m.material.uniforms.uT.value = t; m.material.uniforms.uA.value = 1; m.material.uniforms.uS.value = p.super ? 1 : 0;
       } else if (p.kind === 'warp' && nw < warps.length) {
         const g = warps[nw++]; g.visible = true;
         g.position.set(x, y + 0.3, z); g.rotation.set(0, p.yaw, 0);
@@ -602,7 +603,8 @@ export function createItemViews({ scene, fx = null, audio = null, chase = null, 
         pk.bubble.position.set(kx, ky + 0.75, kz);
         pk.bubble.scale.set(1.45, 1.2, 1.6).multiplyScalar(1 + Math.sin(t * 6 + i) * 0.03);
         pk.bubble.material.uniforms.uT.value = t;
-        pk.bubble.material.uniforms.uA.value = k.shieldT < 2 ? (Math.sin(t * 22) > 0 ? 1 : 0.35) : 1;
+        pk.bubble.material.uniforms.uA.value = !k.shieldSuper && k.shieldT < 2 ? (Math.sin(t * 22) > 0 ? 1 : 0.35) : 1;
+        pk.bubble.material.uniforms.uS.value = k.shieldSuper ? 1 : 0;
       }
       // TNT on the head
       if (k.tnt && shown) {

@@ -73,6 +73,8 @@ const S = {
   spinout: { q: 'track=beach&racer=orion&skip=1&slot=7&t=5', js: `__OTR.hold(true); const a = lineUp(25, 0); W().give(a, 'icecream'); W().use(a); const h = W().hazards[0]; drive(2); P().pos.x = h.x; P().pos.z = h.z; drive(1); drive(12); 'ok'` },
   // bubble shield up, then fired
   shield: { q: 'track=beach&racer=orion&skip=1&slot=7&t=5', js: `__OTR.hold(true); give('shield'); use(); drive(30); camP(4.8, 1.8, 2, 1.8); 'ok'` },
+  // super (10-star) shield: gold, never runs out — still up after 25 s
+  shield_super: { q: 'track=beach&racer=orion&skip=1&slot=7&t=5', js: `__OTR.hold(true); P().stars = 10; give('shield'); use(); drive(1500); camP(4.8, 1.8, 2, 1.8); JSON.stringify({ shieldT: P().shieldT, super: P().shieldSuper })` },
   shield_fire: { q: 'track=beach&racer=orion&skip=1&slot=7&hud=0&t=5', js: `__OTR.hold(true); give('shield'); use(); drive(20); use(); drive(10); camP(6, 2.4, 10); 'ok'` },
   turbo: { q: 'track=beach&racer=orion&skip=1&slot=7&t=5', js: `__OTR.hold(true); give('turbo'); use(); drive(12); 'ok'` },
   // super star: Sootie's spirit orbits you

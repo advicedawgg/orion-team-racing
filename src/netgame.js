@@ -186,7 +186,7 @@ export class NetRace {
     k.respawnT = b.respawnT > a.respawnT ? d.respawnT : lerp(a.respawnT, b.respawnT, t); k.respawnAt = d.respawnAt;
     k.slowT = lerp(a.slowT, b.slowT, t); k.shieldT = lerp(a.shieldT, b.shieldT, t); k.invincT = lerp(a.invincT, b.invincT, t);
     k.air = d.air; k.hop = d.hop; k.onRoad = d.onRoad; k.frozen = d.frozen; k.overheat = d.overheat; k.inRed = d.inRed; k.drift = d.drift;
-    k.boostTier = d.boostTier; k.turbos = d.turbos; k.shieldArmed = d.shieldArmed;
+    k.boostTier = d.boostTier; k.turbos = d.turbos; k.shieldArmed = d.shieldArmed; k.shieldSuper = d.shieldSuper;
     const nx = lerp(a.nx, b.nx, t), nz = lerp(a.nz, b.nz, t);
     k.nrm.x = nx; k.nrm.z = nz; k.nrm.y = Math.sqrt(Math.max(0.1, 1 - nx * nx - nz * nz));
     k.ground = d.dg == null ? -Infinity : k.pos.y - lerp(a.dg ?? d.dg, b.dg ?? d.dg, t);
@@ -206,7 +206,7 @@ export class NetRace {
     if (!d) return;
     const k = this.me;
     this.auth(k, d);
-    k.shieldT = d.shieldT; k.shieldArmed = d.shieldArmed; k.invincT = d.invincT; k.slowT = d.slowT;
+    k.shieldT = d.shieldT; k.shieldArmed = d.shieldArmed; k.shieldSuper = d.shieldSuper; k.invincT = d.invincT; k.slowT = d.slowT;
   }
   mirrorItems(a, b, al) {
     const W = this.race.items; if (!W) return;
@@ -257,13 +257,13 @@ export class NetRace {
           switch (e.e) {
             case 'hit':
               if (e.kind === 'wobble') { applyHit(me, 'wobble'); me.slowT = Math.max(me.slowT, e.item === 'remote' ? IT.REMOTE.t : 3); }
-              else { me.shieldT = 0; me.invincT = 0; applyHit(me, e.kind || 'spin'); }
+              else { me.shieldT = 0; me.shieldSuper = false; me.invincT = 0; applyHit(me, e.kind || 'spin'); }
               this.stats.hitsOnMe++;
               break;
             case 'use': if (e.item === 'turbo') addBoost(me, e.super ? IT.TURBO.tSuper : IT.TURBO.t, 3, e.super ? IT.TURBO.kickSuper : IT.TURBO.kick); break;
             case 'super_star': me.invincT = e.t || IT.STAR.t; break;
-            case 'shield_up': me.shieldT = e.super ? IT.SHIELD.tSuper : IT.SHIELD.t; me.shieldArmed = true; break;
-            case 'shield_fire': me.shieldT = 0; me.shieldArmed = false; break;
+            case 'shield_up': me.shieldT = e.super ? IT.SHIELD.tSuper : IT.SHIELD.t; me.shieldSuper = !!e.super; me.shieldArmed = true; break;
+            case 'shield_fire': me.shieldT = 0; me.shieldSuper = false; me.shieldArmed = false; break;
             case 'got': me.item = e.item; me.itemCount = e.count; me.roulT = 0; break;
             case 'box': if (e.roulette) { me.roulT = me.roulDur = IT.ROULETTE; } break;
             case 'roulette': me.roulT = me.roulDur = IT.ROULETTE; break;

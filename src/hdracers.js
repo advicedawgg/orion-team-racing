@@ -60,7 +60,8 @@ function getLoader() {
 const B = n => 'mixamorig' + n;   // GLTFLoader sanitises "mixamorig:Hips" -> "mixamorigHips"
 const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1);
 const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3();
-const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion();
+const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _q4 = new THREE.Quaternion();
+const _v5 = new THREE.Vector3(), _v6 = new THREE.Vector3(), _v7 = new THREE.Vector3(), _v8 = new THREE.Vector3();
 
 /** rotate `bone` in world space so the direction to `child` becomes world `dir` */
 function aimBone(bone, child, dir) {
@@ -180,11 +181,14 @@ function buildTemplate(id, gltf) {
   const armLen = shoulderL.distanceTo(w('LeftForeArm')) + w('LeftForeArm').distanceTo(w('LeftHand'));
   const shoulderMid = shoulderL.clone().add(shoulderR).multiplyScalar(0.5);
   const headTop = new THREE.Box3().setFromObject(scene, true).max.y;
+  // each hand's thumb in the hand bone's own frame: the rest pose is a T/A-pose, thumbs forward (+z)
+  const thumb = {};
+  for (const side of ['Left', 'Right']) thumb[side] = new THREE.Vector3(0, 0, 1).applyQuaternion(get(B(side + 'Hand')).getWorldQuaternion(new THREE.Quaternion()).invert());
   const base = {};
   for (const n of ANIM_BONES) { const b = get(B(n)); if (b) base[n] = b.quaternion.clone(); }
   scene.traverse(o => { if (o.isSkinnedMesh) { o.computeBoundingSphere(); o.boundingSphere.radius *= 1.35; } });
   return {
-    kind: 'rig', def, holder, base, armLen, headTop,
+    kind: 'rig', def, holder, base, armLen, headTop, thumb,
     shoulderMid, shoulderHalf: shoulderL.distanceTo(shoulderR) / 2,
     headH: headTop - w('Head').y,
   };
@@ -263,6 +267,13 @@ export async function loadHDRacer(id, opts = {}) {
 }
 
 const approach = (cur, tgt, rate, dt) => cur + (tgt - cur) * Math.min(1, rate * dt);
+/** rotate a bone by `angle` about a WORLD-space axis through its own joint */
+function twistBone(bone, axis, angle) {
+  _q1.setFromAxisAngle(axis, angle);
+  bone.getWorldQuaternion(_q2); bone.parent.getWorldQuaternion(_q3).invert();
+  bone.quaternion.copy(_q3.multiply(_q1.multiply(_q2)));
+  bone.updateMatrixWorld(true);
+}
 const _qa = new THREE.Quaternion(), _ta = new THREE.Vector3(), _tb = new THREE.Vector3(), _pole = new THREE.Vector3();
 
 /** two-bone IK: aim upper/lower so the end reaches `target` (world), elbow toward `pole` (world dir) */
@@ -357,6 +368,19 @@ export function animateHD(rig, s = {}, dt = 1 / 60) {
     rig.root.localToWorld(_ta);
     _pole.set(sx * 0.7, -0.75, -0.25).applyQuaternion(rootQ);
     ik2(up, lo, hand, _ta, _pole);
+    // cheering: roll the arm about its own axis so the palm faces forward and the thumb points OUT
+    // (the plain IK swing leaves the T-pose roll: backs of the hands to the camera, thumbs down)
+    const cw = sp.cheer * (1 - sp.arms);
+    if (cw > 0.01 && rig.t.thumb) {
+      const ax = hand.getWorldPosition(_v5).sub(lo.getWorldPosition(_v6)).normalize();
+      const th = _v6.copy(rig.t.thumb[side]).applyQuaternion(hand.getWorldQuaternion(_q4));
+      const want = _v7.set(sx, 0.3, 0.2).applyQuaternion(rootQ);
+      th.addScaledVector(ax, -th.dot(ax)); want.addScaledVector(ax, -want.dot(ax));
+      if (th.lengthSq() > 1e-6 && want.lengthSq() > 1e-6) {
+        const ang = Math.atan2(ax.dot(_v8.crossVectors(th, want)), th.dot(want)) * cw;
+        twistBone(up, ax, ang * 0.5); twistBone(lo, ax, ang * 0.5);   // split so the wrist skin doesn't candy-wrap
+      }
+    }
   }
   rig.head.position.y = rig.t.headTop * rig.k * (1 - land * 0.1) - sp.sad * 0.05;
 }
