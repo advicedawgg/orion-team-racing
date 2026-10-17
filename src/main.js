@@ -183,17 +183,27 @@ function entrantsFor(playerId) {
   if (G.players === 2) {
     // 2P: P1 in G.slot (default 6), P2 beside them on the same grid row, 6 AI fill the rest
     let p2 = G.racerId2 && all.includes(G.racerId2) && G.racerId2 !== playerId ? G.racerId2 : all.find(id => id !== playerId);
-    const ids = all.filter(id => id !== playerId && id !== p2).slice(0, 6);
+    const ids = fieldOf(all.filter(id => id !== playerId && id !== p2), 6);
     const slot = Math.max(0, Math.min(7, G.slot)), slot2 = slot % 2 ? slot - 1 : slot + 1;
     const lo = Math.min(slot, slot2);
     ids.splice(lo, 0, lo === slot ? playerId : p2, lo === slot ? p2 : playerId);
     return { ids, slot, slot2 };
   }
-  const others = all.filter(id => id !== playerId);
-  const ids = others.slice(0, 7);
+  const ids = fieldOf(all.filter(id => id !== playerId), 7);
   const slot = Math.max(0, Math.min(7, G.slot));
   ids.splice(slot, 0, playerId);
   return { ids, slot };
+}
+// More racers than grid slots: bench racers (racers.js BENCH, the baddies) sit out — the menu's
+// cup pick (G.sitOut) if it's one of them, else a random one (seeded by ?seed= for tests).
+function fieldOf(others, n) {
+  const ids = others.slice();
+  while (ids.length > n) {
+    const bench = ids.filter(id => (R.BENCH || []).includes(id));
+    const out = bench.includes(G.sitOut) ? G.sitOut : bench.length ? bench[(Q.has('seed') ? G.seed : Math.random() * 1e6 | 0) % bench.length] : ids[ids.length - 1];
+    ids.splice(ids.indexOf(out), 1);
+  }
+  return ids;
 }
 function buildVisuals(ids) {
   for (const v of G.visuals) { scene.remove(v.root); try { R.disposeTree?.(v.root); } catch { /* not ours to fix */ } }

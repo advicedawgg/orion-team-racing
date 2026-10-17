@@ -24,6 +24,7 @@ const V = {
   orion: 'cgSgspJ2msm6clMCkdW9',     // Jessica (+ pitch)
 };
 const KID = 'rubberband=pitch=1.26:formant=shifted:tempo=1.0';
+const TAJ = 'rubberband=pitch=1.36:formant=shifted:tempo=1.0';
 const A = (text, o = {}) => ({ text, voice: V.announcer, ...o });
 const T = -14; // VO loudest-100 ms target
 
@@ -48,11 +49,16 @@ export const LINES = {
   // keyed by racer id, spoken with the display name from src/racers.js RACERS
   vo_grumblin_wins: A('[excited] Grumbles wins!'), vo_prickle_wins: A('[excited] Prickles wins!'),
   vo_jelly_wins: A('[excited] Wibble wins!'), vo_zapdrone_wins: A('[excited] Zappy wins!'),
+  vo_taj_wins: A('[excited] Taj wins!'),
 
   // character barks (audio.bark(racerId, kind))
   vo_orion_woohoo: { text: '[excited] Woo-hoo!', voice: V.orion, pre: KID },
   vo_orion_yeah: { text: '[excited] Yeah!', voice: V.orion, pre: KID },
   vo_orion_uhoh: { text: '[surprised] Uh-oh!', voice: V.orion, pre: KID },
+  // Taj: a smaller kid than Orion — same voice, pitched a bit higher
+  vo_taj_yew: { text: '[excited] Yewww!', voice: V.orion, pre: TAJ },
+  vo_taj_fast: { text: "[excited] I'm super fast!", voice: V.orion, pre: TAJ },
+  vo_taj_whoa: { text: '[surprised] Whoa-oh!', voice: V.orion, pre: TAJ },
   vo_kingdad_count: { text: "[mock stern] Don't make me count to three!", voice: V.kingdad },
   vo_kingdad_back: { text: '[groaning] Ooh, my back!', voice: V.kingdad },
   vo_kingdad_remote: { text: '[shouting triumphantly] Everybody... PAUSE!', voice: V.kingdad },

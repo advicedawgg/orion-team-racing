@@ -26,11 +26,14 @@ export const RACERS = [
   { id: 'sootie',   name: 'Sootie',   blurb: 'The family cat. Quick paws, twisty turns. Meow!',     stats: { speed: 2, accel: 3, turn: 4 }, colors: { kart: 0xff6fae, accent: 0x8ff0b4, trim: 0x2b2431 } },
   { id: 'kingdad',  name: 'King Dad', blurb: 'Big, fast, and he has the TV remote.',                stats: { speed: 5, accel: 2, turn: 2 }, colors: { kart: 0xd0342c, accent: 0xffd23f, trim: 0x2f6fd0 } },
   { id: 'mum',      name: 'Mum',      blurb: 'Smooth and speedy off the line. Always gets there!',  stats: { speed: 2, accel: 4, turn: 3 }, colors: { kart: 0x9b59d0, accent: 0xffe066, trim: 0xf4ecff } },
+  { id: 'taj',      name: 'Taj',      blurb: 'Little, lightning-quick, and the longest hair on the track!', stats: { speed: 3, accel: 4, turn: 2 }, colors: { kart: 0xffc93c, accent: 0x1fa59a, trim: 0xf4f4f4 } },
   { id: 'grumblin', name: 'Grumbles', blurb: 'A grumpy green gremlin who loves a big bump.',       stats: { speed: 4, accel: 2, turn: 3 }, colors: { kart: 0xff8a2a, accent: 0x4caf50, trim: 0x3a3f52 } },
   { id: 'jelly',    name: 'Wibble',   blurb: 'A wobbly jellyfish who wiggles round every corner.', stats: { speed: 2, accel: 2, turn: 5 }, colors: { kart: 0x2ec4e0, accent: 0xff8ad8, trim: 0xfff0fb } },
   { id: 'zapdrone', name: 'Zappy',    blurb: 'A buzzy robot that zooms off the start. Bzzt!',     stats: { speed: 2, accel: 5, turn: 2 }, colors: { kart: 0x2d3142, accent: 0x8fe3ff, trim: 0xffd23f } },
   { id: 'prickle',  name: 'Prickles', blurb: 'A spiky little burr-hog. No hugs, please!',          stats: { speed: 4, accel: 3, turn: 2 }, colors: { kart: 0x7ed957, accent: 0x8a5a2b, trim: 0xf7eccb } },
 ];
+// 9 racers but 8 karts on a grid: one of these baddies sits each race out (never the family).
+export const BENCH = ['grumblin', 'jelly', 'zapdrone', 'prickle'];
 const BY_ID = Object.fromEntries(RACERS.map(r => [r.id, r]));
 export const getRacer = id => BY_ID[id] || RACERS[0];
 
@@ -115,7 +118,7 @@ export function buildRacer(id, { hd = false } = {}) {
     id: def.id, def, root, offset, flip, base, body: kart, kart, driver, torso, head, headP: head, armL, armR,
     steerWheel, wheels, frontPivots, rearAxle, exhausts,
     extras: c.extras.map(e => e.group), look, floaty: !!c.floaty,
-    extraRefs: { tail: c.tail, tentacles: c.tentacles, rings: c.rings },
+    extraRefs: { tail: c.tail, tentacles: c.tentacles, rings: c.rings, hair: c.hair },
     shoulder: c.shoulder, armLen: c.armLen, neckY: c.neckY, headH: c.headH, size: look.size || 1,
     procedural: [torso, armL, armR, ...c.extras.map(e => e.group)],
     st: { clock: 0, prevSp: 0, prevAir: false, airAcc: 0, wf: 0, wr: 0 },
@@ -225,6 +228,13 @@ function flower(m, x, y, z, r, petal, centre, rot = [0, 0, 0]) {
     g.applyMatrix4(M);
     m.add(MAT.matte, g, col);
   }
+}
+// A flat lightning bolt facing +Z (decals: chest, hood).
+function boltGeo(r) {
+  const b = new THREE.Shape();
+  [[.15, 1], [-.45, -.05], [-.02, -.05], [-.2, -1], [.45, .15], [.04, .15], [.3, 1]].forEach(([x, y], i) => i ? b.lineTo(x * r, y * r) : b.moveTo(x * r, y * r));
+  b.closePath();
+  return new THREE.ExtrudeGeometry(b, { depth: .02, bevelEnabled: false });
 }
 const deg = d => d * Math.PI / 180;
 function darken(hex, k) { return new THREE.Color(hex).multiplyScalar(k).getHex(); }
@@ -390,6 +400,45 @@ const LOOK = {
       K.add(MAT.matte, rbox(.42, .04, .24, .2), 0xf4ecff, [0, .81, -.72]);
       K.add(MAT.matte, new THREE.TorusGeometry(.13, .018, 4, 10, Math.PI), 0x9c6531, [0, .82, -.72]);
       for (let i = 0; i < 4; i++) K.add(MAT.matte, rbox(.06, .02, .24, 0), 0xe0506e, [-.15 + i * .1, .82, -.72]);
+    },
+  },
+
+  /* ---- Taj: a smaller kid (shorter body, smaller head than Orion) with very long, straight
+   * blonde hair: a straight fringe, curtains past his jaw and a long sheet down his back that
+   * drapes over the seat and streams out behind him at speed. Teal tee with a lightning bolt.
+   * Kart: sunny yellow and teal, a lightning bolt on the hood, a surfboard down the right side. */
+  taj: {
+    driver(c) {
+      const TEE = 0x1fa59a, TEE_D = 0x157a72, HAIR = 0xffe592, HAIR_D = 0xf2cd62, SKIN = 0xfbdcc4;
+      c.torso.add(MAT.matte, rbox(.38, .32, .27, .35), TEE, [0, .16, 0]);
+      c.torso.add(MAT.matte, rbox(.4, .06, .29, .3), TEE_D, [0, .03, 0]);              // hem
+      c.torso.add(MAT.paint, boltGeo(.075), 0xffd23f, [0, .17, .137]);
+      c.neckY = .32;
+      headBox(c, .4, .44, .38, { y: .23, round: .38 });                                  // narrower, longer boy's face
+      c.head.add(MAT.matte, rbox(.45, .17, .43, .85), HAIR, [0, .4, -.02]);             // crown
+      for (const s of [1, -1]) c.head.add(MAT.matte, taper(rbox(.05, .5, .17, .6), 1, 1, 1.15, 1), HAIR, [s * .215, .15, -.03]);   // straight curtains past the jaw
+      c.head.add(MAT.matte, rbox(.45, .44, .16, .55), HAIR, [0, .25, -.15]);             // back of the head
+      // the long part: two hinged sheets (upper, lower) so it can bend as it streams back
+      const up = c.extra(c.groups.head, [0, .38, -.2]);
+      up.m.add(MAT.matte, taper(rbox(.48, .5, .16, .5), 1, 1, .9, .9), HAIR, [0, -.24, -.02]);
+      const lo = c.extra(up.group, [0, -.46, -.02]);
+      lo.m.add(MAT.matte, rbox(.46, .44, .11, .45), HAIR, [0, -.2, 0]);
+      for (let i = 0; i < 5; i++)                                                      // straight, slightly uneven ends
+        lo.m.add(MAT.matte, rbox(.09, .07 + (i % 2) * .04, .08, .4), i % 2 ? HAIR_D : HAIR, [-.2 + i * .1, -.43 - (i % 2) * .02, 0]);
+      c.hair = [up.group, lo.group];
+      c.shoulder = [.22, .28];
+      arms(c, { len: .38, t: .1, sleeve: TEE, hand: SKIN, hs: .11 });
+      c.legs = { thigh: 0x3a5a8c, shin: SKIN, shoe: 0xf4f4f4, w: .13 };                 // denim shorts
+      c.seat = 0x157a72;
+    },
+    kart(c) {
+      const K = c.kart, TEAL = c.col.accent;
+      K.add(MAT.paint, boltGeo(.12), TEAL, [0, .455, .52], [-Math.PI / 2 + .2, 0, 0]);   // hood bolt
+      // a surfboard strapped down the right-hand side
+      K.add(MAT.paint, taper(rbox(.05, .17, 1.2, .9), .8, 1, 1, 1), 0xf7f4ea, [-.56, .48, -.06], [0, 0, .12]);
+      K.add(MAT.matte, rbox(.055, .03, 1.05, 0), TEAL, [-.56, .48, -.06], [0, 0, .12]);
+      K.add(MAT.matte, rbox(.02, .1, .12, .3), TEAL, [-.6, .42, -.55], [0, 0, .12]);    // fin
+      for (const z of [.2, -.32]) K.add(MAT.matte, rbox(.08, .2, .04, 0), 0x2a2a32, [-.54, .44, z]);   // straps
     },
   },
 
@@ -705,6 +754,12 @@ export function animateRacer(rig, s, dt) {
     X.tentacles.scale.set(1, 1 + w * .08 - sq * .3, 1);
     rig.headP.scale.set(1 + w * .04 + sq * .25, 1 - w * .06 - sq * .35, 1 + w * .04 + sq * .25);
   }
+  if (X.hair) {
+    // drapes back over the seat at rest, streams out flatter with speed, flutters, swings with the lean
+    const fl = Math.sin(t * 9.3) * .05 * Math.min(1, v) + Math.sin(t * 2.1) * .03;
+    X.hair[0].rotation.set(spr(st, 'hair', .45 + v * .55 + (air ? .25 : 0) + sq * -.15, 7, .5, dt) + fl, 0, leanX * .6);
+    X.hair[1].rotation.set(-.4 + v * .7 + Math.sin(t * 9.3 + 1.2) * .08 * Math.min(1, v), 0, leanX * .3);
+  }
   if (X.rings) { X.rings.rotation.y = t * 5; X.rings.rotation.x = Math.sin(t * 2) * .2; }
 
   if (rig.hd && rig.hd.animate) rig.hd.animate(rig.hd.rig, s, dt);
@@ -769,7 +824,10 @@ export function renderPortrait(id, size = 128, { bg = true } = {}) {
     const { root, rig } = buildRacer(id);
     for (let i = 0; i < 20; i++) animateRacer(rig, IDLE, 1 / 30);
     scene.add(root); root.updateMatrixWorld(true);
+    const hair = rig.extraRefs.hair?.[0];             // frame the face, not Taj's long hair down his back
+    if (hair) rig.head.remove(hair);
     const box = new THREE.Box3().setFromObject(rig.head), c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3());
+    if (hair) rig.head.add(hair);
     const h = Math.max(sz.y, sz.x) * 1.45;
     c.y -= sz.y * .12;
     const dist = h / 2 / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));

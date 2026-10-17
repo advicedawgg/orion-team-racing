@@ -139,7 +139,7 @@ Space so the page doesn't scroll. **Auto-accelerate** is a setting, default ON i
 
 ## Racers (characters agent)
 
-8 racers, all unlocked from the start (it's for a young kid). Stats 1–5 each for `speed`,
+9 racers, all unlocked from the start (it's for a young kid). A grid is still 8 karts: one of `BENCH` (the four baddies) sits each race out, random per race, the same one for a whole cup (`main.js` `fieldOf`, `M.cup.sitOut`); online the server's bot shuffle drops one. Stats 1–5 each for `speed`,
 `accel`, `turn`, summing to 9 (balanced) — physics maps them to small deltas worth about the same race
 time per point (**Balance** has the mapping and the measurements).
 Family first: **Orion** (the hero kid — match his look in SO2 `src/player.js`/`art.js`),
@@ -168,6 +168,7 @@ Two model tiers:
 | `sootie` | Sootie | 2/3/4 | pink `#ff6fae` / mint `#8ff0b4` / fur `#2b2431` | SO2 `SYMBOL.life`: #2b2431 fur, mint slit eyes, pink nose, white whiskers; SO1's white chest | cat ears on the nose, paw print on the hood, fish-bone badge; her tail curls out over the right side |
 | `kingdad` | King Dad | 5/2/2 | red `#d0342c` / gold `#ffd23f` / blue `#2f6fd0` | SO2 `world.js` king: bald, short black beard, crown, blue gown, TV remote in his right hand | **size 1.1** kart; velvet throne with gold arch + finials; crown on the nose |
 | `mum` | Mum | 2/4/3 | purple `#9b59d0` / yellow `#ffe066` / lilac `#f4ecff` | SO1 `MUM_FRAMES`: long brown hair, purple dress `#c46fd4`, white shoes; flower in her hair | whitewall tyres, big flower on the hood, picnic basket |
+| `taj` | Taj | 3/4/2 | yellow `#ffc93c` / teal `#1fa59a` / white `#f4f4f4` | a smaller kid: fair skin, blue eyes, very long straight blonde hair (fringe, curtains, a two-piece sheet down his back that streams out with speed — `extraRefs.hair`), teal tee with a lightning bolt, denim shorts | hood lightning bolt, surfboard down the right side |
 | `grumblin` | Grumbles | 4/2/3 | orange `#ff8a2a` / green `#4caf50` / slate `#3a3f52` | SO2 grumblin: green box, big white eyes, cross brows, one tooth | spare tyre on the back, bolted patches |
 | `jelly` | Wibble | 2/2/5 | aqua `#2ec4e0` / pink `#ff8ad8` / pale `#fff0fb` | SO2 jelly: translucent pink bell, pale cap, hot-pink tentacles; floats over the seat, steers with two tentacles | clam-shell seat, bubbles on the hood |
 | `zapdrone` | Zappy | 2/5/2 | charcoal `#2d3142` / cyan `#8fe3ff` / yellow `#ffd23f` | SO2 zapdrone: grey octahedron, red eye (with a friendly glint), two spinning energy rings, antenna bobble; hovers | glowing cyan strips, hazard chevrons, tesla coil |

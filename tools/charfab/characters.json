@@ -64,6 +64,12 @@
       "slug": "prickle",
       "kind": "creature",
       "desc": "a cute round little cartoon burr-hog creature like a chubby hedgehog, a round chocolate brown ball-shaped body covered in chunky cream coloured cone spikes, a friendly cream coloured face with big shiny black eyes, rosy cheeks, a tiny pink nose and a cheeky grin, stubby little arms held forward as if holding a steering wheel, sitting, small brown feet"
+    },
+    {
+      "slug": "taj",
+      "kind": "human",
+      "desc": "a smaller cheerful 6 year old cartoon boy, fair white skin, big bright blue eyes, light freckles, huge grin, VERY long straight light golden-blonde hair with a straight-cut fringe, hanging behind his shoulders down to the middle of his back, teal t-shirt with a small yellow lightning bolt, blue denim shorts, white socks and white sneakers",
+      "note": "reference rendered with gpt-image-2 (gptimage MCP), not Krea, with orion apose 00 as the style guide"
     }
   ]
 }

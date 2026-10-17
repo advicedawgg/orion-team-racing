@@ -75,7 +75,7 @@ export function rosterFromSource(src) {
   const out = [];
   for (const m of src.matchAll(/id:\s*'(\w+)'.*?stats:\s*\{\s*speed:\s*(\d)\s*,\s*accel:\s*(\d)\s*,\s*turn:\s*(\d)\s*\}/g))
     out.push({ id: m[1], stats: { speed: +m[2], accel: +m[3], turn: +m[4] } });
-  if (out.length !== 8) throw new Error(`racers.js roster parse found ${out.length} racers`);
+  if (out.length < 8) throw new Error(`racers.js roster parse found ${out.length} racers`);
   return out;
 }
 

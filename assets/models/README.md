@@ -10,12 +10,13 @@ Enabled by the **FANCY RACERS** setting (`settings.hd`) or `?hd=1`.
 | `kingdad.glb`  | King Dad | rig | 29,704 | 1.26 MB | back-of-head hair repainted to skin (texpaint) |
 | `mum.glb`      | Mum      | rig | 29,285 | 1.24 MB | recoloured to SO1 Gemma (texrecolor): hair #5a3518, skin #ffd9b3 |
 | `sootie.glb`   | Sootie   | rig | 28,013 | 1.09 MB | tail cut before rigging, grafted back on Hips (`--lift 25 --swing 60`: curls out to one side, reads as a tail and not a stick from the chase cam) |
+| `taj.glb`      | Taj      | rig | 29,873 | 1.21 MB | reference by gpt-image-2 (not Krea): render 01 = an edit of 00 with a narrower, boyish face (user asked); Orion's A-pose render was the style guide. `hairfix.mjs` moved hair off the arm bones; skin toned down (TRELLIS baked it red) + hair lightened, see below. `armsUp: 0.45`: arms right up still stretch the shirt/hair fused to the arms (the hit flail shows a little) |
 | `grumblin.glb` | Grumbles | static | 14,665 | 0.53 MB | generated already sitting |
 | `jelly.glb`    | Wibble   | static | 14,985 | 0.35 MB | |
 | `zapdrone.glb` | Zappy    | static | 14,093 | 0.44 MB | yaw -1.6 in HD_MODELS (eye to +Z) |
 | `prickle.glb`  | Prickles | static | 14,193 | 0.52 MB | |
 
-Total 6.4 MB. Every file: one mesh, one material, one 1024² WebP base-colour texture, meshopt-compressed
+Total 7.6 MB. Every file: one mesh, one material, one 1024² WebP base-colour texture, meshopt-compressed
 (`EXT_meshopt_compression`, needs `GLTFLoader.setMeshoptDecoder`). No metallic-roughness map (dropped; the
 loader renders a flat soft plastic, metalness 0 / roughness 0.72).
 
@@ -46,6 +47,8 @@ distance.
 4. `pack.mjs in.glb assets/models/<id>.glb`: neutral_bone reweight, weld, smooth normals, drop the MR map,
    1024 WebP q88, meshopt. `lib/meshfix.mjs` holds DAWG ARENA's proven fixes.
 - `tailsplit.mjs split|graft`: for non-humanoid appendages that confuse MIA (Sootie's tail).
+- `hairfix.mjs in out --class "<rgb>"`: long hair hanging beside A-pose arms gets MIA arm weights, so raising the arms drags it up. Moves arm/shoulder weight of hair-coloured vertices onto Spine2. Run on the rig output, before texrecolor. Taj: hair class `b<=g*0.72 && g>r*0.56 && r>b+40` (a looser class also caught dark red skin and wrecked the arms); `--cut` (delete arm↔body bridge triangles) was tried and damaged the hands, don't.
+  - taj, after hairfix: skin `--class "r>g+10 && r>b+30 && !(HAIR)" --to #f2b393 --strength 0.5 --ramp 45,95`, then hair `--class "HAIR" --to #d6a45e --mode lum --strength 0.8`
 - `texpaint.mjs --where "<xyz predicate>"`: recolours dark (hair) texels to sampled skin in a region.
 - `inpaint.mjs`: masked Krea img2img touch-up of a render.
 - `texrecolor.mjs --class "<rgb predicate>" [--where xyz] --to #hex [--mode mul|lum] [--ramp lo,hi] [--strength s]`:

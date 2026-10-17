@@ -264,6 +264,25 @@ const FACES = {
     F.rect(.4, .7, .2, .03, '#ffffff');
     S.fill(HAIR); B.fill(HAIR); T.fill(HAIR); N.fill(SKIN);
   },
+  // Taj — a boy's face: fair skin, straight blonde fringe, smaller blue eyes (no lashes), thick straight
+  // brows, freckles across the nose, a cheeky lopsided grin, hardly any blush. Hair everywhere but the face.
+  taj(F, S, B, T, N) {
+    const SKIN = '#fbdcc4', HAIR = '#ffe592', HAIR_D = '#f2cd62';
+    F.fill(SKIN);
+    F.rect(0, 0, 1, .27, HAIR);                                   // fringe, straight across
+    for (let i = 0; i < 9; i++) F.line([[.06 + i * .11, .02], [.06 + i * .11, .25]], HAIR_D, .012);
+    F.rect(0, 0, .09, 1, HAIR); F.rect(.91, 0, .09, 1, HAIR);     // hair down both sides
+    eye(F, .32, .46, .085, .095, '#3f8fd8', .15); eye(F, .68, .46, .085, .095, '#3f8fd8', .15);
+    F.poly([[.2, .34], [.42, .32], [.42, .365], [.21, .38]], '#c9a24a');            // thick straight brows
+    F.poly([[.8, .34], [.58, .32], [.58, .365], [.79, .38]], '#c9a24a');
+    for (const [x, y] of [[.42, .56], [.46, .59], [.39, .6], [.58, .56], [.54, .59], [.61, .6]]) F.ell(x, y, .011, .011, '#d99a72');
+    F.ell(.2, .66, .05, .03, '#ffc0b0'); F.ell(.8, .66, .05, .03, '#ffc0b0');
+    F.poly([[.37, .7], [.66, .68], [.6, .77], [.47, .79]], '#8a2f2a');                // lopsided grin
+    F.poly([[.4, .7], [.63, .685], [.62, .715], [.41, .725]], '#ffffff');
+    S.fill(HAIR); B.fill(HAIR); T.fill(HAIR);
+    for (const R of [S, B]) for (let i = 0; i < 6; i++) R.line([[.1 + i * .16, 0], [.1 + i * .16, 1]], HAIR_D, .02);
+    N.fill(SKIN);
+  },
   // Grumbles — SO2 grumblin: green #4caf50 box with big white eyes. Grumpy, not scary: the
   // brows are cross, the mouth is a wobbly pout with one tooth.
   grumblin(F, S, B, T, N) {

@@ -8,6 +8,7 @@ export const RACERS = [
   { id: 'sootie', name: 'Sootie', stats: { speed: 2, accel: 3, turn: 4 }, colors: { kart: 0xff6fae, accent: 0x8ff0b4, trim: 0x2b2431 } },
   { id: 'kingdad', name: 'King Dad', stats: { speed: 5, accel: 2, turn: 2 }, colors: { kart: 0xd0342c, accent: 0xffd23f, trim: 0x2f6fd0 } },
   { id: 'mum', name: 'Mum', stats: { speed: 2, accel: 4, turn: 3 }, colors: { kart: 0x9b59d0, accent: 0xffe066, trim: 0xf4ecff } },
+  { id: 'taj', name: 'Taj', stats: { speed: 3, accel: 4, turn: 2 }, colors: { kart: 0xffc93c, accent: 0x1fa59a, trim: 0xf4f4f4 } },
   { id: 'grumblin', name: 'Grumbles', stats: { speed: 4, accel: 2, turn: 3 }, colors: { kart: 0xff8a2a, accent: 0x4caf50, trim: 0x3a3f52 } },
   { id: 'jelly', name: 'Wibble', stats: { speed: 2, accel: 2, turn: 5 }, colors: { kart: 0x2ec4e0, accent: 0xff8ad8, trim: 0xfff0fb } },
   { id: 'zapdrone', name: 'Zappy', stats: { speed: 2, accel: 5, turn: 2 }, colors: { kart: 0x2d3142, accent: 0x8fe3ff, trim: 0xffd23f } },

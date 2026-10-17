@@ -391,6 +391,7 @@ function applyRaceSettings() {
   G.easyBoost = s.kidAssist ? true : undefined;
   if (!api.Q.has('hd')) G.hd = !!s.hd;
   G.solo = M.mode === 'tt';
+  G.sitOut = M.mode === 'cup' ? M.cup?.sitOut : undefined;   // the cup keeps the same 8 racers all cup
   G.noItems = M.mode === 'tt';
   if (M.mode !== 'tt' && !api.Q.has('laps')) G.laps = undefined;
   // 2P: both racers, both devices, per-player AUTO-GO + KID HELPER (join screen)
@@ -682,8 +683,12 @@ function showJoin(keep = false) {
 /* ---------------------------------------------------------------- Orion Cup */
 function startCup() {
   const ids = cupTracks();
-  M.cup = { tracks: ids.length ? ids : [TRACKS[0].id], i: 0, points: Object.fromEntries(racers().map(r => [r.id, 0])), last: {}, prevOrder: null, diff: M.diff, racer: M.racer,
-    humans: two() ? [M.racer, M.racer2] : [M.racer] };   // 2P: both players' racers (badges, podium, unlock)
+  const humans = two() ? [M.racer, M.racer2] : [M.racer];   // 2P: both players' racers (badges, podium, unlock)
+  // more racers than karts: one bench baddie sits the whole cup out (main.js fieldOf)
+  const bench = (api.R.BENCH || []).filter(id => !humans.includes(id) && racers().some(r => r.id === id));
+  const sitOut = racers().length > 8 && bench.length ? bench[Math.random() * bench.length | 0] : undefined;
+  M.cup = { tracks: ids.length ? ids : [TRACKS[0].id], i: 0, points: Object.fromEntries(racers().filter(r => r.id !== sitOut).map(r => [r.id, 0])), last: {}, prevOrder: null, diff: M.diff, racer: M.racer,
+    humans, sitOut };
   vo('vo_orion_cup');
   showStandings(true);
 }

@@ -43,11 +43,12 @@ export const VO_NAMES = [
   'vo_tv_remote', 'vo_warp_star', 'vo_ten_stars',
   // 'vo_' + racerId + '_wins' for every racer in src/racers.js
   'vo_orion_wins', 'vo_sootie_wins', 'vo_kingdad_wins', 'vo_mum_wins', 'vo_grumblin_wins',
-  'vo_prickle_wins', 'vo_jelly_wins', 'vo_zapdrone_wins',
+  'vo_prickle_wins', 'vo_jelly_wins', 'vo_zapdrone_wins', 'vo_taj_wins',
   // character barks — see BARKS below; play through audio.bark(racerId, kind)
   'vo_orion_woohoo', 'vo_orion_yeah', 'vo_orion_uhoh',
   'vo_kingdad_count', 'vo_kingdad_back', 'vo_kingdad_remote', 'vo_kingdad_haha',
   'vo_mum_goodjob', 'vo_mum_careful', 'vo_mum_wheee',
+  'vo_taj_yew', 'vo_taj_fast', 'vo_taj_whoa',
   'vo_grumblin_grr', 'vo_prickle_huff', 'vo_jelly_wobble', 'vo_zapdrone_zap',
 ];
 
@@ -59,6 +60,7 @@ export const BARKS = {
   sootie: { win: ['purr', 'meow'], boost: ['meow'], hit: ['meow'], item: ['purr'] },
   kingdad: { win: ['vo_kingdad_haha'], boost: ['vo_kingdad_haha'], hit: ['vo_kingdad_back', 'vo_kingdad_count'], item: ['vo_kingdad_remote'] },
   mum: { win: ['vo_mum_goodjob'], boost: ['vo_mum_wheee'], hit: ['vo_mum_careful'], item: ['vo_mum_goodjob'] },
+  taj: { win: ['vo_taj_yew', 'vo_taj_fast'], boost: ['vo_taj_yew'], hit: ['vo_taj_whoa'], item: ['vo_taj_fast'] },
   grumblin: { win: ['vo_grumblin_grr'], hit: ['vo_grumblin_grr'] },
   prickle: { win: ['vo_prickle_huff'], hit: ['vo_prickle_huff'] },
   jelly: { win: ['vo_jelly_wobble'], hit: ['vo_jelly_wobble'] },
@@ -537,7 +539,7 @@ function makeEngineVoice(ctx = S.ctx, G = S) {
 }
 
 // per-racer engine character (pitch multiplier): Dad's big kart growls, Zapdrone whines
-export const ENGINE_PITCH = { orion: 1.06, sootie: 1.14, kingdad: 0.82, mum: 1.0, grumblin: 0.9, prickle: 0.94, jelly: 1.18, zapdrone: 1.28 };
+export const ENGINE_PITCH = { orion: 1.06, sootie: 1.14, kingdad: 0.82, mum: 1.0, taj: 1.2, grumblin: 0.9, prickle: 0.94, jelly: 1.18, zapdrone: 1.28 };
 function enginePitch(id, racerId) {
   if (racerId && ENGINE_PITCH[racerId]) return ENGINE_PITCH[racerId];
   return 1 + (((hashId(id) % 1000) / 1000) - 0.5) * 0.26;   // unknown: stable per-id ±13%

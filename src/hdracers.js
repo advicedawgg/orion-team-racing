@@ -41,6 +41,7 @@ export const HD_MODELS = {
   orion:   { kind: 'rig', height: 1.50 },
   kingdad: { kind: 'rig', height: 1.62 },
   mum:     { kind: 'rig', height: 1.50 },
+  taj:     { kind: 'rig', height: 1.36, armsUp: 0.45 },   // smaller kid than Orion; hair/shirt stretch if the arms go right up
   grumblin: { kind: 'static', height: 0.9, dz: 0.02, yaw: -0.3 },
   jelly:    { kind: 'static', height: 1.05, lift: 0.02, yaw: -0.12 },
   zapdrone: { kind: 'static', height: 0.85, lift: 0.18, yaw: -1.6 },

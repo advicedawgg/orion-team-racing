@@ -36,7 +36,7 @@ function roster() {
   const out = [];
   for (const m of src.matchAll(/id:\s*'(\w+)'.*?stats:\s*\{\s*speed:\s*(\d)\s*,\s*accel:\s*(\d)\s*,\s*turn:\s*(\d)\s*\}/g))
     out.push({ racerId: m[1], stats: { speed: +m[2], accel: +m[3], turn: +m[4] } });
-  if (out.length !== 8) throw new Error(`racers.js roster parse found ${out.length} racers`);
+  if (out.length < 8) throw new Error(`racers.js roster parse found ${out.length} racers`);
   return out;
 }
 
@@ -72,7 +72,7 @@ async function workerMain() {
     const r = rng(mix(Math.floor((job.seed - 1) / 8) * 9973 + tIdx * 131 + 5));
     const shuf = R.slice();
     for (let i = shuf.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [shuf[i], shuf[j]] = [shuf[j], shuf[i]]; }
-    let order = shuf.map((_, i) => shuf[(i + job.seed) % shuf.length]);
+    let order = shuf.map((_, i) => shuf[(i + job.seed) % shuf.length]).slice(0, 8);   // 9+ racers: the rest sit this one out
     // --regress: every kart gets independent random stats 1..5 → fit race time per stat point
     if (job.randStats) order = order.map(e => ({ racerId: e.racerId, stats: { speed: 1 + Math.floor(r() * 5), accel: 1 + Math.floor(r() * 5), turn: 1 + Math.floor(r() * 5) } }));
     const kidMode = job.mode === 'kid' || job.mode === 'wobbly';
