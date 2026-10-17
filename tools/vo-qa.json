@@ -310,5 +310,29 @@
   "delivery": "cute squeaky cartoon grunt",
   "score": 9,
   "defects": ""
+ },
+ "vo_taj_yew": {
+  "heard": "Yewww!",
+  "delivery": "high-pitched enthusiastic cheer",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_taj_fast": {
+  "heard": "I'm super fast!",
+  "delivery": "cheerful and energetic cartoony",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_taj_wins": {
+  "heard": "Taj wins!",
+  "delivery": "enthusiastic and celebratory",
+  "score": 10,
+  "defects": ""
+ },
+ "vo_taj_whoa": {
+  "heard": "Whoa!",
+  "delivery": "soft and amazed",
+  "score": 7,
+  "defects": "lacks high energy for racing"
  }
 }

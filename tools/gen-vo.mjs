@@ -58,7 +58,7 @@ export const LINES = {
   // Taj: a smaller kid than Orion — same voice, pitched a bit higher
   vo_taj_yew: { text: '[excited] Yewww!', voice: V.orion, pre: TAJ },
   vo_taj_fast: { text: "[excited] I'm super fast!", voice: V.orion, pre: TAJ },
-  vo_taj_whoa: { text: '[surprised] Whoa-oh!', voice: V.orion, pre: TAJ },
+  vo_taj_whoa: { text: '[surprised] Whoaaa!', voice: V.orion, pre: TAJ },
   vo_kingdad_count: { text: "[mock stern] Don't make me count to three!", voice: V.kingdad },
   vo_kingdad_back: { text: '[groaning] Ooh, my back!', voice: V.kingdad },
   vo_kingdad_remote: { text: '[shouting triumphantly] Everybody... PAUSE!', voice: V.kingdad },

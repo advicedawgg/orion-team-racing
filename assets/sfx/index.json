@@ -277,6 +277,18 @@
   "vo_taco_bomb": [
    "vo_taco_bomb.mp3"
   ],
+  "vo_taj_fast": [
+   "vo_taj_fast.mp3"
+  ],
+  "vo_taj_whoa": [
+   "vo_taj_whoa.mp3"
+  ],
+  "vo_taj_wins": [
+   "vo_taj_wins.mp3"
+  ],
+  "vo_taj_yew": [
+   "vo_taj_yew.mp3"
+  ],
   "vo_ten_stars": [
    "vo_ten_stars.mp3"
   ],
