@@ -42,6 +42,12 @@
   .tb[data-btn=hopB]{right:28vmin;bottom:8vmin}
   .tb[data-btn=item]{right:8vmin;bottom:31vmin;width:14vmin;height:14vmin;font-size:5vmin}
   .tb[data-btn=pause]{right:3vmin;top:16vmin;width:10vmin;height:10vmin;font-size:3.5vmin}
+  /* ---------- studio credit (static link, shown on the title screen only) ---------- */
+  #bytcredit{display:none;position:fixed;right:3vmin;bottom:2.5vmin;z-index:50;pointer-events:auto;
+    font:700 clamp(10px,1.6vmin,13px)/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.12em;
+    color:#9fb4ff;text-decoration:none;opacity:.75;text-shadow:0 2px 0 rgba(0,0,0,.55)}
+  #bytcredit:hover,#bytcredit:focus{opacity:1;color:var(--gold)}
+  body:has(#ui .scr-title) #bytcredit{display:block}
 </style>
 <link rel="stylesheet" href="./ui.css">
 <link rel="icon" href="assets/ui/star.png">
@@ -57,6 +63,7 @@
   <div class="tb" data-btn="hopA">⤴</div><div class="tb" data-btn="hopB">⚡</div><div class="tb" data-btn="item">◆</div>
   <div class="tb" data-btn="pause">❚❚</div>
 </div>
+<a id="bytcredit" href="https://byt.tools/">MADE BY BYT.TOOLS</a>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
 </script>
