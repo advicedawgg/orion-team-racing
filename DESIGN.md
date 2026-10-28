@@ -106,8 +106,11 @@ editing in parallel). Never rewrite or reformat a file you don't own.
   landings all feed it; it raises top speed above base (base ~22 m/s, boost cap ~30 m/s, "super"
   (10 stars) raises base by 4% — was 8%, see **Balance**).
 - **Hang-time turbo**: landing from ≥0.5 s of air gives a small turbo, ≥1.0 s a medium one.
-- **Start boost**: press accelerate as "GO!" appears (window ~0.25 s around it) = turbo;
-  mashing early = stall/spin briefly (CTR style; disabled on Easy).
+- **Start boost**: press accelerate as "GO!" appears = turbo. The window depends on difficulty
+  (`ai.js cfg.startWin`): Easy −0.5..+0.45 s (a kid can react to GO!), Medium −0.35..+0.3, Hard
+  −0.25..+0.1. Mashing early = stall briefly (CTR style; disabled on Easy); holding it since before the
+  countdown is not a mash. Under AUTO-GO the kart rolls by itself and the raw A/RT/↑ press
+  (`ctrl.rev`; touch: the hop button) earns the boost.
 - **Turbo pads** on tracks: instant medium turbo.
 
 **The lean.** Racers lean INTO corners (body roll toward the turn centre, head looks into the
@@ -357,7 +360,7 @@ winner still usually Super (it's the reward), field spread below.
   runs off Star Road. It swerves wider round a kart that's crashed/spinning/much slower (no pile-ups).
 - Hard AI: ~2.0–2.6 turbos per slide (castle's maze ~1.0), 0 reversing, 0 stuck, ~0.1 walls/kart.
 
-**Kid assist** (the player, `kart.assist` = Easy or KID HELPER; `ai.js kidAssist`, applied by race.js
+**Kid assist** (the player, `kart.assist` = KID HELPER, default on; Easy only when nothing says otherwise, e.g. test URLs; `ai.js kidAssist`, applied by race.js
 before physics so the bots get exactly what a kid gets): (1) a nudge back toward the road when the kart
 is predicted to leave it within 0.7 s (≤ 0.5 steer, never fights a kid already steering back harder);
 (2) toward a `fall` edge (1.0 s ahead; on a jump run-up/in the air 1.9 s, i.e. aim the landing) it blends
@@ -587,8 +590,9 @@ instance — keep small props shadowless).
   replays as a translucent kart (cloned transparent materials) + a pale minimap dot; HUD shows "BEST".
 - **Difficulty**: Easy (default) / Medium / Hard, shown as drawn SVG faces (emoji don't render in the
   headless Chrome). Settings: volumes (master/music/sfx), **AUTO-GO** (auto-accelerate: `easy` =
-  on in Easy only (default) / `on` / `off`; touch always auto-accelerates), **KID HELPER**
-  (`kidAssist`, default on → `easyBoost` on every difficulty), **FANCY RACERS** (HD models, shown
+  on in Easy only (default) / `on` / `off`; touch auto-accelerates while no pad is connected, and a pad
+  hides the touch buttons), shown as a kart badge on each difficulty chip it applies to, **KID HELPER**
+  (`kidAssist`, default on → `easyBoost` on every difficulty; OFF is off on Easy too), **FANCY RACERS** (HD models, shown
   only if `hdracers.js` lists any), **GRAPHICS** (`quality`: `auto` (default) / `high` "FANCY" /
   `low` "FAST" → main.js `setQuality`, see **Quality**), CONTROLS help (keys / pad buttons / touch glyphs + turbo how-to).
 - **Kid-first**: no reading needed — title (any key/tap) → Quick Race (focused) → racer (last one
@@ -1035,8 +1039,9 @@ kart}`, `{type:'kart', kart, e, v}` for every kart event incl. `start_boost`),
 `race.addSystem(fn(race, dt))` (**items agent: hook item logic here** — runs every step after
 physics and kart bumping, before laps), `race.results()`. Online: `kart.remote`, `race.netClient`,
 `race.starHit(victim, by)` (see **Online**). `simulate(race, {maxT, playerCtrl, onStep})`
-runs a whole race headless. Countdown = 3.6 s; start boost window −0.25..+0.1 s around GO
-(early mash = stall, not on Easy). After the player finishes the AI drives their kart; the race is
+runs a whole race headless. Countdown = 3.6 s; start boost window `cfg.startWin` around GO (Hard
+−0.25..+0.1 = `START_WINDOW`), edges read `ctrl.rev ?? ctrl.throttle` (early mash after the first
+countdown step = stall, not on Easy). After the player finishes the AI drives their kart; the race is
 called 20 s later (unfinished karts get estimated times).
 
 **`ai.js`** (pure): `DIFFICULTY` table (pace, P(slide), P(turbo), reaction, start boost, rubber

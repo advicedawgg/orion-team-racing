@@ -25,14 +25,15 @@ import { DT, createKart, placeKart, stepKart, collideKarts, addBoost, T } from '
 import { createBrain, drive, DIFFICULTY, kidAssist } from './ai.js';
 
 export const COUNTDOWN = 3.6;          // s from the start of the countdown to GO
-export const START_WINDOW = [-0.25, 0.1]; // press accelerate in here (s relative to GO) for a start boost
+export const START_WINDOW = [-0.25, 0.1]; // press accelerate in here (s relative to GO) for a start boost (Hard; ai.js cfg.startWin per difficulty)
 export const AFTER_PLAYER = 20;        // s the race keeps going after the player finishes before it's called
 export const MP_WAIT = 90;             // 2P: s after the FIRST human finishes before the race is called anyway
 
 /**
  * entrants: [{ racerId, stats }] (grid order: index 0 = pole). playerIndex: which one is the
  * player (-1 = all AI, e.g. the gate). opts: difficulty, laps, seed, easyBoost (kid assist, player),
- * noStall (disable the early-mash stall; always on in easy).
+ * noStall (disable the early-mash stall; always on in easy). Start-boost edges read ctrl.rev when it's set (the raw
+ * accelerate press under AUTO-GO, which pins ctrl.throttle at 1), else ctrl.throttle.
  */
 export function createRace({ track, entrants, playerIndex = -1, players = null, difficulty = 'easy', laps, seed = 1, easyBoost, noStall, assist } = {}) {
   const cfg = DIFFICULTY[difficulty] || DIFFICULTY.easy;
@@ -68,12 +69,15 @@ export function createRace({ track, entrants, playerIndex = -1, players = null, 
   };
   for (const k of karts) { k.lap = 1; k.lapsDone = 0; k.nextCp = 0; k.lapStartT = 0; k._thrEdge = -99; k._thrPrev = 0; }
   race.noStall = noStall ?? easy;
+  race.startWin = cfg.startWin || START_WINDOW;
   return race;
 }
 
 const NOCTRL = { steer: 0, throttle: 0, brake: 0, hopA: false, hopB: false };
 /** a human kart's control this step: one object (1P) or an array indexed by player number (2P) */
 const ctrlOf = (pc, k) => Array.isArray(pc) ? (pc[k.pn] || NOCTRL) : pc;
+/** the start-boost press: the raw accelerate (ctrl.rev, set under AUTO-GO), else the throttle */
+const revOf = c => c.rev ?? c.throttle;
 
 function emit(race, type, k, extra) { race.events.push({ type, kart: k, ...extra }); }
 
@@ -87,9 +91,10 @@ function stepRace(race, playerCtrl = NOCTRL) {
   // ---------------------------------------------------------------- countdown
   if (race.phase === 'countdown') {
     for (const n of [3, 2, 1]) if (prevT < -n && t >= -n) emit(race, 'count', null, { n });
-    // record throttle edges for the start boost
+    // record accelerate edges for the start boost (first countdown step = held since before the lights: not a mash)
+    if (race._cd0 == null) race._cd0 = t;
     for (const k of karts) {
-      const thr = k.isPlayer && !race.autoPlayer ? ctrlOf(playerCtrl, k).throttle : 0;
+      const thr = k.isPlayer && !race.autoPlayer ? revOf(ctrlOf(playerCtrl, k)) : 0;
       if (thr > 0.5 && k._thrPrev <= 0.5) k._thrEdge = t;
       k._thrPrev = thr;
     }
@@ -100,8 +105,8 @@ function stepRace(race, playerCtrl = NOCTRL) {
         k.frozen = false; k.lapStartT = 0;
         if (k.remote) continue;          // online: its owner does its start boost
         if (k.isPlayer && !race.autoPlayer) {
-          if (k._thrPrev > 0.5 && k._thrEdge >= START_WINDOW[0]) startBoost(race, k);
-          else if (k._thrPrev > 0.5 && k._thrEdge > -COUNTDOWN + 0.01 && !race.noStall) { k.stallT = T.STALL_T; emit(race, 'stall', k); }
+          if (k._thrPrev > 0.5 && k._thrEdge >= race.startWin[0]) startBoost(race, k);
+          else if (k._thrPrev > 0.5 && k._thrEdge > race._cd0 && !race.noStall) { k.stallT = T.STALL_T; emit(race, 'stall', k); }
         } else if (brains[k.index].r() < race.cfg.start || (k.isPlayer && race.autoPlayer)) startBoost(race, k);
       }
     } else {
@@ -114,9 +119,9 @@ function stepRace(race, playerCtrl = NOCTRL) {
     }
   }
   // late start boost: a clean press just after GO still counts
-  if (t <= START_WINDOW[1] && !race.autoPlayer) for (const k of race.humans) {
+  if (t <= race.startWin[1] && !race.autoPlayer) for (const k of race.humans) {
     if (k._sb || k.remote) continue;
-    const thr = ctrlOf(playerCtrl, k).throttle;
+    const thr = revOf(ctrlOf(playerCtrl, k));
     if (thr > 0.5 && k._thrPrev <= 0.5 && k.stallT <= 0) startBoost(race, k);
     k._thrPrev = thr;
   }

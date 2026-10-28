@@ -306,7 +306,7 @@ async function launchRace(m) {
       <div class="lget">${m.you >= 0 ? 'GET READY!' : 'WATCH THIS RACE — YOU\'RE IN THE NEXT ONE!'}</div><div class="dots"><i></i><i></i><i></i></div></div>`, { cls: 'bg-dark', music: undefined });
   Object.assign(G, {
     difficulty: m.diff, racerId: m.grid[slot], laps: m.laps, seed: m.seed, solo: false, noItems: false, players: 1,
-    autoAccel: s.autoAccel === 'on' || (s.autoAccel === 'easy' && m.diff === 'easy'), easyBoost: s.kidAssist ? true : undefined,
+    autoAccel: s.autoAccel === 'on' || (s.autoAccel === 'easy' && m.diff === 'easy'), easyBoost: s.kidAssist !== false,
     netGrid: { ids: m.grid.slice(), slot }, net: ctl,
   });
   if (!api.Q.has('hd')) G.hd = !!s.hd;

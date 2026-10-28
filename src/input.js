@@ -2,7 +2,9 @@
 // Call update() once per rendered frame BEFORE reading. Read `controls` for driving and
 // hit(name) for edge-triggered menu/buttons. NEVER binds Ctrl (Ctrl+W closes the tab).
 //
-//   controls = { steer (-1..1, +left), throttle (0..1), brake (0..1), hopA, hopB (held), item (held) }
+//   controls = { steer (-1..1, +left), throttle (0..1), brake (0..1), rev (0..1), hopA, hopB (held), item (held) }
+//   rev = the raw accelerate press. Same as throttle, except under AUTO-GO (throttle pinned at 1), where it's what
+//   the player actually pressed (touch: the hop button). race.js reads it for start-boost edges only.
 //   hit('hopA'|'hopB'|'item'|'pause'|'mute'|'fullscreen'|'confirm'|'back'|'up'|'down'|'left'|'right')
 //
 // Shoulder taps shorter than a frame are latched so a quick press is never lost; main.js also
@@ -38,13 +40,16 @@ const codes = new Set(), codeLatch = new Set();      // keyboard: held KeyboardE
 const pad = new Set(), touch = new Set(), latched = new Set();
 const held = new Set(), prev = new Set();
 let padSteer = 0, padThr = 0, padBrk = 0, touchSteer = 0;
-let anyGesture = null;
+let anyGesture = null, touchShown = true;
 const pads = new Map();                              // Gamepad.index → { names, steer, thr, brk, a, start }
 const joins = [];
 
-/** Settings the game may flip. autoAccel = always accelerate unless braking (default ON in Easy). */
+/** Settings the game may flip. autoAccel = always accelerate unless braking (default ON in Easy). touchUI forces it
+ *  too, but only while no gamepad is connected (a touchscreen Steam Deck plays on its pad). */
 export const settings = { autoAccel: false, touchUI: false };
-export const controls = { steer: 0, throttle: 0, brake: 0, hopA: false, hopB: false, item: false };
+export const controls = { steer: 0, throttle: 0, brake: 0, rev: 0, hopA: false, hopB: false, item: false };
+/** AUTO-GO in effect for 1P right now (the setting, or touch with no pad) */
+export const autoOn = () => settings.autoAccel || (settings.touchUI && !pads.size);
 export const down = n => held.has(n);
 export const hit = n => held.has(n) && !prev.has(n);
 /** Register a callback for the first user gesture (audio unlock). */
@@ -151,7 +156,7 @@ function makePlayer(n) {
   const heldP = new Set(), prevP = new Set(), kb = new Set();
   const P = {
     n, dev: 'auto', device: null, autoAccel: false,
-    controls: { steer: 0, throttle: 0, brake: 0, hopA: false, hopB: false, item: false },
+    controls: { steer: 0, throttle: 0, brake: 0, rev: 0, hopA: false, hopB: false, item: false },
     down: name => heldP.has(name),
     hit: name => heldP.has(name) && !prevP.has(name),
     _update(dev) {
@@ -171,6 +176,7 @@ function makePlayer(n) {
       c.steer = pSteer || kSteer;
       const brake = Math.max(kb.has('down') ? 1 : 0, pBrk);
       let thr = Math.max(kb.has('up') ? 1 : 0, pThr);
+      c.rev = thr;
       if (P.autoAccel) thr = brake > 0.1 ? 0 : 1;
       c.throttle = thr; c.brake = brake;
       c.hopA = heldP.has('hopA'); c.hopB = heldP.has('hopB'); c.item = heldP.has('item');
@@ -213,7 +219,10 @@ export function update() {
   controls.steer = padSteer || kSteer || touchSteer;
   const brake = Math.max(keys.has('down') ? 1 : 0, touch.has('brake') ? 1 : 0, padBrk);
   let thr = Math.max(keys.has('up') ? 1 : 0, padThr);
-  if (settings.autoAccel || settings.touchUI) thr = brake > 0.1 ? 0 : 1;
+  const touchAuto = settings.touchUI && !pads.size;
+  if (settings.touchUI && touchAuto !== touchShown) { touchShown = touchAuto; document.body.classList.toggle('touch', touchAuto); }   // a pad hides the on-screen buttons
+  controls.rev = touchAuto ? Math.max(thr, touch.has('hopA') ? 1 : 0) : thr;
+  if (settings.autoAccel || touchAuto) thr = brake > 0.1 ? 0 : 1;
   controls.throttle = thr;
   controls.brake = brake;
   controls.hopA = down('hopA');

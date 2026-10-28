@@ -330,14 +330,14 @@ function endRace() {
 /* ------------------------------------------------------------------ sim stepping */
 function playerCtrl() {
   const c = G.override || (G.mp ? In.players[0].controls : In.controls);
-  const out = { steer: c.steer || 0, throttle: c.throttle || 0, brake: c.brake || 0, hopA: !!c.hopA || G.pendA, hopB: !!c.hopB || G.pendB,
+  const out = { steer: c.steer || 0, throttle: c.throttle || 0, rev: c.rev ?? c.throttle ?? 0, brake: c.brake || 0, hopA: !!c.hopA || G.pendA, hopB: !!c.hopB || G.pendB,
     item: !!c.item || G.pendI, itemBack: (c.brake || 0) > 0.3 };   // items: held + latched tap; ↓ = throw backward
   return out;
 }
 /** 2P: player 2's control object (same latching as P1's) */
 function player2Ctrl() {
   const c = G.override2 || In.players[1].controls, p = G.pend2;
-  return { steer: c.steer || 0, throttle: c.throttle || 0, brake: c.brake || 0, hopA: !!c.hopA || p.A, hopB: !!c.hopB || p.B,
+  return { steer: c.steer || 0, throttle: c.throttle || 0, rev: c.rev ?? c.throttle ?? 0, brake: c.brake || 0, hopA: !!c.hopA || p.A, hopB: !!c.hopB || p.B,
     item: !!c.item || p.I, itemBack: (c.brake || 0) > 0.3 };
 }
 function stepSim() {

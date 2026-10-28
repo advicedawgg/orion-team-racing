@@ -267,7 +267,13 @@ img.mini{width:1.5em;height:1.5em;border-radius:50%}
   border:.14em solid #3d4d8f;border-bottom-width:.3em;min-width:5.6em;transition:transform .14s cubic-bezier(.2,1.8,.4,1)}
 .diff .face{width:2.6em;height:2.6em}
 .diff.sel{background:linear-gradient(180deg,#ffe46a,#ffc21a);color:#5a3a00;border-color:#fff6c0 #fff6c0 #b37f00}
-.diff.focus{transform:scale(1.1);box-shadow:0 0 0 .12em #ffd23f,0 0 1em rgba(255,210,63,.6)}
+.diff{position:relative}
+.diff.focus{transform:scale(1.1);border-color:#fff;box-shadow:0 0 0 .14em #fff,0 0 1em rgba(255,255,255,.55)}   /* focus = white ring + ▼; picked = yellow fill + tick */
+.diff.focus::before{content:"▼";position:absolute;top:-1.15em;left:50%;transform:translateX(-50%);color:#fff;font-size:.9em;animation:nudgeD .6s ease-in-out infinite alternate}
+.diff.sel::after{content:"";position:absolute;left:-.45em;top:-.45em;width:1.25em;height:1.25em;border-radius:50%;background:#3ccf5a url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5' fill='none' stroke='%23fff' stroke-width='3.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/80% no-repeat;box-shadow:0 0 0 .12em #fff}
+.diff .autogo{position:absolute;right:-.55em;top:-.55em;width:1.7em;height:1.7em;border-radius:50%;background:#1a2350;box-shadow:0 0 0 .12em #4ec5f1;display:grid;place-items:center}
+.diff .autogo svg{width:82%;height:82%}
+@keyframes nudgeD{to{transform:translate(-50%,.25em)}}
 .diff:not(.sel) .face{opacity:.75}
 
 /* ---------- character select */

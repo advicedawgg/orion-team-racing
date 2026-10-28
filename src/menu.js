@@ -50,6 +50,7 @@ const FACE = {
   hard: `<svg viewBox="0 0 64 64" class="face"><path d="M20 16q-2-10 6-14 0 7 6 8 1-7 8-9-2 8 4 12 3-5 6-4-2 6 0 10z" fill="#ffb02e" stroke="#b33a00" stroke-width="2.5"/><circle cx="32" cy="36" r="24" fill="#ff5d4a" stroke="#6a1200" stroke-width="4"/><path d="M17 26l11 5M47 26l-11 5" stroke="#3a0800" stroke-width="4.5" stroke-linecap="round"/><circle cx="24" cy="35" r="3.6" fill="#3a0800"/><circle cx="40" cy="35" r="3.6" fill="#3a0800"/><path d="M20 44q12 10 24 0z" fill="#fff" stroke="#3a0800" stroke-width="3.5" stroke-linejoin="round"/></svg>`,
 };
 const ICON = {
+  autogo: `<svg viewBox="0 0 64 64"><path d="M4 26h14M8 34h12M4 42h14" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/><path d="M22 40l4-13q1-4 5-4h14q4 0 6 4l6 9v6q0 3-3 3H25q-4 0-3-5z" fill="#4ec5f1" stroke="#15506a" stroke-width="3.5"/><circle cx="31" cy="46" r="6" fill="#1b1b2a" stroke="#fff" stroke-width="2.5"/><circle cx="51" cy="46" r="6" fill="#1b1b2a" stroke="#fff" stroke-width="2.5"/></svg>`,
   flag: `<svg viewBox="0 0 64 64"><path d="M14 58V6" stroke="#fff6e0" stroke-width="5" stroke-linecap="round"/><path d="M16 8h38v28H16z" fill="#fff"/><path d="M16 8h9.5v7H16zM35 8h9.5v7H35zM25.5 15H35v7h-9.5zM44.5 15H54v7h-9.5zM16 22h9.5v7H16zM35 22h9.5v7H35zM25.5 29H35v7h-9.5zM44.5 29H54v7h-9.5z" fill="#1b1b2a"/></svg>`,
   cup: `<svg viewBox="0 0 64 64"><path d="M18 6h28v14a14 14 0 0 1-28 0z" fill="#ffd23f" stroke="#8a5a00" stroke-width="3"/><path d="M18 11H8q0 13 12 14M46 11h10q0 13-12 14" fill="none" stroke="#ffd23f" stroke-width="4.5"/><path d="M28 33h8v10h-8z" fill="#e2a91e"/><path d="M18 45h28l3 11H15z" fill="#ffd23f" stroke="#8a5a00" stroke-width="3"/><path d="M32 11l2.4 5 5.4.6-4 3.7 1.1 5.3L32 23l-4.9 2.6 1.1-5.3-4-3.7 5.4-.6z" fill="#fff6c0"/></svg>`,
   clock: `<svg viewBox="0 0 64 64"><circle cx="32" cy="36" r="23" fill="#fff" stroke="#4ec5f1" stroke-width="6"/><path d="M26 6h12M32 6v7M50 15l4-4" stroke="#fff6e0" stroke-width="5" stroke-linecap="round"/><path d="M32 36V21M32 36l9 6" stroke="#1b1b2a" stroke-width="5" stroke-linecap="round"/></svg>`,
@@ -308,8 +309,13 @@ function move(dir) {
     if (sc < bs) { bs = sc; best = e; }
   }
   if (!best && cur.wrap) {   // wrap vertically in lists
-    const sorted = els.slice().sort((p, q) => p.getBoundingClientRect().top - q.getBoundingClientRect().top);
-    if (dir === 'down') best = sorted[0]; else if (dir === 'up') best = sorted[sorted.length - 1];
+    if (dir === 'down' || dir === 'up') {   // the top (or bottom) row, then the one whose left edge lines up best (Up from QUICK RACE = EASY)
+      const cy = e => { const b = e.getBoundingClientRect(); return b.top + b.height / 2; };
+      const edge = dir === 'down' ? Math.min(...els.map(cy)) : Math.max(...els.map(cy));
+      const row = els.filter(e => Math.abs(cy(e) - edge) < 12);
+      const dl = e => Math.abs(e.getBoundingClientRect().left - a.left);
+      best = row.reduce((p, q) => dl(q) < dl(p) ? q : p);
+    }
   }
   if (best) setFocus(best);
 }
@@ -383,12 +389,16 @@ function trackCard(t, { locked = false, small = false, extraHtml = '' } = {}) {
     ${extraHtml}
   </div>`;
 }
+/** AUTO-GO in effect for difficulty d (the setting, or a touch screen with no pad, input.js) — the chip's badge */
+function autoGoFor(s, d) {
+  return s.autoAccel === 'on' || (s.autoAccel === 'easy' && d === 'easy') || !!(api.In?.settings?.touchUI && !api.In?.padIndices?.().length);
+}
 function applyRaceSettings() {
   const s = S.settings(), G = api.G;
   G.difficulty = M.diff;
   G.racerId = M.racer;
   G.autoAccel = s.autoAccel === 'on' || (s.autoAccel === 'easy' && M.diff === 'easy');
-  G.easyBoost = s.kidAssist ? true : undefined;
+  G.easyBoost = s.kidAssist !== false;   // OFF means off on Easy too (2P already passes explicit booleans)
   if (!api.Q.has('hd')) G.hd = !!s.hd;
   G.solo = M.mode === 'tt';
   G.sitOut = M.mode === 'cup' ? M.cup?.sitOut : undefined;   // the cup keeps the same 8 racers all cup
@@ -463,6 +473,8 @@ function showMenu(focusKey) {
   M.diff = s.difficulty || 'easy';
   const wins = S.get().cupWins;
   const trophies = DIFFS.filter(d => wins[d] > 0).map(d => `<span class="troph ${d}" title="${d}">${ICON.cup}${wins[d] > 1 ? `<b>${wins[d]}</b>` : ''}</span>`).join('');
+  const mem = M.focusMem.menu;
+  if (!focusKey && mem?.startsWith('d-')) focusKey = 'quick';   // A after the title = QUICK RACE, not re-picking a difficulty
   const el = mount('menu', `
     <div class="mlogo"><img src="assets/ui/logo.png" alt="" onerror="this.remove()"><h1 class="txtlogo sm"><span class="o">ORION</span><span class="r">TEAM RACING</span></h1></div>
     <div class="mcol">
@@ -474,7 +486,7 @@ function showMenu(focusKey) {
       <button class="mbtn" data-nav data-act="settings" data-key="settings"><i>${ICON.gear}</i><span>SETTINGS</span></button>
     </div>
     <div class="diffs">
-      ${DIFFS.map(d => `<button class="diff ${d}${d === M.diff ? ' sel' : ''}" data-nav data-act="diff" data-v="${d}" data-key="d-${d}">${FACE[d]}<span>${DIFF_LABEL[d]}</span></button>`).join('')}
+      ${DIFFS.map(d => `<button class="diff ${d}${d === M.diff ? ' sel' : ''}" data-nav data-act="diff" data-v="${d}" data-key="d-${d}">${FACE[d]}<span>${DIFF_LABEL[d]}</span>${autoGoFor(s, d) ? `<b class="autogo">${ICON.autogo}</b>` : ''}</button>`).join('')}
     </div>`, {
     cls: 'bg-art', music: 'title', focus: focusKey ? `[data-key="${focusKey}"]` : null, wrap: true,
     acts: {
