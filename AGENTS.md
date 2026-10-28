@@ -77,5 +77,6 @@ A visual change isn't done until you've looked at the PNG (`shots/qa/<track>-she
   is `../`.
 - **Game server:** container `otr-server` on Unraid, tunnel → https://orion3-net.advicedawg.com
   (`PROD_SERVER`), WebRTC on udp/8956.
-  `rsync -a --delete --exclude node_modules server src unraid:/mnt/user/appdata/otr/src/ && ssh unraid bash /boot/config/scripts/otr-run.sh`,
+  `rsync -a --delete --exclude node_modules server src unraid:/mnt/cache/appdata/otr/src/ && ssh unraid bash /boot/config/scripts/otr-run.sh`
+  (the cache path: rsync refuses `/mnt/user/appdata`, a symlink since the share consolidation),
   then `curl -s https://orion3-net.advicedawg.com/health`.
