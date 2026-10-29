@@ -85,6 +85,10 @@ export default function build(ctx) {
 
   // ------------------------------------------------ the Cherry Scoop jump: two giant cherry-topped scoops flank the lip
   const jump = track.jumps[0];
+  // candy-striped lips across the road (decals just before a launch): the Cherry Scoop's + the Wafer Leap's, one mesh
+  const stripe = K.canvasTex(128, 32, (g, w, h) => { for (let i = -2; i < 12; i++) { g.fillStyle = i % 2 ? '#ffffff' : '#e8374a'; g.beginPath(); g.moveTo(i * 16, 0); g.lineTo(i * 16 + 16, 0); g.lineTo(i * 16 + 32, h); g.lineTo(i * 16 + 16, h); g.fill(); } }, { repeat: [1, 1] });
+  stripe.wrapS = THREE.RepeatWrapping;
+  const lipGeos = [];
   if (jump) {
     for (const side of [1, -1]) {
       const b = K.beside(jump.s - 4, side, 7.5);
@@ -95,12 +99,88 @@ export default function build(ctx) {
       cherries.push({ x: b.x, y: y + 0.3 * s + s * 0.98, z: b.z, ry: rng() * 6, s: s * 1.3 });
       K.spots.push({ x: b.x, z: b.z, r: s + 1 });
     }
-    // candy-striped lip across the road (a decal just before the launch)
-    const stripe = K.canvasTex(128, 32, (g, w, h) => { for (let i = -2; i < 12; i++) { g.fillStyle = i % 2 ? '#ffffff' : '#e8374a'; g.beginPath(); g.moveTo(i * 16, 0); g.lineTo(i * 16 + 16, 0); g.lineTo(i * 16 + 32, h); g.lineTo(i * 16 + 16, h); g.fill(); } }, { repeat: [1, 1] });
-    stripe.wrapS = THREE.RepeatWrapping;
-    const lip = K.lofted(jump.s - 3.2, jump.s - 0.2, 0.5, (s, f) => [-1, 1].map(sd => { const p = track.pointAt(s, sd * f.hw); return { x: p.x, y: p.y + 0.05, z: p.z, u: sd > 0 ? 0 : f.hw * 2 / 4 }; }), { vScale: 3 });
-    mesh(lip, new THREE.MeshBasicMaterial({ map: stripe, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6, side: THREE.DoubleSide }), { name: 'jump-lip' });
+    lipGeos.push(K.lofted(jump.s - 3.2, jump.s - 0.2, 0.5, (s, f) => [-1, 1].map(sd => { const p = track.pointAt(s, sd * f.hw); return { x: p.x, y: p.y + 0.05, z: p.z, u: sd > 0 ? 0 : f.hw * 2 / 4 }; }), { vScale: 3 }));
   }
+
+  // ------------------------------------------------ the Wafer Leap (hidden shortcut, tracks/ice.js `branches`): a branch gap's
+  // ramp is a giant pink-and-cream wafer biscuit (layered sides + front face, wafer rails from the track data, a
+  // candy-striped lip) with a matching wafer landing, half-hidden behind a cluster of giant cherry-topped scoops.
+  // Merged into one mesh (+ the shared lip decal); the scoops and cherries join the instanced props below.
+  {
+    const parts = [], wy = (track.water?.y ?? 0) - 1.2;
+    // wafer biscuit: pink cream layers between golden wafer sheets with a row of baked dimples (0.55 m a layer, world-mapped)
+    const waferTex = K.canvasTex(64, 64, (g, w, h) => {
+      for (let i = 0; i < 4; i++) {
+        g.fillStyle = i % 2 ? '#f7b0c6' : '#f2c27a'; g.fillRect(0, i * h / 4, w, h / 4);
+        g.fillStyle = 'rgba(120,70,40,.28)'; g.fillRect(0, i * h / 4, w, 2);
+        if (!(i % 2)) { g.fillStyle = 'rgba(170,105,50,.45)'; for (let x = 4; x < w; x += 16) g.fillRect(x, i * h / 4 + 6, 6, 4); }
+      }
+    }, { repeat: [1, 1] });
+    waferTex.wrapS = waferTex.wrapT = THREE.RepeatWrapping;
+    // a strip along a branch: rows of points across it from edge(u, k) (the propkit's `lofted`, on a branch route)
+    const loftBr = (br, u0, u1, step, edge) => {
+      const pos = [], uv = [], idx = []; let cols = -1, row = 0;
+      for (let u = u0; u <= u1 + 1e-6; u += step) {
+        const pts = edge(Math.min(u, u1), br.idx(Math.min(u, u1)));
+        if (cols < 0) cols = pts.length;
+        pts.forEach((p, i) => { pos.push(p.x, p.y, p.z); uv.push(p.u ?? i / (cols - 1), p.v ?? (u - u0) / 3); });
+        if (row++ > 0) for (let i = 0; i < cols - 1; i++) { const a = (row - 2) * cols + i, b = a + 1, c = a + cols, d = c + 1; idx.push(a, b, c, b, d, c); }
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      g.setIndex(idx); g.computeVertexNormals(); return g;
+    };
+    for (const br of ctx.branches || []) for (const gp of br.gaps) {
+      const j = br.jumps.find(j => gp.s0 - j.s >= -1 && gp.s0 - j.s <= 6);
+      if (!j) continue;
+      const pad = br.pads.find(p => j.s - (p.s + p.len) >= -1 && j.s - (p.s + p.len) <= 25);
+      const uLip = gp.s0 - br.ds * 0.5, uLand = gp.s0 + gp.len + br.ds * 0.5;
+      const out = k => br.HW[k] + Math.max(br.OFFL[k], br.OFFR[k]) + 0.5;
+      // the biscuit's sides: from the shoulder's outer edge down into the snow, along the ramp (and the landing's first metres)
+      for (const [u0, u1] of [[(pad ? pad.s : j.s - 14) - 4, uLip], [uLand, uLand + 7]]) for (const sd of [1, -1]) {
+        parts.push(loftBr(br, u0, u1, 1, (u, k) => {
+          const p = br.pointAt(u, sd * out(k)), lo = Math.min(groundAt(p.x, p.z), p.y) - 0.8, a = (u - u0) / 2;
+          return [{ x: p.x, y: p.y + 0.12, z: p.z, u: a, v: (p.y + 0.12) / 2.2 }, { x: p.x, y: lo, z: p.z, u: a, v: lo / 2.2 }];
+        }));
+      }
+      // the front faces (5 cm in front of the engine's plain gap faces): the lip's, down into the chocolate, and the landing's
+      for (const [u, dir] of [[uLip + 0.05, 1], [uLand - 0.05, -1]]) {
+        const w = out(br.idx(u)) + 0.1;
+        const pos = [], uv = [], idx = [];
+        for (let i = 0; i <= 8; i++) {
+          const l = -w + 2 * w * i / 8, p = br.pointAt(u, l), top = p.y - 0.04;
+          pos.push(p.x, top, p.z, p.x, wy, p.z); uv.push(l / 2.5, top / 2.2, l / 2.5, wy / 2.2);
+          if (i) { const a = (i - 1) * 2; if (dir > 0) idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); else idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+        g.setIndex(idx); g.computeVertexNormals(); parts.push(g);
+      }
+      // candy-striped lip on the road, after the pad
+      lipGeos.push(loftBr(br, j.s - 2.6, j.s - 0.2, 0.5, (u, k) => [-1, 1].map(sd => { const p = br.pointAt(u, sd * br.HW[k]); return { x: p.x, y: p.y + 0.05, z: p.z, u: sd > 0 ? 0 : br.HW[k] * 2 / 4 }; })));
+      // giant scoops either side of the ramp (bigger on the side facing the main road) and two by the landing
+      const scoopAt = (u, sd, s, color, stack) => {
+        const k = br.idx(u), p = br.pointAt(u, sd * (out(k) + s * 0.95 + 0.6));
+        const c = K.claim(p.x, p.z, s * 0.95, { margin: 0.4 });
+        if (!c) return;
+        let y = Infinity; for (let a = 0; a < 6.28; a += 0.8) y = Math.min(y, groundAt(c.x + Math.cos(a) * s * 0.8, c.z + Math.sin(a) * s * 0.8));
+        y -= 0.25 * s;
+        scoops.push({ x: c.x, y: y + 0.3 * s, z: c.z, ry: rng() * 6, s, color });
+        let top = y + 0.3 * s + s * 0.98;
+        if (stack) { scoops.push({ x: c.x, y: top - 0.1 * s, z: c.z, ry: rng() * 6, s: s * 0.72, color: stack }); top += s * 0.62; }
+        cherries.push({ x: c.x, y: top, z: c.z, ry: rng() * 6, s: s * 1.15 });
+      };
+      const u0 = pad ? pad.s : j.s - 12;
+      scoopAt(u0 - 3, -1, 4.2, 0xbff5dc, 0xffb3cc);   // mint + strawberry
+      scoopAt(u0 + 5, -1, 3.6, 0xfff1c9, null);       // vanilla
+      scoopAt(j.s - 1, -1, 3.0, 0xffb3cc, null);      // strawberry, right at the lip
+      scoopAt(u0 + 1, 1, 3.2, 0x9a6242, 0xfff1c9);    // choc + vanilla
+      scoopAt(uLand + 4, -1, 2.6, 0xd9b8ff, null);    // blueberry
+      scoopAt(uLand + 4, 1, 2.6, 0xffd08a, null);     // caramel
+    }
+    if (parts.length) mesh(merge(parts), new THREE.MeshLambertMaterial({ map: waferTex, side: THREE.DoubleSide }), { name: 'wafer-leap' });
+  }
+  if (lipGeos.length) mesh(merge(lipGeos), new THREE.MeshBasicMaterial({ map: stripe, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6, side: THREE.DoubleSide }), { name: 'jump-lip' });
 
   // ------------------------------------------------ Strawberry Peak: a giant cherry on top, sprinkles on its slopes
   const hills = def.terrain?.hills || [];

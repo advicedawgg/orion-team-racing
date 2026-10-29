@@ -78,4 +78,36 @@ export default {
     { at: 20.4, lat: -5, n: 6, curve: -1.5 },
   ],
   checkpointCount: 8,
+  // Hidden shortcut: the WAFER LEAP across the inside of Cherry Bend. Coming out of the S-bends, a gap in
+  // the inside (right) candy-cane fence and a star trail lead to a wafer ramp half-hidden behind giant
+  // ice-cream scoops; its turbo pad flings you over the chocolate river (needsBoost: too slow and you
+  // splash in, and the rescue puts you back on the main road before the fence gap), and a right-hand
+  // sweep lands you on the start straight. Junction points sit on the main road's banked surface
+  // (fit() in tools/fixtures/branches.js; points 2 and 8 hand-tuned so the surfaces meet within 0.17 m).
+  branches: [{
+    id: 'wafer', name: 'Wafer Leap',
+    from: 18.75, to: 23.85, side: 'R',
+    width: 12,
+    defaults: { offL: 3, offR: 3, wallL: 'candy', wallR: 'candy' },
+    points: [
+      { x: -85.58, z: -129.88, y: 1.939, bank: 1.6 },      // 0  leaves the S-bends' last straight on the right lane
+      { x: -82.6, z: -139.99, y: 1.492, bank: -0.03 },     // 1  through the gap in the inside fence
+      { x: -77.5, z: -152.5, y: 0.913, bank: -1.8 },       // 2  a r≈20 m turn towards the river…
+      { x: -70, z: -161.5, y: 0.8 },                       // 3  …along the star trail
+      { x: -60, z: -166, y: 1.6, wallL: 'wafer', wallR: 'wafer' },   // 4  the turbo pad, up the wafer ramp
+      { x: -51, z: -166.3, y: 3 },                         // 5  the lip: over the chocolate river
+      { x: -30, z: -166.3, y: 1.3, wallL: 'candy', wallR: 'candy' }, // 6  landing on the far bank
+      { x: -20, z: -163.5, y: 0.48, bank: -3.81 },         // 7  a r≈20 m sweep onto the start straight
+      { x: -12.5, z: -157, y: 0.18, bank: -2.86 },         // 8
+      { x: -8.3, z: -148, y: 0.183, bank: -1.72 },         // 9
+      { x: -5.82, z: -134.82, y: 0.074, bank: -0.42 },     // 10 rejoins on the right lane
+    ],
+    pads: [{ at: 4.0, lat: 0, len: 8, w: 10 }],            // 10 of the 12 m: only the very edge misses it
+    jumps: [{ at: 4.98, vy: 9 }],
+    gaps: [{ from: 5.03, to: 5.95 }],                      // ~20 m: needs >= 24 m/s, the pad gives more
+    needsBoost: true,
+    stars: [{ at: 2.3, lat: 0, n: 5, spacing: 3.5, curve: 1 }],
+    ai: { easy: 0, medium: 0.25, hard: 0.5 },
+    hidden: true,
+  }],
 };

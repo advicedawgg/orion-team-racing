@@ -410,7 +410,20 @@ Super Orion worlds:
    climb up Strawberry Peak (pad) → Sprinkle Hairpin (r≈19, 180°) → summit ridge → pad-fed jump
    off the Cherry Scoop (vy 10 into a downhill: ~1 s air = hang-time turbo) → downhill swoop and
    S-bends beside the chocolate river → Cherry Bend (180°) over the humped Wafer Bridge (`raised`).
-   Offroad snow; candy-cane/waffle/wafer walls. AI laps 43–62 s.
+   Offroad snow; candy-cane/waffle/wafer walls. AI laps 43–62 s. Hidden shortcut, the WAFER LEAP (`branches`
+   id `wafer`, 2026-10-29): coming out of the S-bends, a gap in the inside (right) fence (`from` 18.75, side R)
+   and a star trail lead to a pink-and-cream wafer-biscuit ramp behind a cluster of giant cherry-topped scoops
+   inside Cherry Bend; its turbo pad (10 of the 12 m) flings you over the chocolate river (a `needsBoost` 19.7 m
+   gap, vy 9 off a 3 m lip: needs ≥ 24 m/s, so no pad = splash, and the rescue drops you on the main road 6 m
+   before the fence gap in 1.2 s) onto a wafer landing, and a r≈20 m right puts you on the start straight's
+   right lane (`to` 23.85). 121.1 m vs 190.9 m of main road, 12 m wide, tightest r=17.8 m (before the pad).
+   Measured: solo lap saving hard 2.79 s (44.5 vs 47.3 s), medium 3.46 s (47.8 vs 51.3 s); natural take rate
+   over 6 seeds × 8 AI × 3 laps (items on): easy 0 %, medium 17 %, hard 49 %, max stuck 0.2 s; forced through
+   it, hard AI splash 2/144 laps without items (they cut the r≈18 m turn and run the pad's inside edge) and
+   ~6/144 with items (mostly item hits in mid-air). Scenery: wafer sides + front faces (1 textured mesh, no
+   shadow), its candy-striped lip shares the Cherry Scoop's lip mesh, 6 scoops (2 stacked) + cherries join the
+   instanced props, ramp rails use the `wafer` wall; `playtest.mjs ice --perf`: grid 153 → 153 calls, mid
+   p50/max 58/81 → 61/76 (60/74 forced through it), render CPU p50 1.7 → 1.7 ms, GPU p50 0.71 → 0.73 ms.
 3. **Taco Volcano** — lava rivers, rock bridges, ramps, a tunnel through the volcano.
    *As built:* 1152 m, road 15–18 m, anticlockwise. Salsa Sweeper → Lava Leap 1 (12 m gap, pad) →
    climb to the Chilli Hairpin mesa (y 10) → down past the volcano (pad) → the ~150 m Taco Tunnel
