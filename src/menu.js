@@ -38,7 +38,7 @@ const DIFFS = ['easy', 'medium', 'hard'];
 const DIFF_LABEL = { easy: 'EASY', medium: 'MEDIUM', hard: 'HARD' };
 const isSecret = t => !!t.secret || t.id === 'star';
 const trackDef = id => TRACKS.find(t => t.id === id);
-const THEME_COL = { beach: ['#36c2f0', '#ffd98a'], ice: ['#bfe9ff', '#ff9ed8'], volcano: ['#ff6a2a', '#5a1a10'], castle: ['#9b7bd8', '#3a2f6a'], star: ['#2a1a6a', '#ff6fff'], jungle: ['#5cc850', '#1f5a2a'] };
+const THEME_COL = { beach: ['#36c2f0', '#ffd98a'], ice: ['#bfe9ff', '#ff9ed8'], volcano: ['#ff6a2a', '#5a1a10'], castle: ['#9b7bd8', '#3a2f6a'], star: ['#2a1a6a', '#ff6fff'], jungle: ['#5cc850', '#1f5a2a'], bedroom: ['#ff9a3a', '#2a2f6a'] };
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const cheers = ["You're awesome!", 'Great racing!', 'What a driver!', 'Super zooming!', 'Brilliant driving!', 'You did it!'];
 const pick = a => a[(Math.random() * a.length) | 0];

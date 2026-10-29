@@ -52,7 +52,7 @@ export const VO_NAMES = [
   'vo_grumblin_grr', 'vo_prickle_huff', 'vo_jelly_wobble', 'vo_zapdrone_zap',
 ];
 
-export const MUSIC_NAMES = ['title', 'beach', 'ice', 'volcano', 'castle', 'star', 'jungle', 'results'];
+export const MUSIC_NAMES = ['title', 'beach', 'ice', 'volcano', 'castle', 'star', 'jungle', 'bedroom', 'results'];
 
 // kind → per-racer bark list. Sootie barks are cat SFX.
 export const BARKS = {

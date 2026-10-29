@@ -530,6 +530,38 @@ Super Orion worlds:
    429 ktris mid (the others 130–307: the instanced jungle trees + their shadow pass), render CPU p50 2.9 ms at the grid /
    2.0 ms mid, GPU p50 0.84 / 0.90 ms; 2P grid 277, mid 115/167, GPU 1.38 ms. Not in the Orion Cup (Quick Race, Time
    Trial, 2P and the online rotation).
+7. **Toy Box Turbo** — racing tiny across a giant kid's bedroom at night-light time: an orange toy-car track, a book ramp, the desk, the bed, a slide.
+   *As built (2026-10-29):* 1185 m, road 14–16 m, clockwise (mostly RIGHT turns), `theme: 'bedroom'`. The room is scenery
+   (mx −180..180, z −150..160, ceiling 110 m: wallpaper, a dark-blue ceiling of glow-in-the-dark stars, the window with the
+   real sky dome through it, curtains, posters, a moon night-light, door, bookshelf, toy box, teddy). The main road is laid
+   like a toy track by a turtle in the data file (`lay()`: straights + arcs, a point every ≤ 14 m / ≤ 22.5° — three points per
+   90° had turned the r 28 corners into r 16). Start straight north along the west wall → Block Corner (right) → the BOOK
+   RAMP (67 m, 0.3 → 13 m, smoothstep, max 31 %, `raised`, pad at its foot, stacked books underneath, `books` fence) → along
+   the DESK (giant crayons, studded bricks, a brick tower, the warm desk lamp with a light pool, a pencil cup, a drawing;
+   `pencils` fence, offroad `dirt` wearing `wood`) → pad → the DESK JUMP onto the bed (10.5 m gap, 13 → 10.9 m, vy 10: clears
+   from 10 m/s, 0.8 s air at 22) → over the quilt (offroad `quilt`, walls `none`, the quilt puffs only away from the road)
+   past the pillow where SOOTIE sleeps curled up (charcoal, closed ‿ eyes, pink nose, tail round her, breathing) → Pillow
+   Turn (right) → the SLIDE down beside the bed (52 m, 10.9 → 0.3, yellow chute + its tower and ladder, `slide` rails) →
+   the floor beside the bed (the dangling quilt is the right-hand boundary) → the Foot-of-the-Bed Sweeper (180° right,
+   r 61, round the bed's ROUND foot: a square foot's corners stuck into this road) → up the bed's other side → Desk Corner
+   (left) → along the front of the desk → onto the PLAY RUG (a canvas town map) for the Rug Wiggles → Toy Box Turn → home.
+   Offroad `carpet` (new surface 0.66; `quilt` 0.62), walls `blocks` (wooden toy blocks). The water plane is an invisible
+   helper floor at −1.6 (falling into the desk jump's gap = the helper carries you across); the scenery hides it, the gap
+   faces, and flattens the terrain's pit under the gap. AI laps (gate, seed 1): easy 54–59 s, medium 49–55 s, hard 47–54 s.
+   Hidden shortcut, UNDER THE BED (`branches` id `underbed`, 2026-10-29): just off the slide, a 5-star trail leads to a gap in
+   the dangling quilt on the right (`from` main `at` ≈ 37.2, side R); an S takes you in under the bed, a r 43 U-turn
+   (concentric with the r 61 sweeper outside, so the junction projection stays continuous — a straight run across under the
+   bed lost the main road's local minimum and failed the gate) runs through the dusky space under the slats past the lost
+   toys, dust bunnies and the glow-in-the-dark LOST SOCKS pile lit by a toy torch, and an S out through the quilt on the
+   other side rejoins the right lane going north (`to` ≈ 53.2). 234.7 m vs 285.1 m of main road (s 468 → 753), 11 m wide,
+   tightest r 21.2, `tunnel` (slats 8.7 m over the road), walls `none`, no gaps, no pads; junctions on main's flat road
+   (Δy ≤ 0.12 m). Measured: solo lap saving hard 2.51 s (47.5 vs 50.0 s), medium 2.45 s (50.9 vs 53.4 s); drive-through
+   2.2 s / 57 m ahead; natural take rate over 6 seeds × 8 AI × 3 laps (items on): easy 0 %, medium 32 %, hard 45 %,
+   everyone finishes, max stuck 0.6 s, 1 rescue each on easy and hard, 0 on medium. Scenery
+   (`scenery/bedroom.js`): 20 draws / 74k tris, nothing adds a light (glow = MeshBasic). `playtest.mjs bedroom --perf`:
+   grid 154 calls, mid p50/max 61/113, 153 ktris mid, render CPU p50 2.3 ms at the grid / 1.7 ms mid, GPU p50 0.65 / 0.70
+   ms; 2P grid 281, mid 105/156, GPU 1.07 ms. Not in the Orion Cup (Quick Race, Time Trial, 2P and the online rotation).
+   The tracks screen goes 4 across for 7–8 tracks (`.tgrid.n7`), else the 7th card fell off the bottom at 1280×800.
 
 A **lap** = crossing the start line after passing all checkpoints in order (the track defines
 them as `s` values). 3 laps. Race positions from `(lap, s)`. Offroad (grass/sand/snow) slows
@@ -729,7 +761,7 @@ branches: [{
   `foundShortcut`; 2P: both HUDs redraw). Scenery hook ctx gets `branches` (= `track.branches`) and
   `isClear`/`claim`/terrain flattening see every branch corridor; a branch gap is a pool the width of
   its corridor (beach water).
-- **Online**: `PROTOCOL_VERSION` 3 (4 since Jungle Jumble joined `ROTATION`) — the kart's route rides in flag bits 8–12 of the kart block, and
+- **Online**: `PROTOCOL_VERSION` 3 (4 since Jungle Jumble joined `ROTATION`, 5 since Toy Box Turbo did) — the kart's route rides in flag bits 8–12 of the kart block, and
   the STATE packet's `si` is the combined index (the server checks it against `track.nAll`); clients
   rebuild `rs`/`si` of remote karts from `s` + route (`uOfMainS`). Unbranched tracks: identical bytes
   apart from the version byte.
@@ -791,7 +823,7 @@ floats). Two helper kits (not themes): `scenery/kit.js` (castle, star) and `scen
 `scatter` placement that never blocks the road, `lofted` strips along the track, `chevrons()` —
 kid-readable arrow boards on the outside of every corner tighter than r≈40 m — `farGround`,
 `fitWater`, `terrainTint`). Budgets as built (scenery only): beach 19 draws / 52k tris, ice 15 /
-164k, volcano 23 / 98k, castle 27 / 164k, star 18 / 88k, jungle 24 / 235k (castle/star replace the sky material
+164k, volcano 23 / 98k, castle 27 / 164k, star 18 / 88k, jungle 24 / 235k, bedroom 20 / 74k (castle/star replace the sky material
 themselves when `sky_castle` / `sky_star` load — the star sky keeps its painted lower half); ≤ 8 of them cast shadows (an InstancedMesh's shadow pass draws every
 instance — keep small props shadowless).
 
@@ -799,7 +831,7 @@ instance — keep small props shadowless).
 
 - **Quick Race** — pick racer, then track; 8 racers, 3 laps. Difficulty chips live on the main menu.
 - **Orion Cup** — `CUP_ORDER = beach → ice → volcano → castle` (whichever are registered, in that
-  order; missing ones are skipped; Jungle Jumble isn't in it). Points `POINTS = 10/8/6/5/4/3/2/1`; standings screen after every
+  order; missing ones are skipped; Jungle Jumble and Toy Box Turbo aren't in it). Points `POINTS = 10/8/6/5/4/3/2/1`; standings screen after every
   race (rows slide into the new order, points count up); **podium** at the end (3D: top 3 on the
   blocks cheering, trophy, confetti; 4th–8th at the sides, 6th–8th mildly `sad` — never the player).
   Winning (any difficulty) records `cupWins[diff]` and unlocks **Star Road** with a "STAR ROAD
@@ -985,7 +1017,7 @@ minimap and results) and a gold **YOU** for yourself.
 3. → **starting.** START is sent `LOAD_S` (4 s) before the 3.6 s countdown, so every client has
    time to load and warm up. The countdown runs on the synced clock.
 4. → **racing** → **results.** Results stay up for 10 s, and the race keeps running behind them.
-5. → the next track in `ROTATION` (beach → ice → volcano → castle → jungle → **star**; Star Road is in, since
+5. → the next track in `ROTATION` (beach → ice → volcano → castle → jungle → bedroom → **star**; Star Road is in, since
    online racing is its own reward).
 
 Humans who join mid-race pick a racer and then **spectate**. The camera starts on the leader and
@@ -1074,7 +1106,7 @@ every other menu):
   connection…" and reconnects by itself. A protocol mismatch shows "please refresh the page!" with
   REFRESH.
 
-**Wire** (`src/protocol.js`, `PROTOCOL_VERSION` 4, checked at HELLO; 3 = branches' kart route, see **Branches**; 4 = `jungle` in `ROTATION`, which an older client can't build):
+**Wire** (`src/protocol.js`, `PROTOCOL_VERSION` 5, checked at HELLO; 3 = branches' kart route, see **Branches**; 4 = `jungle` in `ROTATION`, which an older client can't build; 5 = `bedroom` likewise):
 - JSON messages `{t, …}` go over geckos `emit('m')`, where reliable = resent 4× every 50 ms, or over
   WebSocket text.
 - The two hot paths are binary frames: SNAPSHOT at 20 Hz, unreliable, ~490 B for 8 karts plus items;
@@ -1396,7 +1428,8 @@ vo_jelly_wobble vo_zapdrone_zap` (vocal SFX).
 60 s glockenspiel + sleigh bells (frost) · `volcano` 81 s marimba + mariachi brass (dunes) · `castle`
 87 s silly medieval march (castle) · `star` 60 s synth arpeggios (cosmic) · `results` 40 s happy
 podium groove (skyway). Two audio models scored all seven 8-10/10, no vocals. `jungle` 40 s marimba + kalimba +
-bongos (jungle), 2026-10-29, 1250 credits, not model-scored.
+bongos (jungle), 2026-10-29, 1250 credits, not model-scored. `bedroom` 58 s toy piano + music box + glockenspiel (hub),
+2026-10-29, 1250 credits, not model-scored (raw 100 s, loop 34.9–93.4 s, 144 BPM measured, −18.0 LUFS, TP −5.2).
 
 ### Who should call what (not yet wired, as of this writing)
 - **ui/menu**: `menu_move/ok/back`; `audio.music('title')` + `vo_title` on the title screen,

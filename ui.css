@@ -311,6 +311,7 @@ img.mini{width:1.5em;height:1.5em;border-radius:50%}
 /* ---------- track select */
 .scr-tracks{display:flex;flex-direction:column}
 .tgrid{--cw:min(29vw,calc((100vh - 12em) / 1.65));display:flex;flex-wrap:wrap;justify-content:center;align-content:center;gap:2vmin 2.4vmin;flex:1;padding-bottom:6vmin}
+.tgrid.n7,.tgrid.n8{--cw:min(22.5vw,calc((100vh - 12em) / 1.65))}   /* 7–8 tracks: 4 across, still 2 rows */
 .tcard{pointer-events:auto;cursor:pointer;width:var(--cw);border-radius:.9em;overflow:hidden;background:#1a2350;border:.16em solid #3d4d8f;border-bottom-width:.32em;
   transition:transform .16s cubic-bezier(.2,1.8,.4,1),border-color .12s;position:relative}
 .tcard .thumb{position:relative;aspect-ratio:16/9;background:linear-gradient(160deg,var(--c1),var(--c2))}

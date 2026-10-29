@@ -12,7 +12,7 @@
 // See DESIGN.md "Online" for the model: each human simulates their OWN kart locally with the exact
 // single-player physics and reports it; the server runs everything else (bots, items, laps, results).
 
-export const PROTOCOL_VERSION = 4;   // 2: kart flag 64 = super (10-star) shield. 3: kart route (branches) in flag bits 8–12, state si is the combined route sample index. 4: 'jungle' in ROTATION (an older client can't build it)
+export const PROTOCOL_VERSION = 5;   // 2: kart flag 64 = super (10-star) shield. 3: kart route (branches) in flag bits 8–12, state si is the combined route sample index. 4: 'jungle' in ROTATION (an older client can't build it). 5: 'bedroom' in ROTATION
 
 /** Production game server (HTTP/WS through the Cloudflare tunnel; WebRTC UDP straight to the box). */
 export const PROD_SERVER = 'https://orion3-net.advicedawg.com';
@@ -43,7 +43,7 @@ export const LOBBIES = [
   { id: 'hard', diff: 'hard', name: 'HARD' },
 ];
 /** Track rotation between races (Star Road is in: online racing is its own reward). */
-export const ROTATION = ['beach', 'ice', 'volcano', 'castle', 'jungle', 'star'];
+export const ROTATION = ['beach', 'ice', 'volcano', 'castle', 'jungle', 'bedroom', 'star'];
 
 /** JSON message types. c→s: client to server, s→c: server to client. */
 export const MSG = {

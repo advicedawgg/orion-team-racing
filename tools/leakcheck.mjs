@@ -29,7 +29,7 @@ try {
     return r;
   };
   await snap('boot beach');
-  const ids = ['ice', 'volcano', 'castle', 'star', 'jungle', 'beach'];
+  const ids = ['ice', 'volcano', 'castle', 'star', 'jungle', 'bedroom', 'beach'];
   for (let c = 0; c < cycles; c++) for (const id of ids) {
     await page.evaluate(async id => {
       const O = window.__OTR; O.endRace(); await O.loadTrack(id); await O.startRace(); O.advance(8);

@@ -6,6 +6,7 @@ import volcano from './volcano.js';
 import castle from './castle.js';
 import star from './star.js';
 import jungle from './jungle.js';
+import bedroom from './bedroom.js';
 
-export const TRACKS = [beach, ice, volcano, castle, star, jungle];
+export const TRACKS = [beach, ice, volcano, castle, star, jungle, bedroom];
 export const trackById = id => TRACKS.find(t => t.id === id) || TRACKS[0];

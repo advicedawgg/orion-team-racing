@@ -130,6 +130,7 @@ export const THEMES = {
   ice: { road: 'road_ice', ground: 'snow', grass: 'snow', fog: 0xf2c4d0, skyTop: 0xc58fd8, skyHorizon: 0xffc9d6 },
   volcano: { road: 'road_volcano', ground: 'rock_volcanic', grass: 'rock_volcanic', fog: 0xe89a6a, skyTop: 0x7a3a5a, skyHorizon: 0xffb070 },
   jungle: { road: 'road_jungle', ground: 'jungle', grass: 'jungle', fog: 0xc8ecdc, skyTop: 0x2f8fe8, skyHorizon: 0xc8f0e0 },
+  bedroom: { road: 'road_bedroom', ground: 'carpet', grass: 'carpet', fog: 0x5a4f86, skyTop: 0x1a2a6a, skyHorizon: 0x6a5aa8 },
 };
 /** Wall styles: [colour A, colour B (alternating every `seg` m), height, seg]. */
 export const WALLS = {
@@ -147,6 +148,10 @@ export const WALLS = {
   basalt: [0x8a6a5e, 0x77584e, 1.7, 5],      // warm volcanic rock
   bamboo: [0xd8e070, 0x8cc04a, 1.1, 1.4],    // bamboo fence (Jungle Jumble)
   mossy: [0xa8ae96, 0x7f9a66, 1.4, 4],       // mossy stone (round the Waterfall Rock)
+  blocks: [0xe8443a, 0x2f7fe0, 1.3, 2.6],    // wooden toy blocks (Toy Box Turbo)
+  books: [0x3a7fd8, 0xe85a4a, 1.1, 1.8],     // book spines up the book ramp
+  pencils: [0xffd23f, 0x5cc850, 1.0, 2.2],   // coloured pencils along the desk
+  slide: [0xffd23f, 0xff8a1f, 1.0, 3],       // the toy slide's rails
 };
 
 /* =============================================================== build */

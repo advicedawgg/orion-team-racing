@@ -35,6 +35,7 @@ export const INHERIT = {
 /** Offroad surfaces and their top-speed multiplier. Physics reads this; tracks may add their own names. */
 export const SURFACES = {
   road: 1, sand: 0.64, grass: 0.66, snow: 0.62, mud: 0.6, dirt: 0.72, ice: 0.9, rock: 0.7, lava: 0.5, space: 0.7,
+  carpet: 0.66, quilt: 0.62,   // Toy Box Turbo: the fluffy bedroom carpet, the soft quilt on the bed
 };
 
 /** Route switching at junctions (branches): the kart moves to the other route when it is this many
