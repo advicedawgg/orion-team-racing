@@ -15,7 +15,10 @@ export const MAT = {
   glow: new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }),
   jelly: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.25, transparent: true, opacity: 0.88,
     emissive: 0x5a1040, emissiveIntensity: 0.5 }),
+  // the GOLD kart paint (unlocked by the C-T-R letters): glossy + a warm self-glow instead of metalness (no env map)
+  gold: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.18, metalness: 0.15, emissive: 0x7a5000, emissiveIntensity: 0.75 }),
 };
+MAT.gold.name = 'racer-gold';
 MAT.paint.name = 'racer-paint'; MAT.matte.name = 'racer-matte'; MAT.glow.name = 'racer-glow'; MAT.jelly.name = 'racer-jelly';
 
 const atlasMats = new Map();

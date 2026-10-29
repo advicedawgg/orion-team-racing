@@ -142,6 +142,9 @@ export default {
     { at: A.wiggle + 1.6, lat: 0, n: 6 },
   ],
   checkpointCount: 8,
+  // C-T-R letters (DESIGN.md "Track data format" → letters): C on the desk among the crayons, T in the dark under the
+  // bed (the outside of its long right curve), R on the outside of the rug wiggles' right kink.
+  letters: [{ at: A.desk + 1.5, lat: -4 }, { at: 9.5, lat: 2.5, route: 'underbed' }, { at: A.wiggle + 3, lat: 3 }],
   // Hidden shortcut (DESIGN.md "Branches (shortcuts)"): UNDER THE BED — see UNDER above; scenery/bedroom.js
   // `underBed` draws the quilt gaps, the dark space, the bed legs, the lost toys and socks, the torch.
   branches: [{

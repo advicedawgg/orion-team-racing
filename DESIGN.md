@@ -39,6 +39,8 @@ src/kartbox.js        box-kart fallback if racers.js is missing/broken          
 src/racers.js         roster + procedural kart & character models + animation  (characters agent)
 src/items.js          PURE item sim: boxes, stars, weapons, hits, AI item use    (items agent)
 src/itemviews.js      item meshes/particles/sounds (THREE, browser only)        (items agent)
+src/letters.js        PURE C-T-R letters: shapes, resolve, the player's pick-ups (ui)
+src/letterviews.js    the C-T-R letter tokens in 3D (THREE, browser only)          (ui)
 src/itemhud.js        item slot + roulette widget (hud.js hosts it)             (items agent)
 src/hud.js            in-race HUD: lap/place/rank list/minimap/meter/pops/banners (ui agent)
 src/menu.js           title, menus, character/track select, results, cup, podium, pause, settings (ui agent)
@@ -48,6 +50,7 @@ ui.css                HUD (.hx-*) + menu (#ui .scr-*) styles, linked from index.
 tools/check.js        THE GATE: track checks + headless 8-AI race sim           (core, extended by all)
 tools/balance.js      win share / spread / star economy / kid bots over N races (balance agent)
 tools/kidbots.js      kidBot + wobblyKid: models of a young player for the gate  (balance agent)
+tools/check-letters.js  C-T-R letters gate (run by check.js) + tools/shot-letters.mjs chase shots (ui)
 tools/shot.mjs        screenshot through the GPU headless Chrome                 (core)
 tools/slide-test.mjs  scripted power slide in the real browser, 3 turbos + shots (core)
 tools/ui-test.mjs     menu/HUD browser driver: screens, key/pad/tap flows, cup, time trial (ui agent)
@@ -181,7 +184,8 @@ Blurbs are in `RACERS[i].blurb`. `getRacer(id)` returns the entry (falls back to
 
 ### Racer API details (beyond the stub in Cross-module APIs)
 
-- `buildRacer(id, { hd })` → `{ root, rig }`. Hierarchy: `root` (core sets position + yaw incl.
+- `buildRacer(id, { hd, paint })` → `{ root, rig }` (`paint`: `'gold'` | `'rainbow'` re-colours the kart body — the
+  kart paints the C-T-R letters unlock, see **Modes and UI**; `PAINTS` lists them). Hierarchy: `root` (core sets position + yaw incl.
   drift swing) → `rig.offset` (per-racer size) → `rig.flip` (hit flip / spin-out / wobble, pivot at
   the kart's middle) → `rig.base` → wheels + `rig.body` (= `rig.kart`, suspension) → `rig.driver`
   (hip pivot) → torso → head. Don't transform anything below `root` from outside.
@@ -202,7 +206,7 @@ Blurbs are in `RACERS[i].blurb`. `getRacer(id)` returns the entry (falls back to
 - `racerStats(root)` → `{ tris, draws }`; `disposeTree(root)` frees per-racer geometry (materials
   are shared across all racers — never dispose them).
 - Cost: **12–16 draw calls, ~2.4–3.3k tris per racer** incl. kart (King Dad is the 16: gold crown
-  + throne). Materials: 4 shared (`racer-paint`, `racer-matte`, `racer-glow`, `racer-jelly`) +
+  + throne). Materials: 4 shared (`racer-paint`, `racer-matte`, `racer-glow`, `racer-jelly`; + `racer-gold` for the gold paint) +
   one 512×256 face atlas per racer. Colour lives in vertex colours.
 - Preview: `racers.html` (`?grid=roster|poses|sheet|one&id=&pose=&cam=&p=&still=1`, header
   comment lists everything); screenshots: `node tools/shot-racers.mjs '<query>' out.png [W H]`.
@@ -600,6 +604,7 @@ export default {
   checkpoints: [2.5, 6, 9.5, 14],          // optional `at`s; default = checkpointCount (8) evenly spaced, never in a gap
   noRespawn: [{ from, to }],               // optional stretches where the rescue must not drop you
   branches: [{ id, points, … }],           // optional shortcuts — see "Branches (shortcuts)" below
+  letters: [{ at, lat, y?, route? }, …],   // the C-T-R letters, in that order — see "C-T-R letters" below
 };
 ```
 
@@ -687,6 +692,40 @@ shot: `node tools/shot.mjs 'track=<id>&skip=1&hud=0&cam=x,y,z,tx,ty,tz' shots/o.
   a rock cap that rebuilds the hill over the cutting (same texture/uv/tint as the terrain via
   `naturalAt` + `terrainTint`, edges sunk under the real ground) and portal faces. Keep the tunnel
   gently curved (r ≳ 80 m) and its roof ≥ 8.5 m: the chase camera sits 2 m up, 5–6 m behind.
+
+### C-T-R letters (data)
+
+`letters: [C, T, R]` — exactly three entries `{ at, lat = 0, y = 2.0, route }`: `at`/`lat` as everywhere else, on the
+main road, or — with `route: '<branch id>'` — `at` is that branch's point index + fraction. `y` = the token's centre
+above the road (the token is 3.2 m tall; a kart drives through it, pick-up radius 2.7 m). `src/letters.js`
+`resolveLetters(track)` turns them into world spots. Every shipped track has them; the gate
+(`tools/check-letters.js`, run by `check.js`) wants: three, at least one on the hidden shortcut, each ON the road
+(|lat| ≤ half-width − 1.2 m), never within 8 m of a gap or 4 m of a `fall` edge, no deck within 5.6 m above, no
+main-road letter in the stretch a shortcut skips (so one lap WITH the shortcut can take all three), and a scripted
+solo run (the AI driving, steering for each letter over its last ~30 m) collecting all three in one race without a
+rescue — once on Easy through the real kid assist, once on Hard. `node tools/check-letters.js [id]` runs just that
+(~1 s); `node tools/shot-letters.mjs [ids] [--grab]` shoots each letter in chase view from ~18 m (+ just after
+grabbing it) to `shots/ctr/`.
+
+As placed (2026-10-29; "off line" = metres from the AI racing line; seek cost = Hard lap 1 steering for them vs
+not, same branch):
+
+| track | C | T | R | seek cost |
+|---|---|---|---|---|
+| beach | dune sweeper, outside (6.2 off line) | Sandcastle Cave, between its pads | Crab Bend apex, inside | 0.2 s |
+| ice | Sprinkle Hairpin exit, inside | S-bends, outside of the right kink | end of the Wafer Leap (the sweep after the river) | 0.4 s |
+| volcano | Salsa Sweeper, outside | Chilli Crack, top of the U round the spire | Taco Tunnel, left lane | 0.7 s |
+| castle | Great Hall, left lane | the Secret Gallery after carpet 2 | King's Hairpin | 0.8 s |
+| star | first space-wave crest | Warp Ribbon after its pad | Moon Loop, outside | 0.2 s |
+| jungle | the cave behind the waterfall, outside of its U | Sootie Temple, right lane | Coconut Hairpin, inside | 1.0 s |
+| bedroom | on the desk among the crayons | under the bed, outside of its curve | rug wiggles, outside of the right kink | 1.2 s |
+
+All 21 collected by both scripted runs with 0 rescues and 0 wall hits, and by `shot-letters --grab` in the browser.
+The letter checks add ~1 s to `check.js`. Draw calls with a letter in view: +2 to +5 (grid → castle 169 → 173, the C
+is in view from the line; the most anywhere: 173). `node tools/ctr-test.mjs [id]` runs it end to end in the browser:
+a 1-lap race collecting all three → the save marks the track, the paints unlock (the other six pre-marked), results
+badge + NEW! with WHAT'S THIS?! focused → the unlock screen → the racer screen with the swatches (the profile's save is
+restored after) — PASS on beach, 2026-10-29.
 
 ### Branches (shortcuts)
 
@@ -841,6 +880,24 @@ instance — keep small props shadowless).
   everything while `race.noItems` is true).
   Best lap + best race saved per track; the best race is saved as a **ghost** (10 Hz pos/yaw) and
   replays as a translucent kart (cloned transparent materials) + a pale minimap dot; HUD shows "BEST".
+- **C-T-R letters** (CTR's letter hunt, folded into the normal modes so there's nothing new to learn): three
+  floating letter tokens per track (data: **Track data format → C-T-R letters**) appear in **1P Quick Race and Time
+  Trial** — never in the Orion Cup, 2P or online, so those races stay the same for everyone (main.js also keeps
+  them out of any `G.net` race; nothing goes over the wire). Only the human collects them; the AI, items and
+  physics never see them (`src/letters.js` is a race system that checks `race.player` only). Each is a chunky
+  extruded C / T / R (outlines, no font) in its own colour — C sky blue, T green, R pink — with a soft halo,
+  spinning and bobbing 2 m over the road (`letterviews.js`: 3 meshes + 3 halo sprites, ≤ +6 draw calls while
+  in view, no lights). Touch one → it swells and pops, a sparkle + colour burst, the `letter` chime (each one a
+  step higher) and its HUD slot lights. All three → "ALL THREE!" and the slots go rainbow; finish the race with
+  them → the results screen shows a big C-T-R badge (+ NEW! the first time on that track), confetti and the
+  `ctr_fanfare`, and save.js marks the track. **Rewards** (no reading): the tracks screen's card gets a gold C-T-R
+  badge; when every track has one (all 7, Star Road included), the results button becomes "WHAT'S THIS?! ▶" →
+  a **"GOLD KARTS UNLOCKED!"** screen (the player's racer on the turntable flipping between the gold and rainbow
+  paints, confetti, fanfare) → YAY goes to the racer screen. There, three paint swatches sit under the stats
+  (own colours / gold / rainbow, 1P only; the turntable shows the pick, saved as `settings.paint`); the paint goes
+  on the player's kart in every offline 1P race (`buildRacer(id, { paint })` — the body only; the driver and the
+  racer's colour on the minimap and menus stay theirs). There's no secret bonus racer in the roster code (racers.js
+  `BENCH` is just who sits out), so the paints are the reward.
 - **Difficulty**: Easy (default) / Medium / Hard, shown as drawn SVG faces (emoji don't render in the
   headless Chrome). Settings: volumes (master/music/sfx), **AUTO-GO** (auto-accelerate: `easy` =
   on in Easy only (default) / `on` / `off`; touch auto-accelerates while no pad is connected, and a pad
@@ -883,12 +940,15 @@ URL (never the saved racer/difficulty/assists) so tests stay deterministic.
 localStorage.otrSave = { v: 1, unlocked: { star: false }, cupWins: { easy, medium, hard },
   best: { <trackId>: { lap, race, racer } },            // every finished race counts, TT or not
   shortcuts: { <trackId>: [branchId …] },               // branches the player has driven (minimap)
-  settings: { master, music, sfx, autoAccel: 'easy'|'on'|'off', kidAssist, hd, difficulty, quality, mpAuto?: [p1,p2], mpHelper?: [p1,p2] },
+  letters: { <trackId>: true },                         // C-T-R: all three letters in one finished race
+  // unlocked.paint: true once every track has its C-T-R (the gold / rainbow kart paints)
+  settings: { master, music, sfx, autoAccel: 'easy'|'on'|'off', kidAssist, hd, difficulty, quality, paint: 'std'|'gold'|'rainbow', mpAuto?: [p1,p2], mpHelper?: [p1,p2] },
   lastRacer, lastTrack }
 localStorage['otrGhost:<trackId>'] = { v: 1, racer, time, hz: 10, d: [x,y,z,yaw …] }  // dm / mrad ints, ~20 KB
 ```
 
-**HUD** (`hud.js`, `.hx-*` in ui.css): LAP big top-left + race timer + lap splits (best green);
+**HUD** (`hud.js`, `.hx-*` in ui.css): with C-T-R letters in the race, three letter slots left of the stars
+(dim outlines → lit in each letter's colour, a bump on each, a rainbow glow with all three); LAP big top-left + race timer + lap splits (best green);
 **rank list** of portraits down the left in live order (player ringed gold, rows slide);
 position huge top-right coloured by place (gold/silver/bronze/blue) with a bump on change; stars
 (`assets/ui/star.png`, glows at 10 = SUPER) + the items agent's `itemhud.js` slot top-centre;
@@ -909,7 +969,10 @@ on` = a warning) — drained every frame; (5) the HUD also listens to items.js e
 
 **URL**: `?screen=title|menu|select|tracks|settings|controls|standings|podium|unlock|results|pause`
 jumps to a screen (results/pause run a real race, fast-forwarded; standings/podium use a fake cup;
-`&mode=tt|cup` for tracks/results; `&race=N` for standings). **Test driver**: `node
+`&mode=tt|cup` for tracks/results; `&race=N` for standings; `&unlock=paint` for the kart-paint unlock). C-T-R test
+params, URL-only and never saved: `&letters=1|0` (force the letters on/off in a `skip` race — off by default there),
+`&ctrgot=1` (the race starts with all three collected: HUD + results badge, not recorded), `&ctr=all|<id,id>` (fake
+those tracks' badges; `all` also unlocks the paint swatches), `&paint=gold|rainbow` (the player's kart). **Test driver**: `node
 tools/ui-test.mjs screens|flow|cup|hud|tt|pad|tap [--size 844x390] [--touch] [--only a,b]` →
 `shots/ui/*-<size>.png`; fails on page errors, console errors and failed requests. `pad` fakes a
 standard gamepad through `navigator.getGamepads`; `cup` and `tt` clear `otrSave` first.
@@ -1164,7 +1227,8 @@ GPU browser over WebRTC; 1-lap races):
   `&slot=0..7` (player grid slot, default 6), `&laps=N`, `&seed=N`, `&touch=1` (force touch UI),
   `&auto=1` (auto-accelerate), `&hd=1`, `&shadows=0`, `&fx=0`, `&q=low|high|auto` (quality),
   `&players=2` (split screen; `&racer2=`, `&dev1=`/`&dev2=` `auto|kb|kbL|kbR|pad:N`, `&auto2=0|1`,
-  `&helper1=`/`&helper2=0|1`), `&fixture=1` / `&branch=<id>` (shortcuts, see **Branches**). `window.__OTR` exposes game
+  `&helper1=`/`&helper2=0|1`), `&fixture=1` / `&branch=<id>` (shortcuts, see **Branches**), `&letters=1|0`,
+  `&ctrgot=1`, `&ctr=all|<ids>`, `&paint=gold|rainbow` (C-T-R letters, see **Modes and UI**). `window.__OTR` exposes game
   state for tests (see **Core runtime APIs**). UI: `?screen=<name>` opens a menu screen (see
   **Modes and UI**); `__OTR.menu` = `{ M, screen, show(name), action('up'|'ok'|'back'…), launch(trackId) }`.
 - `node tools/slide-test.mjs` drives the player through a real power slide in the browser
@@ -1408,6 +1472,7 @@ unlock is remembered and starts on unlock. Engines can be registered before init
 | `menu_move`, `menu_ok`, `menu_back` | UI blips |
 | `respawn`, `splash` | helper drops you back (sparkle poof), kart into water |
 | `meow` (2), `purr`, `cheer` | Sootie, podium kids cheering |
+| `letter`, `ctr_fanfare` | C-T-R letter chime (main.js plays it at rate 1 / 1.12 / 1.24 for the 1st / 2nd / 3rd), the set's fanfare on the results badge + the paint unlock (2026-10-29: Gemini sfx-qa 10/10 both; synth fallbacks in audio.js) |
 
 ### VO (ElevenLabs eleven_v3; `vo_*` play on a one-at-a-time announcer channel)
 Announcer (Charlie, Australian, hyped): `vo_3 vo_2 vo_1 vo_go vo_ready vo_lap_2 vo_final_lap

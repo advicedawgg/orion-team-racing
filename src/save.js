@@ -3,13 +3,15 @@
 //
 //   localStorage['otrSave'] = {
 //     v: 1,
-//     unlocked: { star: false },                 // secret tracks by id
+//     unlocked: { star: false, paint: false },   // secret tracks by id; paint = the gold/rainbow kart paints (C-T-R on every track)
 //     cupWins: { easy: 0, medium: 0, hard: 0 },   // Orion Cup wins per difficulty
 //     best: { <trackId>: { lap: s, race: s, racer } },   // Time Trial + every race count
 //     shortcuts: { <trackId>: [branchId, …] },          // branches the player has driven (minimap shows them)
+//     letters: { <trackId>: true },                     // C-T-R: all three letters collected in one finished race
 //     settings: { master, music, sfx (0..1), autoAccel: 'easy'|'on'|'off', kidAssist: bool,
 //                 hd: bool, difficulty: 'easy'|'medium'|'hard', quality: 'auto'|'high'|'low',
-//                 mpAuto: [p1, p2], mpHelper: [p1, p2] (2 PLAYERS join screen, per player; absent until toggled) },
+//                 mpAuto: [p1, p2], mpHelper: [p1, p2] (2 PLAYERS join screen, per player; absent until toggled),
+//                 paint: 'std'|'gold'|'rainbow' (the player's kart, once unlocked) },
 //     lastRacer, lastTrack,
 //   }
 //   localStorage['otrGhost:<trackId>'] = { v:1, racer, time, hz, d: [x,y,z,yaw, x,y,z,yaw, …] (dm / mrad ints) }
@@ -21,11 +23,12 @@ const GHOST = id => 'otrGhost:' + id;
 
 export const DEFAULTS = () => ({
   v: 1,
-  unlocked: { star: false },
+  unlocked: { star: false, paint: false },
   cupWins: { easy: 0, medium: 0, hard: 0 },
   best: {},
   shortcuts: {},
-  settings: { master: 0.9, music: 0.7, sfx: 1, autoAccel: 'easy', kidAssist: true, hd: true, hdDefaultV: 1, difficulty: 'easy', quality: 'auto' },
+  letters: {},
+  settings: { master: 0.9, music: 0.7, sfx: 1, autoAccel: 'easy', kidAssist: true, hd: true, hdDefaultV: 1, difficulty: 'easy', quality: 'auto', paint: 'std' },
   lastRacer: 'orion', lastTrack: null,
 });
 
@@ -106,6 +109,27 @@ export function markShortcut(trackId, branchId) {
     a.push(branchId); save(); return true;
   } catch (e) { console.warn('[save] shortcut not saved', e); return false; }
 }
+
+/* ------------------------------------------------------------------ C-T-R letters */
+// URL ?ctr=all | ?ctr=<id,id…> fakes completed tracks (and, for all, the paint unlock) for screenshots. URL-only:
+// it is read here, never written to the save.
+const CTR_Q = (() => { try { return new URLSearchParams(globalThis.location?.search || '').get('ctr'); } catch { return null; } })();
+const ctrFake = id => !!CTR_Q && (CTR_Q === 'all' || CTR_Q.split(',').includes(id));
+/** Has the player collected all three letters on this track in one race? */
+export function lettersDone(trackId) {
+  if (ctrFake(trackId)) return true;
+  try { return !!load().letters?.[trackId]; } catch { return false; }
+}
+/** Record a C-T-R on this track. Returns true the first time. */
+export function markLetters(trackId) {
+  try {
+    const d = load(), l = d.letters && typeof d.letters === 'object' ? d.letters : (d.letters = {});
+    if (l[trackId]) return false;
+    l[trackId] = true; save(); return true;
+  } catch (e) { console.warn('[save] letters not saved', e); return false; }
+}
+/** the gold / rainbow kart paints: unlocked once every track has its C-T-R (menu.js unlocks 'paint') */
+export const paintUnlocked = () => CTR_Q === 'all' || isUnlocked('paint');
 
 /* ------------------------------------------------------------------ ghosts (Time Trial) */
 // Positions quantised: x,y,z in decimetres, yaw in milliradians → ~20 KB for a 3-lap race at 10 Hz.

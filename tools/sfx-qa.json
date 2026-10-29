@@ -288,5 +288,15 @@
   "heard": "A short, bright brass and twinkling bells victory fanfare that resolves into a triumphant celebratory chord.",
   "score": 10,
   "defects": ""
+ },
+ "letter": {
+  "heard": "A short, cheerful, rising glockenspiel arpeggio accompanied by magical high-pitched sparkle chimes.",
+  "score": 10,
+  "defects": ""
+ },
+ "ctr_fanfare": {
+  "heard": "A short, joyful rising cartoon fanfare played on bright brass and synth bells, resolving on a triumphant chord with sparkly chimes.",
+  "score": 10,
+  "defects": ""
  }
 }

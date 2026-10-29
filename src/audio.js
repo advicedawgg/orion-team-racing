@@ -32,6 +32,7 @@ export const SFX_NAMES = [
   'menu_back', 'respawn',
   // extras (not in the original contract list, free to use)
   'meow', 'purr', 'cheer', 'splash', 'star_spill',
+  'letter', 'ctr_fanfare',   // C-T-R letters: one chime per letter (main.js raises its pitch per letter), the set's fanfare
 ];
 
 // Announcer lines + character barks (ElevenLabs TTS). Missing files are silent no-ops.
@@ -82,12 +83,12 @@ export const TRIM = {
 const SYNTH_LEVEL = {
   _: -16, explode: -10, nitro: -10, wall: -13, turbo1: -13, turbo2: -12, turbo3: -11, start_boost: -12, pad: -13,
   countdown: -16, go: -15, menu_move: -18, menu_ok: -16, menu_back: -17, roulette: -18, tnt_tick: -16,
-  drift_loop: -18, bomb_roll: -17, charge_red: -17, purr: -17, win: -14, finish: -13, final_lap: -14, lose: -15,
+  drift_loop: -18, bomb_roll: -17, charge_red: -17, purr: -17, win: -14, finish: -13, final_lap: -14, lose: -15, letter: -15, ctr_fanfare: -14,
 };
 // Random pitch variation per play (fraction), so repeated sounds don't machine-gun.
 const VARY = { hop: 0.06, land: 0.06, wall: 0.08, bump: 0.1, star: 0.03, item_box: 0.05, offroad: 0.1, splat: 0.05, explode: 0.05, meow: 0.08 };
 // Sounds that duck the music a little when the PLAYER triggers them (at == null).
-const DUCK = { turbo1: 0.8, turbo2: 0.72, turbo3: 0.62, start_boost: 0.62, pad: 0.75, super_star: 0.6, explode: 0.7, win: 0.4, lose: 0.4, finish: 0.5, final_lap: 0.6 };
+const DUCK = { ctr_fanfare: 0.45, turbo1: 0.8, turbo2: 0.72, turbo3: 0.62, start_boost: 0.62, pad: 0.75, super_star: 0.6, explode: 0.7, win: 0.4, lose: 0.4, finish: 0.5, final_lap: 0.6 };
 // Distance model for sounds played with `at` (inverse, like PannerNode 'inverse', + a hard cull).
 export const SPATIAL = { ref: 7, roll: 1.1, max: 110, lpNear: 18 };
 // Max simultaneous voices per sound name (oldest is cut).
@@ -263,6 +264,8 @@ const RECIPES = {
   cheer: [1.2, d => { for (let k = 0; k < 6; k++) tone(d, { t0: rnd() * 0.2, dur: 0.9, f0: 400 + rnd() * 500, f1: 600 + rnd() * 600, type: 'saw', vol: 0.03, a: 0.1 }); noise(d, { dur: 1.1, mode: 'bp', c0: 1200, q: 0.8, vol: 0.3, a: 0.1 }); }],
   splash: [0.8, d => { noise(d, { dur: 0.7, mode: 'bp', c0: 2500, c1: 800, q: 0.8, vol: 0.8, a: 0.005 }); tone(d, { dur: 0.15, f0: 200, f1: 600, vol: 0.2 }); }],
   star_spill: [0.6, d => { for (let k = 0; k < 4; k++) bell(d, k * 0.09, 1976 - k * 180, 0.25, 0.18); }],
+  letter: [0.9, d => { [0, 7, 12, 19].forEach((k, i) => bell(d, i * 0.05, semi(C5 * 2, k), 0.7, 0.2)); sparkle(d, 0.04, 0.6, 12, 3000, 7500, 0.08); }],
+  ctr_fanfare: [2.2, d => { const m = [[0, 0.12], [4, 0.12], [7, 0.12], [12, 0.24], [7, 0.12], [12, 0.24], [16, 0.9]]; let t = 0; for (const [k, l] of m) { brass(d, t, semi(C5, k), l + 0.05); bell(d, t, semi(C5 * 2, k), l + 0.25, 0.14); t += l; } sparkle(d, 0.6, 1.5, 28); }],
 };
 
 function bakeSynth(name, ctx = S.ctx) {

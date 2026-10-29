@@ -17,6 +17,9 @@
   "countdown": [
    "countdown.mp3"
   ],
+  "ctr_fanfare": [
+   "ctr_fanfare.mp3"
+  ],
   "drift_loop": [
    "drift_loop.mp3"
   ],
@@ -58,6 +61,9 @@
   ],
   "lap": [
    "lap.mp3"
+  ],
+  "letter": [
+   "letter.mp3"
   ],
   "lose": [
    "lose.mp3"

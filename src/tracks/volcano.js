@@ -85,6 +85,9 @@ export default {
     { at: 19.4, lat: 0, n: 6, spacing: 4 },   // across the bridge — stay in the middle!
   ],
   checkpointCount: 8,
+  // C-T-R letters (DESIGN.md "Track data format" → letters): C on the outside of the Salsa Sweeper, T at the top of the
+  // Chilli Crack's U (round the glowing spire), R in the Taco Tunnel's left lane.
+  letters: [{ at: 2.6, lat: -5 }, { at: 7.5, lat: -2, route: 'crack' }, { at: 15.6, lat: 4 }],
   // Hidden shortcut (DESIGN.md "Branches (shortcuts)"): the CHILLI CRACK. Just as the Chilli Hairpin starts to
   // climb, the inside (left) wall has a glowing gap with a star trail into it: a narrow crack between two
   // lava-rock walls (scenery/volcano.js `chilliCrack`) that runs a tighter, flat U round a glowing rock spire

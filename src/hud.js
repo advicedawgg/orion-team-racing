@@ -17,6 +17,8 @@
 //   race.ui = [{ text, ms, cls, icon, kart, warn, key, on }]  — a queue a PURE module (items.js)
 //     may push to; the HUD drains it every frame and shows entries whose `kart` is the player or
 //     absent. `warn:true` entries call hud.warn(key, on ? text : null).
+//   C-T-R letters: when race.letters (letters.js) follows this HUD's kart, three letter slots sit left of the
+//                                          stars and light up in each letter's colour as they're collected.
 //   hud.menuOwnsResults = true          — set by menu.js: hud.results() then only hides the stub panel.
 //   portraitURL(id, size)               — cached data-URL of racers.js renderPortrait (menus use it too).
 //
@@ -25,6 +27,8 @@
 // gold and the other human in their player colour; the minimap (shown by P1's HUD only, straddling
 // the split) rings both humans. `hud.drainsUi = false` on all but the last HUD so race.ui
 // entries reach every half before they're cleared.
+
+import { letterSVG } from './letters.js';
 
 const ORD = n => n + (n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th');
 export const ordSuffix = n => (n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th');
@@ -80,6 +84,7 @@ export function createHud(root, { pn = 0 } = {}) {
     <div class="hx-ranks" id="hRanks"></div>
     <div class="hx-place" id="hPlace"><b>1</b><sup>st</sup></div>
     <div class="hx-top">
+      <div class="hx-ctr" id="hCtr" hidden></div>
       <div class="hx-stars" id="hStarsBox"><img src="assets/ui/star.png" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'★'}))"><b id="hStars">0</b></div>
       <div class="hx-item" id="hItem"></div>
     </div>
@@ -96,7 +101,7 @@ export function createHud(root, { pn = 0 } = {}) {
   const $ = id => root.querySelector('#' + id);
   const el = { lap: $('hLap'), laps: $('hLaps'), lapList: $('hLapList'), place: $('hPlace'), time: $('hTime'), stars: $('hStars'), starsBox: $('hStarsBox'),
     meter: $('hMeter'), charge: $('hCharge'), red: $('hRed'), pips: $('hPips'), boost: $('hBoost'), count: $('hCount'), banner: $('hBanner'),
-    event: $('hEvent'), warn: $('hWarn'), wrong: $('hWrong'), results: $('hResults'), ranks: $('hRanks'), map: $('hMap'), item: $('hItem'), pop: $('hPop') };
+    event: $('hEvent'), warn: $('hWarn'), wrong: $('hWrong'), results: $('hResults'), ranks: $('hRanks'), map: $('hMap'), item: $('hItem'), pop: $('hPop'), ctr: $('hCtr') };
   let last = {}, bannerT = null, eventT = null, popT = null, countT = null;
   const set = (k, v, f) => { if (last[k] !== v) { last[k] = v; f(v); } };
   const warns = new Map();
@@ -278,6 +283,14 @@ export function createHud(root, { pn = 0 } = {}) {
         const simDt = Math.max(0, Math.min(0.25, race.t - (lastRaceT ?? race.t))); lastRaceT = race.t;   // sim time: correct under fast-forward/scripts
         set('wrong', wrongWay(P, race, simDt) || !!v.wrongWay, w => el.wrong.classList.toggle('on', w));
         itemEvents(P);
+        // C-T-R letters (letters.js): the slots light up as they're collected; a fresh one bumps, all three glow
+        const Lr = race.letters, mineL = !!Lr && Lr.kart === P && Lr.list.length === 3;
+        set('ctrOn', mineL, on => { el.ctr.hidden = !on; });
+        if (mineL) set('ctr', Lr.got.map(Number).join(''), m => {
+          const was = el.ctr.dataset.m || '000';
+          el.ctr.innerHTML = [0, 1, 2].map(i => `<i class="${m[i] === '1' ? 'on' : ''}${m[i] === '1' && was[i] !== '1' ? ' bump' : ''}">${letterSVG(i, { on: m[i] === '1' })}</i>`).join('');
+          el.ctr.dataset.m = m; el.ctr.classList.toggle('all', m === '111');
+        });
         api.warn('lock', P.lockedBy > 0 && !P.finished ? 'ROCKET! WATCH OUT!' : null);
         api.warn('tnt', P.tnt && !P.finished ? `HOP! HOP! HOP! ${Math.max(0, (P.tnt.need || 5) - (P.tnt.hops || 0))}` : null);
         if (itemHud) try { itemHud.update(P, dt, race); } catch (e) { if (!api._iw) { api._iw = 1; console.warn('[hud] itemHud.update threw', e); } }

@@ -13,7 +13,12 @@
 // = tap. Every focusable element has [data-nav]; arrows move spatially between them.
 //
 // URL: ?screen=title|menu|select|tracks|results|standings|podium|unlock|pause|settings|controls|join
-// jumps straight to a screen (screenshots). ?skip=1 etc. still go straight into a race.
+// jumps straight to a screen (screenshots). ?skip=1 etc. still go straight into a race. &unlock=paint shows the
+// kart-paint unlock; &ctr=all fakes every track's C-T-R (badges, paints), &ctrgot=1 a race with all three (save.js, main.js).
+//
+// C-T-R letters (DESIGN.md "Modes and UI"): G.letters is on for 1P Quick Race and Time Trial. A finished race with
+// all three → save.js markLetters (the gold C-T-R badge on that track's card) and a results-screen C-T-R badge +
+// fanfare; the last track's → the kart paints unlock (unlock screen), picked with the swatches on the racer screen.
 //
 // 2 PLAYERS (multiplayer agent): main menu → `join` (P2 presses A/Start on another pad or a key on
 // the keyboard's right half; per-player AUTO-GO + KID HELPER) → QUICK RACE or ORION CUP → racer
@@ -28,6 +33,7 @@ import * as THREE from 'three';
 import * as S from './save.js';
 import { portraitURL, racerName, racerColor, clock, ordSuffix, racersReady, PN_COL } from './hud.js';
 import { TRACKS } from './tracks/index.js';
+import { ctrSVG } from './letters.js';
 
 let HDM = null;
 const hdp = import('./hdracers.js').then(m => { HDM = m; }).catch(() => { /* optional */ });
@@ -35,6 +41,7 @@ const hdp = import('./hdracers.js').then(m => { HDM = m; }).catch(() => { /* opt
 export const CUP_ORDER = ['beach', 'ice', 'volcano', 'castle'];
 export const POINTS = [10, 8, 6, 5, 4, 3, 2, 1];
 const DIFFS = ['easy', 'medium', 'hard'];
+const PAINTS = ['std', 'gold', 'rainbow'];        // racers.js PAINTS (the kart paints the C-T-R letters unlock)
 const DIFF_LABEL = { easy: 'EASY', medium: 'MEDIUM', hard: 'HARD' };
 const isSecret = t => !!t.secret || t.id === 'star';
 const trackDef = id => TRACKS.find(t => t.id === id);
@@ -74,6 +81,7 @@ const M = {
   cup: null, lastResults: null, resultsShown: false, finishTimer: 0, ghost: null, rec: null, record: null,
   focusMem: {}, pauseFrom: null, settingsFrom: 'menu', pendingUnlock: false,
   players: 1, racer2: null, devs: ['kb', null], mp: { auto: [true, false], helper: [true, false] },
+  stagePaint: null, ctr: null,     // C-T-R: the turntable's kart paint (racer screen / unlock), this race's letters result
 };
 const two = () => M.players === 2 && M.mode !== 'tt';
 
@@ -101,7 +109,7 @@ const stage = (() => {
   }
   function actor(id, x = 0, y = 0, z = 0, ry = 0, extraS = {}) {
     let b = null;
-    try { b = api.R.buildRacer(id, { hd: !!S.settings().hd && !!HDM?.hasHD?.(id) }); } catch (e) { console.warn('[menu] buildRacer', id, e); }
+    try { b = api.R.buildRacer(id, { hd: !!S.settings().hd && !!HDM?.hasHD?.(id), paint: M.stagePaint || null }); } catch (e) { console.warn('[menu] buildRacer', id, e); }
     if (!b) return null;
     b.root.position.set(x, y, z); b.root.rotation.y = ry;
     scene.add(b.root);
@@ -383,7 +391,7 @@ function trackCard(t, { locked = false, small = false, extraHtml = '' } = {}) {
   const [c1, c2] = THEME_COL[t.theme] || THEME_COL[t.id] || ['#4ec5f1', '#232e5c'];
   const b = S.best(t.id);
   return `<div class="tcard${locked ? ' locked' : ''}${small ? ' small' : ''}" data-nav data-act="track" data-id="${t.id}" data-key="t-${t.id}" style="--c1:${c1};--c2:${c2}">
-    <div class="thumb"><img src="assets/ui/track_${t.id}.jpg" alt="" onerror="this.remove()">${locked ? `<div class="lockv">${ICON.lock}</div>` : ''}</div>
+    <div class="thumb"><img src="assets/ui/track_${t.id}.jpg" alt="" onerror="this.remove()">${locked ? `<div class="lockv">${ICON.lock}</div>` : ''}${!locked && S.lettersDone(t.id) ? `<div class="tctr">${ctrSVG()}</div>` : ''}</div>
     <div class="tname">${locked ? '?????' : esc(t.name)}</div>
     ${locked ? `<div class="tsub">Win the Orion Cup!</div>` : (!small && b.lap ? `<div class="tsub">Best lap ${clock(b.lap)}</div>` : '')}
     ${extraHtml}
@@ -403,6 +411,9 @@ function applyRaceSettings() {
   G.solo = M.mode === 'tt';
   G.sitOut = M.mode === 'cup' ? M.cup?.sitOut : undefined;   // the cup keeps the same 8 racers all cup
   G.noItems = M.mode === 'tt';
+  // C-T-R letters: 1P Quick Race + Time Trial only (never the cup or 2P — main.js also keeps them out of online races)
+  G.letters = (M.mode === 'quick' || M.mode === 'tt') && !two();
+  G.paint = api.Q.has('paint') ? api.Q.get('paint') : !two() && S.paintUnlocked() ? (s.paint || 'std') : 'std';
   if (M.mode !== 'tt' && !api.Q.has('laps')) G.laps = undefined;
   // 2P: both racers, both devices, per-player AUTO-GO + KID HELPER (join screen)
   G.players = two() ? 2 : 1;
@@ -521,6 +532,10 @@ function showSelect(pn = 0) {
   const cur0 = pn === 1 ? M.racer2 : M.racer;
   const title = { quick: 'QUICK RACE', cup: 'ORION CUP', tt: 'TIME TRIAL' }[M.mode];
   const who = mp ? `<b class="pbadge pb${pn + 1}">P${pn + 1}</b> ` : '';
+  // kart paints (unlocked by every track's C-T-R): three swatches under the stats, 1P only; the turntable shows the pick
+  const paints = !mp && S.paintUnlocked();
+  M.stagePaint = paints ? (S.settings().paint || 'std') : null;
+  const swatches = paints ? `<div class="paints">${PAINTS.map(p => `<button class="pnt pnt-${p}${p === M.stagePaint ? ' sel' : ''}" data-nav data-act="paint" data-v="${p}" data-key="paint-${p}"><i></i></button>`).join('')}</div>` : '';
   let el = null;
   el = mount('select', `
     <div class="shead"><h2>${who}CHOOSE YOUR RACER!</h2><small>${mp ? '2 PLAYERS · ' : ''}${title} · ${FACE[M.diff]} ${DIFF_LABEL[M.diff]}</small></div>
@@ -530,7 +545,7 @@ function showSelect(pn = 0) {
     </div>
     <div class="spanel">
       <div class="stage-slot" id="selStage"></div>
-      <div class="sinfo"><h3 id="sName"></h3><p id="sBlurb"></p><div class="stats" id="sStats"></div></div>
+      <div class="sinfo"><h3 id="sName"></h3><p id="sBlurb"></p><div class="stats" id="sStats"></div>${swatches}</div>
       <button class="gobtn" data-nav data-act="go" data-key="go">GO! ▶</button>
     </div>
     <button class="backbtn" data-nav data-act="back" data-key="back">◀ BACK</button>`, {
@@ -543,8 +558,15 @@ function showSelect(pn = 0) {
     // Mouse HOVER must not change the pick: Prickles' tile sits between King Dad and GO!, so gliding to the
     // button re-picked him (user report 2026-09-25). Hover only highlights; click/tap, keys and pad pick.
     onFocus(t, byMouse) { if (t.dataset.id && !byMouse) preview(t.dataset.id); },
+    onHide() { M.stagePaint = null; },
     acts: {
       pick(t) { preview(t.dataset.id); choose(); },
+      paint(t) {
+        if (chosen) return;
+        M.stagePaint = t.dataset.v; S.setSetting('paint', t.dataset.v);
+        el.querySelectorAll('.pnt').forEach(b => b.classList.toggle('sel', b === t));
+        stage.one(pn === 1 ? M.racer2 : M.racer); stage.cheer();
+      },
       go() { choose(); },
       back() { goBack(); },
     },
@@ -563,6 +585,7 @@ function showSelect(pn = 0) {
     el.querySelector('#sName').style.color = racerColor(id);
     el.querySelector('#sBlurb').textContent = r.blurb || '';
     el.querySelector('#sStats').innerHTML = statBars(r.stats || { speed: 3, accel: 3, turn: 3 });
+    el.querySelector('.pnt-std')?.style.setProperty('--rc', racerColor(id));
     el.querySelectorAll('.rtile').forEach(b => b.classList.toggle('sel', b.dataset.id === id));
     stage.one(id);
   }
@@ -787,7 +810,8 @@ function showPodium() {
     back() { cur.acts.ok(); },
   });
 }
-function showUnlock() {
+function showUnlock(kind = 'star') {
+  if (kind === 'paint') return showPaintUnlock();
   M.pendingUnlock = false; M.cup = null;
   const st = trackDef('star') || TRACKS.find(isSecret) || { id: 'star', name: 'Star Road', theme: 'star' };
   mount('unlock', `
@@ -801,6 +825,33 @@ function showUnlock() {
     onShow() { confetti.burst(200); confetti.rain(5); sfx('win'); sfx('super_star'); },
     onHide() { confetti.stop(); },
     acts: { ok() { M.mode = 'quick'; M.track = st.id; showMenu('quick'); } },
+    back() { cur.acts.ok(); },
+  });
+}
+
+/** C-T-R on every track: the gold + rainbow kart paints. The player's racer spins on the turntable, flipping
+ *  between the two; YAY goes to the racer screen, where the new swatches are. */
+function showPaintUnlock() {
+  M.pendingUnlock = false;
+  const id = M.racer || S.get().lastRacer || 'orion';
+  let flipT = 0, k = 0;
+  mount('unlock', `
+    <div class="unl unl-paint">
+      <h2 class="rainbow">GOLD KARTS<br>UNLOCKED!</h2>
+      <div class="ustage"><div class="stage-slot" id="unlStage"></div></div>
+      <div class="paints big"><span class="pnt pnt-gold sel"><i></i></span><span class="pnt pnt-rainbow"><i></i></span></div>
+      <p>${ctrSVG()} on every track! Pick a shiny kart on the racer screen.</p>
+      <button class="mbtn big" data-nav data-act="ok" data-key="ok">YAY! ▶</button>
+    </div>`, {
+    cls: 'bg-space', music: 'results',
+    onShow(el) { stage.mount(el.querySelector('#unlStage')); M.stagePaint = 'gold'; stage.one(id); stage.cheer(); confetti.burst(200); confetti.rain(5); sfx('ctr_fanfare'); setTimeout(() => sfx('super_star'), 900); },
+    tick(dt) {
+      if ((flipT += dt) < 2.4) return;
+      flipT = 0; k ^= 1; M.stagePaint = k ? 'rainbow' : 'gold'; stage.one(id);
+      cur?.el.querySelectorAll('.pnt').forEach((b, i) => b.classList.toggle('sel', i === k));
+    },
+    onHide() { confetti.stop(); M.stagePaint = null; },
+    acts: { ok() { M.players = 1; M.mode = 'quick'; M.racer = id; showSelect(); } },
     back() { cur.acts.ok(); },
   });
 }
@@ -839,7 +890,8 @@ function showResults() {
   const b = S.best(M.track);
   const online = !!api.G.net && ON;
   if (online && ON.spectating()) { title = 'RACE OVER!'; sub = 'What a race! You\'re in the next one!'; cls = 'p2'; }
-  const btns = online ? ON.resultButtons() : cup
+  const ctr = !online && M.ctr, unl = !online && !cup && M.pendingUnlock === 'paint';
+  const btns = online ? ON.resultButtons() : unl ? `<button class="mbtn big" data-nav data-act="unl" data-key="unl">WHAT'S THIS?! ▶</button>` : cup
     ? `<button class="mbtn big" data-nav data-act="cont" data-key="cont">CONTINUE ▶</button>`
     : `<button class="mbtn" data-nav data-act="retry" data-key="retry">${tt ? 'TRY AGAIN' : 'RACE AGAIN'}</button>
        <button class="mbtn big" data-nav data-act="next" data-key="next">NEXT TRACK ▶</button>
@@ -850,14 +902,16 @@ function showResults() {
         <div class="rduo">${H.map((k, j) => `<div class="rone rp${j + 1} pl${Math.min(4, hPlace(k))}"><b class="pbadge pb${j + 1}">P${j + 1}</b><img class="rport" src="${portraitURL(k.racerId, 128)}" alt=""><div class="rbadge"><b>${hPlace(k)}</b><sup>${ordSuffix(hPlace(k))}</sup></div></div>`).join('')}</div></div>`
       : `<div class="rhead"><img class="rport" src="${portraitURL(P.racerId, 128)}" alt=""><div><h2>${title}</h2><p>${esc(sub)}</p></div>
         ${tt ? '' : `<div class="rbadge"><b>${place}</b><sup>${ordSuffix(place)}</sup></div>`}</div>`}
+      ${ctr ? `<div class="rctr">${ctrSVG('big')}${ctr.fresh ? '<em>NEW!</em>' : ''}</div>` : ''}
       ${tt ? `<div class="ttbox"><div class="big">${clock(P.finishTime)}</div>
           <ol class="ttlaps">${(P.lapTimes || []).map((t, i) => `<li${t === Math.min(...P.lapTimes) ? ' class="best"' : ''}><small>LAP ${i + 1}</small>${clock(t)}</li>`).join('')}</ol>
           <div class="ttbest"><span>BEST LAP <b>${clock(b.lap)}</b>${rec.newLap ? ' <em>NEW!</em>' : ''}</span><span>BEST RACE <b>${clock(b.race)}</b>${rec.newRace ? ' <em>NEW!</em>' : ''}</span></div></div>`
       : `<ol class="rlist" id="resList"></ol>`}
       <div class="res-btns">${btns}</div>
     </div>`, {
-    cls: 'res', overlay: true, music: 'results', focus: online ? '[data-key="stay"]' : cup ? '[data-key="cont"]' : '[data-key="next"]',
+    cls: 'res' + (ctr ? ' res-ctr' : ''), overlay: true, music: 'results', focus: online ? '[data-key="stay"]' : unl ? '[data-key="unl"]' : cup ? '[data-key="cont"]' : '[data-key="next"]',
     acts: {
+      unl() { api.endRace(); showUnlock('paint'); },
       leave() { ON?.leave(); },
       stay() { sfx('star'); },               // online: the next race starts by itself — this is the safe default button
       retry() { if (M.mode === 'cup') return; launch(M.track); },
@@ -879,6 +933,7 @@ function showResults() {
   if (!tt) paintResultRows(el);
   const topPlace = mp ? Math.min(...H.map(hPlace)) : place;
   if (!tt && topPlace === 1) { confetti.burst(140); confetti.rain(3); }
+  if (ctr) { confetti.burst(160); confetti.rain(3); setTimeout(() => { if (cur?.name === 'results') sfx('ctr_fanfare'); }, 650); }
   if (tt && rec.newRace) { confetti.burst(120); vo('vo_new_record'); }
   else if (!tt) {
     const winner = race.order[0];
@@ -1017,7 +1072,7 @@ function onState(s, prev) {
   const G = api.G;
   if (s === 'countdown') {
     unmount(); confetti.stop();
-    M.resultsShown = false; M.record = null; resSig = '';
+    M.resultsShown = false; M.record = null; resSig = ''; M.ctr = null;
     clearTimeout(M.finishTimer);
     if (G.race && G.noItems) G.race.noItems = true;   // Time Trial: items.js may skip boxes (DESIGN.md)
     setupGhost();
@@ -1032,6 +1087,12 @@ function onState(s, prev) {
         M.rec.time = P.finishTime; S.saveGhost(tid, M.rec);
       }
       if (M.mode === 'tt' || G.race.karts.length === 1) api.hud.banner(M.record.newRace ? 'NEW RECORD!' : 'FINISH!', 2500);
+      // C-T-R: all three letters this race → the track's badge (save.js); every track → the kart paints unlock
+      const L = G.race.letters;
+      if (L?.all && L.kart === P) {
+        M.ctr = { fresh: !L.fake && S.markLetters(tid) };
+        if (!L.fake && !S.isUnlocked('paint') && TRACKS.every(t => S.lettersDone(t.id))) { S.unlock('paint'); M.pendingUnlock = 'paint'; }
+      }
     }
     clearTimeout(M.finishTimer);
     M.finishTimer = setTimeout(() => { if (!cur && (api.G.state === 'finished' || api.G.state === 'results')) showResults(); }, 2600);
@@ -1129,7 +1190,7 @@ async function debugScreen(name) {
     case 'online': openOnline(); break;
     case 'standings': fakeCup(+(api.Q.get('race') || 2)); showStandings(false); break;
     case 'podium': fakeCup(4); showPodium(); break;
-    case 'unlock': M.pendingUnlock = true; showUnlock(); break;
+    case 'unlock': { const kind = api.Q.get('unlock') || 'star'; M.pendingUnlock = kind === 'paint' ? 'paint' : true; showUnlock(kind); break; }
     case 'results': case 'pause': {
       M.mode = api.Q.get('mode') || 'quick';
       if (api.Q.get('players') === '2') { M.players = 2; M.racer2 = api.Q.get('racer2') || 'kingdad'; M.devs = [G.devs[0], G.devs[1]]; }

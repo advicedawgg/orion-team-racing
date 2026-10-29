@@ -71,6 +71,9 @@ export default {
     { at: 17.2, lat: 4.5, n: 6, curve: 1.5 },
   ],
   checkpointCount: 8,
+  // C-T-R letters (DESIGN.md "Track data format" → letters; order C, T, R; `route` = a branch id): C on the outside of
+  // the dune sweeper, T inside the Sandcastle Cave between its two pads, R on the inside of Crab Bend's apex.
+  letters: [{ at: 3.0, lat: -5 }, { at: 6.5, lat: 0, route: 'cave' }, { at: 17.0, lat: 6 }],
   // SANDCASTLE CAVE — the hidden shortcut across the inside of the Lighthouse Hairpin (DESIGN.md
   // "Branches (shortcuts)"). A gap in the inside fence on the shore straight's last bend leads to a
   // giant sandcastle; you burst through its crumbly sand door (scenery only) into a short, straight,

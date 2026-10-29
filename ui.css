@@ -38,6 +38,14 @@
   border-radius:1em;padding:.1em .5em .1em .2em;box-shadow:0 0 0 .1em rgba(255,255,255,.18)}
 .hx-stars img,.hx-stars span{width:1.3em;height:1.3em;display:inline-grid;place-items:center}
 .hx-stars b{min-width:1.1em;text-align:center;font-variant-numeric:tabular-nums}
+/* C-T-R letter slots (hud.js, letters.js letterSVG) */
+.hx-ctr{display:flex;align-items:center;gap:.08em;background:rgba(11,16,32,.45);border-radius:.7em;padding:.12em .3em;box-shadow:0 0 0 .1em rgba(255,255,255,.18)}
+.hx-ctr[hidden]{display:none}
+.hx-ctr i{width:1.15em;height:1.45em;display:grid;place-items:center}
+.hx-ctr svg{width:100%;height:100%;display:block}
+.hx-ctr i.on svg{filter:drop-shadow(0 0 .12em rgba(255,255,255,.7))}
+.hx-ctr i.bump{animation:hxBump .6s cubic-bezier(.2,2,.4,1)}
+.hx-ctr.all{background:linear-gradient(90deg,rgba(47,184,255,.55),rgba(126,217,87,.55),rgba(255,79,138,.55));box-shadow:0 0 0 .1em #fff,0 0 .9em #ffd23f}
 .hx-stars.bump img{animation:hxSpin .5s ease-out}
 .hx-stars.super{color:#fff;background:linear-gradient(90deg,#ff9d2f,#ffd23f);box-shadow:0 0 0 .1em #fff,0 0 .8em #ffd23f}
 .hx-stars.super b{color:#7a3b00;text-shadow:none}
@@ -406,6 +414,33 @@ img.mini{width:1.5em;height:1.5em;border-radius:50%}
 .ucard span{display:block;font-weight:900;font-size:clamp(16px,3.4vmin,34px);padding:.25em}
 @keyframes ucardIn{from{transform:perspective(600px) rotateY(180deg) scale(.4);opacity:0}}
 .unl p{font-size:clamp(13px,2.6vmin,24px);color:#dfe8ff}
+
+/* ---------- C-T-R letters (letters.js letterSVG / ctrSVG): badges, results, kart paints */
+.ctrrow{display:inline-flex;align-items:center;gap:.06em;vertical-align:middle}
+.ctrrow svg{height:1.4em;width:auto;display:block}
+.tcard .tctr{position:absolute;left:.35em;top:.35em;padding:.18em .35em;border-radius:.6em;font-size:clamp(13px,2.8vmin,26px);
+  background:linear-gradient(160deg,#fff3b0,#ffc21f 55%,#c98a00);box-shadow:0 0 0 .12em #fff,0 .15em .5em rgba(0,0,0,.45);animation:logoBob 2.2s ease-in-out infinite}
+.tcard .tctr .ctrrow svg{height:1.25em}
+.rctr{display:flex;justify-content:center;align-items:center;gap:.5em;margin:.8vmin 0 .4vmin}
+.rctr .ctrrow{gap:.12em}
+.rctr .ctrrow svg{height:clamp(38px,9.5vmin,96px);filter:drop-shadow(0 0 .3em rgba(255,255,255,.75));animation:ctrIn .7s cubic-bezier(.2,1.8,.4,1) both}
+.rctr .ctrrow svg:nth-child(2){animation-delay:.15s}.rctr .ctrrow svg:nth-child(3){animation-delay:.3s}
+.rctr em{font-style:normal;font-weight:900;font-size:clamp(16px,3.6vmin,36px);color:#1b3a10;background:linear-gradient(180deg,#9dff7a,#3fcf4f);padding:.1em .45em;border-radius:.5em;
+  box-shadow:0 0 0 .1em #eaffd8;animation:ctrIn .6s .55s cubic-bezier(.2,1.8,.4,1) both}
+@keyframes ctrIn{from{transform:scale(0) rotate(-25deg);opacity:0}}
+.paints{display:flex;gap:.6em;margin-top:.7em;font-size:clamp(12px,2.2vmin,20px)}
+.pnt{pointer-events:auto;cursor:pointer;width:2.5em;height:2.5em;border-radius:50%;border:.16em solid #3d4d8f;background:#1a2350;padding:.2em;font:inherit;
+  transition:transform .15s cubic-bezier(.2,1.8,.4,1),border-color .12s}
+.pnt i{display:block;width:100%;height:100%;border-radius:50%}
+.pnt-std i{background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.55),transparent 45%),var(--rc,#2f6fdc)}
+.pnt-gold i{background:radial-gradient(circle at 35% 30%,#fff,transparent 42%),linear-gradient(160deg,#fff0a8,#ffc21f 45%,#a87000)}
+.pnt-rainbow i{background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.7),transparent 42%),conic-gradient(#ff3b3b,#ff9a1f,#ffe23a,#47d65a,#2f9bff,#a45cff,#ff3b3b)}
+.pnt.sel{border-color:#fff;box-shadow:0 0 0 .1em #ffd23f}
+.pnt.focus{transform:scale(1.18);border-color:#ffd23f;box-shadow:0 0 0 .12em #ffd23f,0 0 1em rgba(255,210,63,.6);z-index:2}
+.paints.big{font-size:clamp(16px,3.4vmin,34px);justify-content:center}
+.paints.big .pnt{pointer-events:none}
+.ustage{width:min(70vw,calc(36vh * 1.6));height:min(36vh,44vw)}
+.ustage .stage-slot{width:100%;height:100%}
 
 /* ---------- pause + settings + controls panels */
 .scr-pause{display:grid;place-items:center}

@@ -7,6 +7,9 @@
 // URL debug params (DESIGN.md): track, racer, skip, cam=x,y,z,tx,ty,tz, t (fast-forward s with
 // AI driving), ai=1 (AI drives the player), hud=0, diff=easy|medium|hard, slot (player grid slot
 // 0..7), laps, seed, touch=1, hd=1, shadows=0, fx=0, q=low|high|auto (quality).   window.__OTR exposes state for tests.
+// C-T-R letters (DESIGN.md "Modes and UI"): G.letters (menu.js: 1P Quick Race / Time Trial) puts them in the race;
+// letters=1|0 forces them on/off, ctrgot=1 starts with all three collected (screenshots, never saved), paint=gold|rainbow
+// paints the player's kart (all URL-only).
 // Branches (DESIGN.md "Branches (shortcuts)"): branch=<id> makes every brain (the AI and the ai=1 / t= autopilot)
 // take that branch every lap ('-' = never), fixture=1 swaps Bubbly Beach for the gate's branch fixture
 // (tools/fixtures/branches.js — dev server only, it isn't deployed).
@@ -34,6 +37,8 @@ import { createFx } from './fx.js';
 import { createHud } from './hud.js';
 import { createItemViews } from './itemviews.js';
 import { shortcutsSeen, markShortcut } from './save.js';
+import { attachLetters, LETTER_COLORS } from './letters.js';
+import { createLetterViews } from './letterviews.js';
 
 const $ = id => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
@@ -124,6 +129,7 @@ const chase2 = new ChaseCam(camera2);
 const views = [{ cam: camera, chase, hud }, { cam: camera2, chase: chase2, hud: hud2 }];
 const viewOf = k => views[k && k.pn > 0 ? k.pn : 0];
 const hudOf = k => viewOf(k).hud;
+const LV = createLetterViews({ scene });   // C-T-R letters (letterviews.js; state in letters.js)
 const IV = createItemViews({ scene, fx, audio, chase, chaseFor: k => viewOf(k).chase, visuals: () => G.visuals });   // items (itemviews.js)
 if (Q.get('cam')) chase.pin(Q.get('cam').split(',').map(Number));
 const stateFns = new Set();
@@ -133,6 +139,7 @@ const G = {
   slot: qn('slot', 6), laps: Q.has('laps') ? qn('laps', 3) : undefined, seed: qn('seed', 1),
   acc: 0, timeScale: 1, paused: false, override: null, pendA: false, pendB: false, t: 0, frames: 0,
   hd: Q.get('hd') === '1',
+  letters: false, paint: Q.get('paint') || 'std',   // menu.js sets both per race (C-T-R letters / the unlocked kart paint)
   quality: 'auto', qLevel: 'high', autoLow: false,
   // 2P (menu.js sets these from the join screen; URL players=2 for tests)
   players: Q.get('players') === '2' ? 2 : 1, mp: false, racerId2: Q.get('racer2') || null,
@@ -214,9 +221,11 @@ function fieldOf(others, n) {
 }
 function buildVisuals(ids) {
   for (const v of G.visuals) { scene.remove(v.root); try { R.disposeTree?.(v.root); } catch { /* not ours to fix */ } }
-  G.visuals = ids.map(id => {
+  G.visuals = ids.map((id, i) => {
     let built;
-    try { built = R.buildRacer(id, { hd: G.hd }); } catch (e) { console.warn('[otr] buildRacer failed for', id, e); built = null; }
+    // the unlocked kart paint: the player's kart only, offline 1P (2P / online look exactly as before)
+    const paint = i === G.slotIndex && !G.mp && !G.net && G.paint !== 'std' ? G.paint : null;
+    try { built = R.buildRacer(id, { hd: G.hd, paint }); } catch (e) { console.warn('[otr] buildRacer failed for', id, e); built = null; }
     if (!built) built = { root: new THREE.Group(), rig: null };
     // Only the player's kart casts a real shadow (draw calls are the Deck's budget: a racer is
     // ~12 meshes, and the shadow pass would draw every one again). Everyone gets a blob shadow.
@@ -286,6 +295,13 @@ async function startRace() {
   G.slotIndex = slot;
   buildVisuals(ids);
   IV.attach(G.race);                         // items: before compileAsync so item shaders are warmed too
+  // C-T-R letters: a solo human only (1P Quick Race / Time Trial, menu.js G.letters) — never 2P, online or the cup
+  const wantL = Q.has('letters') ? Q.get('letters') === '1' : !!G.letters;
+  if (wantL && !two && !G.net) {
+    const L = attachLetters(G.race);
+    if (Q.get('ctrgot') === '1') { L.fake = true; for (let i = 0; i < 3; i++) L.collect(i, true); }   // screenshots: never saved
+  }
+  LV.attach(G.race);
   G.net?.setup(G.race);                      // online: remote karts, mirrored items, synced clock (online.js)
   for (const [i, k] of G.race.karts.entries()) snapVisual(i, k);
   chase.snap(G.race.player);
@@ -326,7 +342,7 @@ async function startRace() {
 /** Tear the race down (menus: quit / back to the menu). The idle track orbit renders again. */
 function endRace() {
   for (const v of G.visuals) { scene.remove(v.root); try { R.disposeTree?.(v.root); } catch { /* shared mats */ } }
-  G.visuals = []; G.race = null; G.paused = false; IV.detach();
+  G.visuals = []; G.race = null; G.paused = false; IV.detach(); LV.detach();
   blob.count = 0; for (const c of clouds) c.visible = false;
   for (const h of driftLoops.values()) h.stop(0.05); driftLoops.clear(); for (const h of offLoops.values()) h.stop(0.05); offLoops.clear();
   audio.enginesOff?.(); audio.pause?.(false);
@@ -379,6 +395,7 @@ function handleEvents(events) {
       else if (e.type === 'finish' && e.kart.isPlayer && humansDone(race)) setState('finished');
       else if (e.type === 'race_done') showResults();
       else if (e.type === 'kart' && e.e === 'shortcut' && e.kart.isPlayer) foundShortcut(e.kart, e.v, true);
+      else if (e.type === 'letter') gotLetter(e, true);
     }
     return;
   }
@@ -402,6 +419,7 @@ function handleEvents(events) {
         break;
       case 'race_done': showResults(); break;
       case 'stall': if (me) kh.banner('Too early!', 900); break;
+      case 'letter': gotLetter(e, false); break;
       case 'kart': if (near) kartEvent(k, e.e, e.v, me, at); break;
     }
   }
@@ -442,6 +460,15 @@ function foundShortcut(k, b, quiet) {
   const fresh = markShortcut(G.track.id, br.id);
   if (!G.race.branchSeen.has(br.id)) { G.race.branchSeen.add(br.id); hud.refreshMap(); hud2.refreshMap(); }
   if (fresh && !quiet) { hudOf(k).event('SHORTCUT!', { cls: 'good', ms: 2200, icon: 'assets/ui/star.png' }); audio.play('lap'); audio.bark?.(k.racerId, 'boost'); }
+}
+/** the player touched a C-T-R letter (letters.js): chime + sparkle + the HUD slot lights (hud.js reads race.letters) */
+function gotLetter(e, quiet) {
+  const L = G.race?.letters, ent = L?.list.find(x => x.i === e.i);
+  if (!L || !ent || quiet) return;
+  audio.play('letter', { rate: 1 + (e.n - 1) * 0.12 });       // each one a step higher; the third the brightest
+  fx?.burst('sparkle', { x: ent.x, y: ent.cy, z: ent.z }, { n: 26 });
+  fx?.burst('turbo', { x: ent.x, y: ent.cy, z: ent.z }, { n: 18, color: LETTER_COLORS[e.i] });
+  if (e.n >= 3) { hud.event('ALL THREE!', { cls: 'good', ms: 2400 }); audio.bark?.(e.kart.racerId, 'boost'); }
 }
 function showResults() {
   const rows = G.race.results().map(r => ({ place: r.place, name: PNAME(r.racerId), time: r.time, estimated: r.estimated, isPlayer: r.kart.isPlayer, racerId: r.racerId }));
@@ -591,7 +618,7 @@ function render(dt) {
   sun.position.copy(sun.target.position).addScaledVector(G.sunDir, 120);
   if (G.tm.sky) G.tm.sky.position.copy(camera.position);
   G.tm.update(dt, G.t);
-  if (!G.paused) IV.update(dt, alpha);
+  if (!G.paused) { IV.update(dt, alpha); LV.update(dt); }
   if (fx && !G.paused) {
     for (const [i, k] of race.karts.entries()) fx.kart(k, G.visuals[i].rig, dt, nearCam(k));
     fx.update(dt, camera);
@@ -641,6 +668,7 @@ window.__OTR = {
   get ready() { return G.ready; }, get state() { return G.state; }, G, setState, onState,
   get race() { return G.race; }, get track() { return G.track; }, get player() { return G.race?.player; },
   get humans() { return G.race?.humans || []; },
+  get letters() { return G.race?.letters || null; }, LV,
   THREE, scene, camera, renderer, chase, fx, audio, T, DT, In, camera2, chase2, hud2, views,
   /** Drive the player (2P: pn 1 = player 2) with a fixed control object ({steer,throttle,brake,hopA,hopB}) or null to hand back. */
   override(c, pn = 0) { if (pn === 1) G.override2 = c; else G.override = c; },

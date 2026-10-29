@@ -49,7 +49,14 @@ const DARK = 0x2a2a32, TYRE = 0x26262c, CHROME = 0xc7cedb, ENGINE = 0x3a3f52;
 /* ======================================================================= build */
 const hasDOM = typeof document !== 'undefined';
 
-export function buildRacer(id, { hd = false } = {}) {
+// Kart paints (DESIGN.md "Modes and UI" → C-T-R letters): unlocked when every track's letters are done. 'std' =
+// the racer's own colours. Only the kart body changes — the driver, the face and the racer's colour (minimap
+// dots, menus) stay theirs. Gold uses MAT.gold on the body; rainbow gives each body panel its own colour.
+export const PAINTS = ['std', 'gold', 'rainbow'];
+const GOLD = { main: 0xffc21f, acc: 0xfff0a8 };
+const RAINBOW = [0xff3b3b, 0xff9a1f, 0xffe23a, 0x47d65a, 0x2f9bff, 0xa45cff];
+
+export function buildRacer(id, { hd = false, paint = null } = {}) {
   const def = getRacer(id), look = LOOK[def.id];
   const root = new THREE.Group(); root.name = 'racer:' + def.id;
   const offset = new THREE.Group(); offset.scale.setScalar(look.size || 1); root.add(offset);
@@ -83,6 +90,8 @@ export function buildRacer(id, { hd = false } = {}) {
   c.groups = { kart, driver, torso, head, steerWheel, base };
 
   look.driver(c);                 // character first: it may change the seat, exhausts, shoulders
+  c.paint = paint === 'gold' || paint === 'rainbow' ? paint : null;
+  if (c.paint === 'gold') c.col = { ...c.col, kart: GOLD.main, accent: GOLD.acc };   // the racer's own kart bits go gold too
   buildKart(c);
   look.kart?.(c);
 
@@ -148,21 +157,23 @@ function wheelGeo(m, W, s, c, x = 0) {
 
 /* ------------------------------------------------------------------ the kart */
 function buildKart(c) {
-  const K = c.kart, col = c.col, main = c.look.kartMain ?? col.kart, acc = c.look.kartAccent ?? col.accent;
+  const gold = c.paint === 'gold', rb = c.paint === 'rainbow';
+  const K = c.kart, col = c.col, main = gold ? GOLD.main : c.look.kartMain ?? col.kart, acc = gold ? GOLD.acc : c.look.kartAccent ?? col.accent;
+  const PM = gold ? MAT.gold : MAT.paint, pc = (i, dflt) => rb ? RAINBOW[i] : dflt;   // paint material, panel colour
   // tub + nose
-  K.add(MAT.paint, rbox(.62, .14, 1.44, .3), main, [0, .2, -.04]);
-  K.add(MAT.paint, rbox(.66, .24, 1.0, .35), main, [0, .36, -.16]);
-  K.add(MAT.paint, taper(rbox(.58, .22, .64, .35), 1, .72, 1, .7), main, [0, .34, .5]);
+  K.add(PM, rbox(.62, .14, 1.44, .3), pc(0, main), [0, .2, -.04]);
+  K.add(PM, rbox(.66, .24, 1.0, .35), pc(1, main), [0, .36, -.16]);
+  K.add(PM, taper(rbox(.58, .22, .64, .35), 1, .72, 1, .7), pc(2, main), [0, .34, .5]);
   // cowl / dashboard behind the nose
-  K.add(MAT.paint, rbox(.56, .18, .32, .45), main, [0, .5, .3], [.35, 0, 0]);
+  K.add(PM, rbox(.56, .18, .32, .45), pc(3, main), [0, .5, .3], [.35, 0, 0]);
   // side pods between the wheels, with a stripe
   for (const s of [1, -1]) {
-    K.add(MAT.paint, rbox(.16, .2, .62, .4), acc, [s * .39, .3, -.02]);
+    K.add(PM, rbox(.16, .2, .62, .4), pc(4, acc), [s * .39, .3, -.02]);
     K.add(MAT.matte, rbox(.02, .06, .5, 0), c.look.stripe ?? col.trim, [s * .475, .33, -.02]);
   }
   // bumpers
-  K.add(MAT.paint, rbox(.7, .1, .1, .5), acc, [0, .25, .85]);
-  K.add(MAT.paint, rbox(.66, .09, .09, .5), acc, [0, .27, -.95]);
+  K.add(PM, rbox(.7, .1, .1, .5), pc(5, acc), [0, .25, .85]);
+  K.add(PM, rbox(.66, .09, .09, .5), pc(5, acc), [0, .27, -.95]);
   // steering column
   K.add(MAT.matte, new THREE.CylinderGeometry(.025, .025, .24, 6), DARK, [0, .58, .25], [WHEEL.tilt + Math.PI / 2 + .1, 0, 0]);
   // steering wheel (on its own spinner)
@@ -176,8 +187,8 @@ function buildKart(c) {
     K.add(MAT.matte, rbox(.48, .36, .12, .45), seat, [0, .6, -.44], [-.14, 0, 0]);
   }
   // engine + pipes
-  K.add(MAT.paint, rbox(.6, .18, .4, .35), main, [0, .38, -.72]);                     // rear deck
-  K.add(MAT.paint, rbox(.54, .13, .05, .3), acc, [0, .37, -.92]);                      // tail panel
+  K.add(PM, rbox(.6, .18, .4, .35), pc(3, main), [0, .38, -.72]);                     // rear deck
+  K.add(PM, rbox(.54, .13, .05, .3), pc(4, acc), [0, .37, -.92]);                      // tail panel
   for (const s of [1, -1]) K.add(MAT.glow, rbox(.1, .06, .02, .3), 0xff3b3b, [s * .17, .39, -.95]);
   K.add(MAT.matte, rbox(.36, .16, .24, .3), ENGINE, [0, .53, -.72]);
   for (const s of [1, -1]) K.add(MAT.paint, rbox(.12, .08, .2, .3), CHROME, [s * .1, .63, -.7]);
