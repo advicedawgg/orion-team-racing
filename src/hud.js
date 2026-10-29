@@ -129,7 +129,7 @@ export function createHud(root, { pn = 0 } = {}) {
   }
 
   /* ---------------- minimap */
-  function buildMap(track) {
+  function buildMap(track, seen = null) {
     const c = el.map, W = c.width, H = c.height, pad = 16;
     const n = track.n, X = track.X, Z = track.Z;
     let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
@@ -142,8 +142,15 @@ export function createHud(root, { pn = 0 } = {}) {
     g.lineJoin = g.lineCap = 'round';
     const path = () => { g.beginPath(); for (let i = 0; i <= n; i += 2) { const [a, b] = P(X[i % n], Z[i % n]); i ? g.lineTo(a, b) : g.moveTo(a, b); } g.closePath(); };
     const gapAt = i => track.FLAG && (track.FLAG[i] & 1);
+    // branches (shortcuts): drawn only once this player has driven them (save.js shortcuts, per track) — or
+    // when the track data says hidden: false. race.branchSeen (a Set of ids) comes from main.js.
+    const brs = (track.branches || []).filter(b => !b.hidden || seen?.has(b.id));
+    const bpath = b => { g.beginPath(); for (let i = 0; i < b.n; i += 2) { const [a, c] = P(b.X[i], b.Z[i]); i ? g.lineTo(a, c) : g.moveTo(a, c); } const [a, c] = P(b.X[b.n - 1], b.Z[b.n - 1]); g.lineTo(a, c); };
     path(); g.strokeStyle = 'rgba(8,12,30,.75)'; g.lineWidth = 15; g.stroke();
     path(); g.strokeStyle = '#fff6e0'; g.lineWidth = 8; g.stroke();
+    // on top, thinner and golden, so a short cut inside a tight bend still reads at minimap scale
+    for (const b of brs) { bpath(b); g.strokeStyle = 'rgba(8,12,30,.85)'; g.lineWidth = 9; g.stroke(); }
+    for (const b of brs) { bpath(b); g.strokeStyle = '#ffd23f'; g.lineWidth = 5; g.stroke(); }
     // gaps (jumps over water/void) in blue
     g.strokeStyle = '#4ec5f1'; g.lineWidth = 8;
     for (let i = 0; i < n; i++) if (gapAt(i)) { const [a, b] = P(X[i], Z[i]); const [c2, d2] = P(X[(i + 1) % n], Z[(i + 1) % n]); g.beginPath(); g.moveTo(a, b); g.lineTo(c2, d2); g.stroke(); }
@@ -194,7 +201,7 @@ export function createHud(root, { pn = 0 } = {}) {
     root.classList.toggle('solo', race.karts.length === 1);
     root.classList.toggle('mp', (race.humans?.length || 1) > 1);
     buildRanks(race);
-    try { buildMap(race.track); el.map.hidden = false; } catch (e) { console.warn('[hud] minimap', e); el.map.hidden = true; mapCache = null; }
+    try { buildMap(race.track, race.branchSeen); el.map.hidden = false; } catch (e) { console.warn('[hud] minimap', e); el.map.hidden = true; mapCache = null; }
     if (!itemTried && createItemHud) { itemTried = true; try { itemHud = createItemHud(el.item); } catch (e) { console.warn('[hud] createItemHud failed', e); itemHud = null; } }
     // item events ({type:'item', e, kart, ...} from items.js) — collected every sim step so a
     // render frame that ran several steps doesn't drop any
@@ -228,7 +235,7 @@ export function createHud(root, { pn = 0 } = {}) {
   function wrongWay(k, race, dt) {
     let bad = false;
     if (!k.finished && !k.air && !(k.respawnT > 0) && race.phase === 'race' && Math.abs(k.speed) > 2) {
-      const f = race.track.frameAt(k.s);
+      const f = k.route && race.track.kartFrame ? race.track.kartFrame(k) : race.track.frameAt(k.s);   // branches: the kart's own road
       let d = (k.speed >= 0 ? k.yaw : k.yaw + Math.PI) - f.yaw;
       d = Math.atan2(Math.sin(d), Math.cos(d));
       bad = Math.abs(d) > (wrongT > 0 ? 1.6 : 2.0);
@@ -314,6 +321,8 @@ export function createHud(root, { pn = 0 } = {}) {
       const t = [...warns.values()].pop();
       if (t) { el.warn.textContent = t; el.warn.className = 'hx-warn on'; } else el.warn.className = 'hx-warn';
     },
+    /** branches: redraw the minimap (a shortcut was just discovered — main.js) */
+    refreshMap() { if (raceRef) try { buildMap(raceRef.track, raceRef.branchSeen); } catch (e) { console.warn('[hud] minimap', e); } },
     warnClear() { warns.clear(); el.warn.className = 'hx-warn'; el.wrong.classList.remove('on'); last.wrong = false; },
     pop(text, cls = '') {
       el.pop.textContent = text; el.pop.className = 'hx-pop';

@@ -12,7 +12,7 @@
 // See DESIGN.md "Online" for the model: each human simulates their OWN kart locally with the exact
 // single-player physics and reports it; the server runs everything else (bots, items, laps, results).
 
-export const PROTOCOL_VERSION = 2;   // 2: kart flag 64 = super (10-star) shield
+export const PROTOCOL_VERSION = 3;   // 2: kart flag 64 = super (10-star) shield. 3: kart route (branches) in flag bits 8–12, state si is the combined route sample index
 
 /** Production game server (HTTP/WS through the Cloudflare tunnel; WebRTC UDP straight to the box). */
 export const PROD_SERVER = 'https://orion3-net.advicedawg.com';
@@ -142,7 +142,8 @@ const INF16 = 65535;
 // server/selftest.js).
 function wKartPhys(w, k) {
   const drift = k.drift > 0 ? 1 : k.drift < 0 ? 2 : 0;
-  w.u16((k.air ? 1 : 0) | (k.hop ? 2 : 0) | (k.onRoad ? 4 : 0) | (k.frozen ? 8 : 0) | (k.overheat ? 16 : 0) | (k.inRed ? 32 : 0) | (drift << 6));
+  // bits 8–12: route (0 = main road, b + 1 = track.branches[b]); s stays the main-equivalent s, lat is on that route
+  w.u16((k.air ? 1 : 0) | (k.hop ? 2 : 0) | (k.onRoad ? 4 : 0) | (k.frozen ? 8 : 0) | (k.overheat ? 16 : 0) | (k.inRed ? 32 : 0) | (drift << 6) | (((k.route | 0) & 31) << 8));
   w.f32(k.pos.x); w.f32(k.pos.y); w.f32(k.pos.z);
   w.i16(k.yaw * 10000); w.i16(k.speed * 100); w.i16(k.vy * 100);
   w.u8(k.driftAngle * 200); w.u8(k.charge * 255); w.u8(Math.min(3.18, k.boostT) * 80);
@@ -158,7 +159,7 @@ function wKartPhys(w, k) {
 function rKartPhys(r, o) {
   const f = r.u16();
   o.air = !!(f & 1); o.hop = !!(f & 2); o.onRoad = !!(f & 4); o.frozen = !!(f & 8); o.overheat = !!(f & 16); o.inRed = !!(f & 32);
-  const d = (f >> 6) & 3; o.drift = d === 1 ? 1 : d === 2 ? -1 : 0;
+  const d = (f >> 6) & 3; o.drift = d === 1 ? 1 : d === 2 ? -1 : 0; o.route = (f >> 8) & 31;
   o.x = r.f32(); o.y = r.f32(); o.z = r.f32();
   o.yaw = r.i16() / 10000; o.speed = r.i16() / 100; o.vy = r.i16() / 100;
   o.driftAngle = r.u8() / 200; o.charge = r.u8() / 255; o.boostT = r.u8() / 80;

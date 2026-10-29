@@ -191,7 +191,10 @@ export class NetRace {
     k.nrm.x = nx; k.nrm.z = nz; k.nrm.y = Math.sqrt(Math.max(0.1, 1 - nx * nx - nz * nz));
     k.ground = d.dg == null ? -Infinity : k.pos.y - lerp(a.dg ?? d.dg, b.dg ?? d.dg, t);
     k.s = lerp(a.s, b.s, Math.abs(b.s - a.s) > 100 ? (t < 0.5 ? 0 : 1) : t); k.lat = lerp(a.lat, b.lat, t);
-    const tr = this.race.track; k.si = tr.idx(k.s);
+    const tr = this.race.track;
+    k.route = tr.branches?.length ? d.route | 0 : 0;   // branches: the route from the snapshot, rs/si rebuilt from s
+    if (k.route && tr.routes[k.route]) { const br = tr.routes[k.route]; k.rs = br.uOfMainS(k.s); k.si = br.off + br.idx(k.rs); }
+    else { k.route = 0; k.rs = k.s; k.si = tr.idx(k.s); }
     this.auth(k, d);
   }
   /** server-owned fields of a kart (items, stars, laps, place …) */

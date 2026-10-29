@@ -7,6 +7,9 @@
 // URL debug params (DESIGN.md): track, racer, skip, cam=x,y,z,tx,ty,tz, t (fast-forward s with
 // AI driving), ai=1 (AI drives the player), hud=0, diff=easy|medium|hard, slot (player grid slot
 // 0..7), laps, seed, touch=1, hd=1, shadows=0, fx=0, q=low|high|auto (quality).   window.__OTR exposes state for tests.
+// Branches (DESIGN.md "Branches (shortcuts)"): branch=<id> makes every brain (the AI and the ai=1 / t= autopilot)
+// take that branch every lap ('-' = never), fixture=1 swaps Bubbly Beach for the gate's branch fixture
+// (tools/fixtures/branches.js — dev server only, it isn't deployed).
 //
 // 2P split screen (multiplayer agent; DESIGN.md "Two players"): G.players = 2 races two humans
 // (race.humans) in one shared scene drawn twice — top half P1, bottom half P2 (setViewport +
@@ -30,6 +33,7 @@ import { ChaseCam } from './camera.js';
 import { createFx } from './fx.js';
 import { createHud } from './hud.js';
 import { createItemViews } from './itemviews.js';
+import { shortcutsSeen, markShortcut } from './save.js';
 
 const $ = id => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
@@ -162,7 +166,10 @@ function disposeGroup(root) {
 }
 async function loadTrack(id) {
   if (G.tm) { scene.remove(G.tm.group); disposeGroup(G.tm.group); }
-  const def = trackById(id);
+  let def = trackById(id);
+  if (Q.get('fixture') === '1' && def.id === 'beach') {   // test fixture: Bubbly Beach + a branch (never shipped)
+    try { def = (await import('../tools/fixtures/branches.js')).fixtureDef(); } catch (e) { console.warn('[otr] fixture=1: no fixture here', e); }
+  }
   G.track = buildTrack(def);
   G.tm = await buildTrackMesh(G.track, { scene });
   await texturesReady(5000);   // the loading screen is up anyway: don't let a big jpg land (and upload) mid-race
@@ -259,6 +266,8 @@ async function startRace() {
     players: two ? [{ index: slot, easyBoost: hp(0), assist: hp(0) }, { index: slot2, easyBoost: hp(1), assist: hp(1) }] : null,
     difficulty: G.difficulty, laps: G.laps, seed: G.seed, easyBoost: G.easyBoost });
   if (Q.get('ai') === '1') G.race.autoPlayer = true;
+  if (Q.has('branch')) G.race.forceBranch = Q.get('branch');      // branches: test param (URL only)
+  G.race.branchSeen = G.track.branches?.length ? shortcutsSeen(G.track.id) : new Set();
   In.settings.autoAccel = Q.has('auto') ? Q.get('auto') === '1' : !!G.autoAccel;   // G.autoAccel/easyBoost: menu.js settings
   const reSize = splitView !== two;
   G.mp = splitView = two;
@@ -369,6 +378,7 @@ function handleEvents(events) {
       if (e.type === 'go' && G.state === 'countdown') setState('race');
       else if (e.type === 'finish' && e.kart.isPlayer && humansDone(race)) setState('finished');
       else if (e.type === 'race_done') showResults();
+      else if (e.type === 'kart' && e.e === 'shortcut' && e.kart.isPlayer) foundShortcut(e.kart, e.v, true);
     }
     return;
   }
@@ -421,7 +431,17 @@ function kartEvent(k, name, v, me, at) {
     case 'respawned': fx?.burst('poof', k.pos, { n: 14 }); fx?.burst('sparkle', k.pos, { n: 10 }); break;
     case 'hit': audio.play(v === 'flip' ? 'flip' : 'spinout', { vol, at }); break;
     case 'shield_pop': audio.play('shield_pop', { vol, at }); break;
+    case 'shortcut': if (me) foundShortcut(k, v, false); break;
   }
+}
+/** a human came out of the far end of a branch: remember it (save.js, per track); the first time, the
+ *  minimap starts drawing it and a big SHORTCUT! callout pops (kid-readable: a star icon, no reading needed) */
+function foundShortcut(k, b, quiet) {
+  const br = G.track.branches?.[b];
+  if (!br || !G.race) return;
+  const fresh = markShortcut(G.track.id, br.id);
+  if (!G.race.branchSeen.has(br.id)) { G.race.branchSeen.add(br.id); hud.refreshMap(); hud2.refreshMap(); }
+  if (fresh && !quiet) { hudOf(k).event('SHORTCUT!', { cls: 'good', ms: 2200, icon: 'assets/ui/star.png' }); audio.play('lap'); audio.bark?.(k.racerId, 'boost'); }
 }
 function showResults() {
   const rows = G.race.results().map(r => ({ place: r.place, name: PNAME(r.racerId), time: r.time, estimated: r.estimated, isPlayer: r.kart.isPlayer, racerId: r.racerId }));
@@ -449,7 +469,7 @@ function drawKarts(alpha, dt) {
       const ride = T.RESPAWN_T - 0.3;                         // seconds of cloud ride at the end
       if (k.respawnT > ride) root.visible = false;
       else {
-        const p = G.track.pointAt(k.respawnAt, 0), u = k.respawnT / ride;   // 1 → 0
+        const p = G.track.csPoint(k.respawnAt, 0), u = k.respawnT / ride;   // 1 → 0 (combined: a branch spot too)
         x = p.x; z = p.z; y = p.y + T.RESPAWN_DROP + u * u * 9; yaw = p.yaw;
         cloud.visible = true; cloud.position.set(x, y + 2.2, z); cloud.rotation.y = G.t * 0.8;
       }

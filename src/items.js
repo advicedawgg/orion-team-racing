@@ -77,10 +77,13 @@ const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const approach = (v, t, r) => v < t ? Math.min(t, v + r) : Math.max(t, v - r);
 const h2 = (a, b) => (a.x - b.x) ** 2 + (a.z - b.z) ** 2;
 
-/** Interpolated point on the track at (s, lat) — pointAt() snaps to 1 m samples, projectiles need smooth. */
+/** Interpolated point on the track at (s, lat) — pointAt() snaps to 1 m samples, projectiles need smooth.
+ *  `tr` may be any route (the track = the main loop, or a branch from track.routes: open, clamped). */
 export function trackPoint(tr, s, lat, o = {}) {
   s = tr.wrapS(s);
-  const f = s / tr.ds, i0 = Math.floor(f) % tr.n, i1 = (i0 + 1) % tr.n, t = f - Math.floor(f);
+  const f = s / tr.ds;
+  let i0 = Math.floor(f) % tr.n, i1 = (i0 + 1) % tr.n, t = f - Math.floor(f);
+  if (tr.closed === false) { i0 = Math.min(Math.floor(f), tr.n - 2); i1 = i0 + 1; t = f - i0; }
   let tx = tr.TX[i0] + (tr.TX[i1] - tr.TX[i0]) * t, tz = tr.TZ[i0] + (tr.TZ[i1] - tr.TZ[i0]) * t;
   const h = Math.hypot(tx, tz) || 1; tx /= h; tz /= h;
   const lx = tz, lz = -tx;
@@ -110,8 +113,9 @@ export function createItems(race, { seed = 1 } = {}) {
     hitKart: (k, kind, by, item) => hitKart(W, k, kind, by, item),
     nextId: 1,
   };
-  for (const row of tr.itemRows) for (const sl of row.slots) W.boxes.push({ x: sl.x, y: sl.y, z: sl.z, s: row.s, lat: sl.lat, alive: true, respawnT: 0, bornT: -9 });
-  for (const row of tr.starRows) for (const p of row.points) W.stars.push({ x: p.x, y: p.y, z: p.z, s: p.s, alive: true, respawnT: 0, bornT: -9 });
+  // every route's rows (main first, then each branch: the snapshot's alive bits follow this order on both ends)
+  for (const row of tr.allItemRows || tr.itemRows) for (const sl of row.slots) { const b = { x: sl.x, y: sl.y, z: sl.z, s: row.s, lat: sl.lat, alive: true, respawnT: 0, bornT: -9 }; if (row.route) b.route = row.route; W.boxes.push(b); }
+  for (const row of tr.allStarRows || tr.starRows) for (const p of row.points) { const st = { x: p.x, y: p.y, z: p.z, s: p.s, alive: true, respawnT: 0, bornT: -9 }; if (row.route) st.route = row.route; W.stars.push(st); }
   for (const k of race.karts) {
     k.item = null; k.itemCount = 0; k.roulT = 0; k.roulDur = IT.ROULETTE; k.tnt = null; k.lockedBy = 0; k.lockDist = Infinity;
     k.bomb = null; k.shieldArmed = false; k._iPrev = false; k.stars = k.stars || 0;
@@ -268,13 +272,15 @@ function fireShield(W, k, back) {
 
 function spawnProj(W, kind, k, ahead, v) {
   const tr = W.track;
-  const s = tr.wrapS(k.s + ahead);
-  const hw = tr.HW[tr.idx(s)];
+  const route = k.route | 0, rt = route ? tr.routes[route] : tr;     // a kart on a branch fires from the branch
+  const s = rt.wrapS((route ? k.rs : k.s) + ahead);
+  const hw = rt.HW[rt.idx(s)];
   const lat = clamp(k.lat, -hw + 0.8, hw - 0.8);
   const p = { id: W.nextId++, kind, owner: k, alive: true, s, lat, v, t: 0, life: 5, r: 1.3, yOff: 0.6, travelled: 0, range: Infinity,
     target: null, homing: 0, blast: 0, super: false, x: 0, y: 0, z: 0, px: 0, py: 0, pz: 0, yaw: 0, dy: 0, hitSet: null };
-  trackPoint(tr, s, lat, p);
+  trackPoint(rt, s, lat, p);
   p.si = p.i;
+  if (route) { p.route = route; p.rs = s; p.s = rt.mainS(s); p.si = rt.off + p.i; }
   p.y += p.yOff; p.dy = Math.max(0, k.pos.y - (p.y - p.yOff));   // launched from an airborne kart: settle down to the road
   p.y += p.dy;
   if (kind === 'taco_bomb' || kind === 'rocket') {   // line of sight: straight out of the kart's nose (or tail)
@@ -289,6 +295,7 @@ function addHazard(W, kind, owner, x, z, r, life, arm) {
   const pr = tr.project({ x, y: owner.pos.y, z }, owner.si, {});
   const y = isFinite(pr.y) ? pr.y : owner.pos.y;
   const h = { id: W.nextId++, kind, owner, alive: true, x, y, z, r, t: 0, life, arm, super: false, s: pr.s, lat: pr.lat, drop: owner.air ? Math.max(0, owner.pos.y - y) : 0.6 };
+  if (pr.route) h.route = pr.route;
   W.hazards.push(h);
   emit(W, 'drop', owner, { item: kind, pos: { x, y, z } });
   return h;
@@ -502,10 +509,13 @@ function stepAlongRoad(W, p, dt) {
   }
   p.lat = approach(p.lat, wantLat, latRate * dt);
   const ds = p.v * dt;
-  p.s = tr.wrapS(p.s + ds); p.travelled += Math.abs(ds);
-  trackPoint(tr, p.s, p.lat, _tp);
+  p.travelled += Math.abs(ds);
+  let rt = tr;
+  if (tr.branches?.length) rt = alongRoute(tr, p, ds);   // branches: follow a target onto (and off) its branch
+  else p.s = tr.wrapS(p.s + ds);
+  trackPoint(rt, rt === tr ? p.s : p.rs, p.lat, _tp);
   const edge = p.kind === 'rocket' || p.kind === 'warp' ? Math.min(_tp.limL, _tp.limR, _tp.hw + 6) - 0.5 : _tp.hw - 0.6;
-  if (Math.abs(p.lat) > edge) { p.lat = Math.sign(p.lat) * edge; trackPoint(tr, p.s, p.lat, _tp); }
+  if (Math.abs(p.lat) > edge) { p.lat = Math.sign(p.lat) * edge; trackPoint(rt, rt === tr ? p.s : p.rs, p.lat, _tp); }
   let y = _tp.y + p.yOff;
   p.dy = Math.max(0, p.dy - dt * 8);
   if (p.kind === 'taco_bomb') y += Math.abs(Math.sin(p.t * 9)) * 0.25;
@@ -513,6 +523,26 @@ function stepAlongRoad(W, p, dt) {
   else p.y = y + p.dy;
   if (!isFinite(p.y)) p.y = y;
   p.x = _tp.x; p.z = _tp.z; p.yaw = p.v >= 0 ? _tp.yaw : _tp.yaw + Math.PI;
+}
+
+/** Along-road flight on a branched track: p.route / p.rs. On the main road it turns onto a branch at
+ *  its entry when its target is on that branch; at a branch's end it carries on along the main road.
+ *  Returns the route to read the position from (p.s stays the main-equivalent s). */
+function alongRoute(tr, p, ds) {
+  const route = p.route | 0;
+  if (route) {
+    const br = tr.routes[route];
+    p.rs += ds;
+    if (p.rs > br.length || p.rs < 0) { p.s = tr.wrapS(p.rs > 0 ? br.sExit + p.rs - br.length : br.sEntry + p.rs); p.route = 0; p.rs = 0; return tr; }
+    p.s = br.mainS(p.rs); return br;
+  }
+  const s0 = p.s; p.s = tr.wrapS(p.s + ds);
+  const t = p.target;
+  if (t && t.route && ds > 0) {
+    const br = tr.routes[t.route], a = tr.dS(br.sEntry, s0), b = tr.dS(br.sEntry, p.s);
+    if (a < 0 && b >= 0) { p.route = t.route; p.rs = b; p.s = br.mainS(b); p.lat = clamp(p.lat, -br.HW[0], br.HW[0]); return br; }
+  }
+  return tr;
 }
 
 /** bomb / rocket: straight through the world (line of sight). Returns false if it ended. */
@@ -541,6 +571,7 @@ function stepLos(W, p, dt) {
   const sp = Math.abs(p.v), ds = sp * dt;
   p.x += Math.sin(p.yaw) * ds; p.z += Math.cos(p.yaw) * ds; p.travelled += ds;
   const pr = tr.project(p, p.si, _lp); p.si = pr.i; p.s = pr.s; p.lat = pr.lat;
+  if (pr.route || p.route) { p.route = pr.route; p.rs = pr.rs; }
   // a wall: the bomb goes off against it, the rocket bursts on it
   const lim = pr.lat > 0 ? pr.limL : pr.limR;
   if (Math.abs(pr.lat) > lim - LS.wall) { endProj(W, p, true); return false; }
@@ -667,7 +698,7 @@ function aiControl(W, b, c) {
       if (o === k || o.finished || o.respawnT > 0) continue;
       const d = tr.dS(k.s, o.s);
       if (d < d0 || d > d1) continue;
-      if (lane != null && Math.abs(o.lat - k.lat) > lane) continue;
+      if (lane != null && (Math.abs(o.lat - k.lat) > lane || (o.route | 0) !== (k.route | 0))) continue;
       if (Math.abs(d) < bd) { bd = Math.abs(d); best = o; }
     }
     return best;
@@ -717,7 +748,7 @@ function aiControl(W, b, c) {
       if (st.holdT > cfg.hold * 3) return press();
       break;
     case 'turbo':
-      if (st.holdT > 0.5 && !k.drift && !k.air && k.boostT < 0.3 && Math.abs(tr.turnAhead(k.s, 0, 45)) < 0.35 && roll(Math.min(1, cfg.use + 0.3))) return press();
+      if (st.holdT > 0.5 && !k.drift && !k.air && k.boostT < 0.3 && Math.abs(k.route ? tr.turnOn(k.route, k.rs, 0, 45) : tr.turnAhead(k.s, 0, 45)) < 0.35 && roll(Math.min(1, cfg.use + 0.3))) return press();
       break;
     case 'superstar':
       if (st.holdT > cfg.hold && roll(0.8)) return press();

@@ -468,6 +468,7 @@ export default {
   stars: [{ at: 7.1, lat: 4.5, n: 6, spacing: 3.5, curve: 1.5 }],   // star rows ALONG the road (curve = sideways bow, m)
   checkpoints: [2.5, 6, 9.5, 14],          // optional `at`s; default = checkpointCount (8) evenly spaced, never in a gap
   noRespawn: [{ from, to }],               // optional stretches where the rescue must not drop you
+  branches: [{ id, points, … }],           // optional shortcuts — see "Branches (shortcuts)" below
 };
 ```
 
@@ -556,10 +557,104 @@ shot: `node tools/shot.mjs 'track=<id>&skip=1&hud=0&cam=x,y,z,tx,ty,tz' shots/o.
   `naturalAt` + `terrainTint`, edges sunk under the real ground) and portal faces. Keep the tunnel
   gently curved (r ≳ 80 m) and its roof ≥ 8.5 m: the chase camera sits 2 m up, 5–6 m behind.
 
+### Branches (shortcuts)
+
+Opt-in, data only: a track without `branches` builds, drives, races and goes over the wire exactly as
+before (the gate's output for the five shipped tracks is byte-identical). A branch is an **open** spline
+that leaves the main road and rejoins it later; `track.js` samples it with the same code as the main
+road (`track.branches[b]` = `track.routes[b + 1]`: `X Y Z … HW AIL FLAG props`, `pads jumps gaps itemRows
+starRows` in branch-local metres `u`, `frameAt/pointAt/idx`). Worked example: `tools/fixtures/branches.js`
+(the gate's fixture — Bubbly Beach + "Crab Cut" across the inside of Crab Bend; never shipped).
+
+```js
+branches: [{
+  id: 'crabcut', name: 'Crab Cut',          // name for DESIGN/debug only (nothing to read in game)
+  from: 15.25, to: 19.7,                    // main-road `at` where it leaves / rejoins (anchor + gate check)
+  side: 'L', sideTo: 'L',                   // which main edge it opens through (sideTo defaults to side)
+  width: 11, offroad: 'sand',               // like the track's; per-point w/bank/inherited props as on main
+  defaults: { offL: 3, offR: 3, wallL: 'beach', wallR: 'beach' },   // on top of the track's defaults
+  points: [{ x, z, y, w, bank, … }, …],     // driving order; first/last ON the main road, matching its bank
+  pads, jumps, gaps, items, stars, noRespawn,   // `at` = BRANCH point index + fraction, as on main
+  needsBoost: true,                         // its gaps (or one gap: gaps: [{ from, to, needsBoost }]) need a boost
+  ai: { easy: 0.15, medium: 0.4, hard: 0.7 },   // P(an AI takes it) per lap (defaults 0 / 0.25 / 0.5)
+  hidden: true,                             // minimap shows it once the player has driven it (default)
+}]
+```
+
+- **Junctions, resolved.** Where the two corridors overlap (`br.zoneIn/zoneOut` m at each end) the
+  boundary on each route opens onto the other (`OPENL/OPENR`: the wall moves out along the lateral ray
+  as far as the other corridor reaches; trackmesh leaves those wall samples out), so the drivable area
+  is the union. The branch's road and shoulders are CLIPPED where they lie over the main road/corridor
+  (one surface, no z-fighting; the clipped edge tucks 12 cm under main's) and main's kerb/edge line is
+  left out across the mouth. All of it merges into the existing meshes: **0 extra draw calls**
+  (fixture overview: 171 calls either way, +4.4k triangles).
+- **Route state.** Sample indexes are combined across routes (main `0..n-1`, branch b from
+  `br.off`; `track.nAll`), so `project(pos, hint)` answers on the hint's route and returns
+  `route` (0 = main, b + 1) and `rs` (s on that route). Only on junction samples (`JR/JH`) does it also
+  project onto the other route and switch when the kart is `ROUTE.HYST` (0.4 m) deeper inside the
+  other road (|lat| − half-width), within `ROUTE.DY` in height — but a kart still ON the main road
+  stays main (a branch that starts on the road is taken by leaving the main road onto it), and running
+  past a branch's end puts you back on main. Everything that passes a kart's `si` (physics, camera
+  ground clamp + wall push, items' line-of-sight projectiles, spills, hazards, the server's copy of a
+  human) gets the right route for free. Karts carry `route` + `rs`; `s` stays the **main-equivalent s**.
+- **u → s.** `br.mainS(u)` is monotonic: the projection of the branch centre while it's on the main
+  road, linear in u between (projections deep inside a bend race ahead), and right at the junctions
+  the kart's own main projection, blended over `ROUTE.BLEND` (8 m) — so s never jumps when the route
+  switches. Laps, positions, the rubber band and checkpoints keep working on s; checkpoints inside a
+  branch's span are credited as s sweeps past them (no need to move them). Inverse: `br.uOfMainS(s)`.
+- **Physics** reads the kart's route for jumps, pads, gaps (main-road features in the skipped span
+  never fire for a branch kart) and the rescue: `lastGoodS` / `respawnAt` are COMBINED coordinates
+  (`track.csOf(route, rs)`: main s, or `br.csOff + u` past the lap length; `csLoc`, `csPoint`,
+  `respawnCS`). A rescue on a branch drops you back on the branch; falling into a **needsBoost** gap
+  drops you on the main road just before the entry (`respawnS(sEntry − 2)`, RESPAWN_T 1.2 s). Leaving
+  through the far end emits the kart event `['shortcut', b]` (race stats `shortcuts`).
+- **AI** (`ai.js`): ~150 m before a branch each brain decides once per lap (`br.ai[difficulty]`,
+  `race.forceBranch` / `brain.forceBranch` override: an id, or `'-'` = never). Its path is
+  `track.pathAt(route, rs, d, plan)` — the main road, then the chosen branch, then main after the exit —
+  so the aim point, racing line (the branch's own `AIL`), pads, corner reading and wall prediction all
+  follow the route it will drive; a brain that isn't taking it never leaves the main road there.
+  Avoidance and item/hazard/box/star picking only look at its own route. Server bots run the same brain.
+- **Items**: box/star rows of every route (`track.allItemRows/allStarRows`, main first; the
+  snapshot's alive bits follow that order); projectiles fired on a branch start on it; warp stars /
+  shield shots follow a target onto its branch; hazards carry `route`.
+- **Camera / HUD**: `track.kartFrame(k, ahead)` (the kart's own road ahead; wrong-way uses it too).
+  Minimap: a branch is drawn (gold, on top) once `save.js` `shortcuts[trackId]` has it; the first time
+  a human comes out of the far end, a big **SHORTCUT!** callout with the star icon pops (`main.js`
+  `foundShortcut`; 2P: both HUDs redraw). Scenery hook ctx gets `branches` (= `track.branches`) and
+  `isClear`/`claim`/terrain flattening see every branch corridor; a branch gap is a pool the width of
+  its corridor (beach water).
+- **Online**: `PROTOCOL_VERSION` 3 — the kart's route rides in flag bits 8–12 of the kart block, and
+  the STATE packet's `si` is the combined index (the server checks it against `track.nAll`); clients
+  rebuild `rs`/`si` of remote karts from `s` + route (`uOfMainS`). Unbranched tracks: identical bytes
+  apart from the version byte.
+- **Gate** (`tools/check-branches.js`, run by `node tools/check.js` for every track with branches; the
+  fixture runs as track `beach-fx`): builds with junction zones at both ends; open, 40–600 m; leaves /
+  rejoins ON the main road on `side` within 15 m of from/to and 35° of main's heading; width 8–30 m;
+  slopes ≤ 35 %; radius ≥ 10 m and ≥ half-width + 3; no overlap with the main road (outside the
+  junctions) or other branches, except tagged bridges ≥ 8 m apart; surfaces meet (Δy ≤ 0.25 m where
+  the roads overlap); main's wall opens at both junctions; the skipped span doesn't contain the start
+  line, is < half a lap and longer than the branch; pads/items/stars on the branch road; every gap has
+  a lip; needsBoost gaps clear at `T.BOOST_MAX` with a pad ≤ 25 m before the lip (WARN if they also
+  clear at base speed), other gaps at ≤ 14 m/s. Then: a solo hard and medium kart laps faster through
+  it (seeds 1–3; target 1.5–3.5 s, WARN > 4 s); an 8-AI medium race forced through it counts every
+  lap with nobody stuck > 3 s and no backward progress; a drive-through test (route 0 → b → 0,
+  continuous progress, the branch kart ahead in place and progress, checkpoints + the lap counted);
+  the two rescues. `server/selftest.js` codes route + si and races the fixture online (bots + the
+  human's device through it, the server's copy follows, every lap counted).
+- **Debug**: `&fixture=1` (with `track=beach`, dev server only — `tools/` isn't deployed) swaps in the
+  fixture; `&branch=<id>` makes every brain (AI + the `ai=1`/`t=` autopilot) take that branch each lap
+  (`-` = never). `node tools/shot-branch.mjs ['<query>'] [id]` writes an overview, both junctions from
+  above and the autopilot's chase view through the branch to `shots/branch/` — look at them.
+- **Measured (fixture, 2026-10-29)**: Crab Cut 153.8 m vs 210.0 m of main road (s 729 → 939, skips
+  checkpoints 753 and 878), 11 m wide, junction zones 45 / 47 m, a needsBoost 18.0 m tide pool (needs
+  ≥ 24 m/s: the full-width pad gives ~27; 21 m at the 30 m/s cap). Solo lap saving: hard 2.91 s
+  (39.6 vs 42.6 s), medium 2.67 s (43.1 vs 45.8 s); drive-through: 2.7 s / 65 m ahead after the exit.
+  Forced medium race: 24/24 laps through it, max stuck 0.2 s. `node tools/check.js` 32 → 47 s on the hub (the fixture's full track checks + these).
+
 ### Scenery hook (tracks agents)
 
 `src/scenery/<theme>.js` default-exports `build(ctx)` (may be async) → optional `{ update(dt, t) }`.
-A missing file is fine. `ctx = { THREE, group (add your meshes here), track, def, env, rng
+A missing file is fine. `ctx = { THREE, group (add your meshes here), track, branches (track.branches — decorate them too), def, env, rng
 (seeded), loadTex(name, fallbackCanvasFn?, {repeat, file, onload}), groundAt(x,z) (terrain height),
 trackGroundAt(x,z) (road/offroad height where drivable, else terrain), isClear(x,z,r,margin)
 (outside the drivable corridor — never block the road), aboveWater(x,z,h), corridorInfo(x,z),
@@ -629,6 +724,7 @@ URL (never the saved racer/difficulty/assists) so tests stay deterministic.
 ```js
 localStorage.otrSave = { v: 1, unlocked: { star: false }, cupWins: { easy, medium, hard },
   best: { <trackId>: { lap, race, racer } },            // every finished race counts, TT or not
+  shortcuts: { <trackId>: [branchId …] },               // branches the player has driven (minimap)
   settings: { master, music, sfx, autoAccel: 'easy'|'on'|'off', kidAssist, hd, difficulty, quality, mpAuto?: [p1,p2], mpHelper?: [p1,p2] },
   lastRacer, lastTrack }
 localStorage['otrGhost:<trackId>'] = { v: 1, racer, time, hz: 10, d: [x,y,z,yaw …] }  // dm / mrad ints, ~20 KB
@@ -852,7 +948,7 @@ every other menu):
   connection…" and reconnects by itself. A protocol mismatch shows "please refresh the page!" with
   REFRESH.
 
-**Wire** (`src/protocol.js`, `PROTOCOL_VERSION` 1, checked at HELLO):
+**Wire** (`src/protocol.js`, `PROTOCOL_VERSION` 3, checked at HELLO; 3 = branches' kart route, see **Branches**):
 - JSON messages `{t, …}` go over geckos `emit('m')`, where reliable = resent 4× every 50 ms, or over
   WebSocket text.
 - The two hot paths are binary frames: SNAPSHOT at 20 Hz, unreliable, ~490 B for 8 karts plus items;
@@ -910,7 +1006,7 @@ GPU browser over WebRTC; 1-lap races):
   `&slot=0..7` (player grid slot, default 6), `&laps=N`, `&seed=N`, `&touch=1` (force touch UI),
   `&auto=1` (auto-accelerate), `&hd=1`, `&shadows=0`, `&fx=0`, `&q=low|high|auto` (quality),
   `&players=2` (split screen; `&racer2=`, `&dev1=`/`&dev2=` `auto|kb|kbL|kbR|pad:N`, `&auto2=0|1`,
-  `&helper1=`/`&helper2=0|1`). `window.__OTR` exposes game
+  `&helper1=`/`&helper2=0|1`), `&fixture=1` / `&branch=<id>` (shortcuts, see **Branches**). `window.__OTR` exposes game
   state for tests (see **Core runtime APIs**). UI: `?screen=<name>` opens a menu screen (see
   **Modes and UI**); `__OTR.menu` = `{ M, screen, show(name), action('up'|'ok'|'back'…), launch(trackId) }`.
 - `node tools/slide-test.mjs` drives the player through a real power slide in the browser
@@ -1008,7 +1104,8 @@ lapsDone, place, finished, finishTime, racerId, isPlayer`. Units/meaning:
   to animateRacer), `spinT` seconds left of a spin-out, `slowT` wobble seconds, `stallT` start stall,
   `shieldT`, `invincT` (super star: immune + knocks others aside + top speed), `stars` (≥10 = +`T.STAR_BONUS` top, 4 %), `cornerF` (corner scrub factor, 1 = none), `assist` (kid assist on:
 the player on Easy / KID HELPER).
-- track/race: `s`, `si` (sample hint), `lat`, `ground` (surface y under the kart), `nrm` (smoothed
+- track/race: `s` (main-equivalent on a branch), `si` (sample hint, combined across routes), `route` / `rs`
+  (0 = main, b + 1 = a branch; s on it — see **Branches**), `lat`, `ground` (surface y under the kart), `nrm` (smoothed
   ground normal), `lap` (1-based current), `lapsDone`, `nextCp`, `progress` (m, for positions),
   `place`, `finished`, `finishPlace`, `finishTime`, `lapTimes[]`, `frozen` (grid), `respawnT` /
   `respawnAt` (rescue in progress and where it drops you), `ctrl` (last control used).

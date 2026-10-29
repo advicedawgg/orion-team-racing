@@ -39,10 +39,11 @@ function arc(o, src, v, w, dt, out = o) {
 export class Lobby {
   /**
    * def: LOBBIES entry. opts: { roster: [{id, stats}], now () → ms, log, manual (no timer: the
-   * selftest calls pump() with its own clock), timing overrides { WAIT_S, WAIT_FULL_S, LOAD_S, RESULTS_S }, laps }
+   * selftest calls pump() with its own clock), timing overrides { WAIT_S, WAIT_FULL_S, LOAD_S, RESULTS_S }, laps,
+   * rotation (track ids, default ROTATION) + trackOf (id → built track) — tests only (selftest's branch fixture) }
    */
-  constructor(def, { roster, now = () => Date.now(), log = () => {}, manual = false, timing = {}, laps } = {}) {
-    Object.assign(this, { def, id: def.id, diff: def.diff, name: def.name, roster, now, log, manual, laps });
+  constructor(def, { roster, now = () => Date.now(), log = () => {}, manual = false, timing = {}, laps, rotation = ROTATION, trackOf: tOf = trackOf } = {}) {
+    Object.assign(this, { def, id: def.id, diff: def.diff, name: def.name, roster, now, log, manual, laps, rotation, trackOf: tOf });
     this.T = { ...NET, ...timing };
     this.members = new Map();       // cid → member
     this.joinN = 0; this.seq = 0; this.raceSeq = 0; this.rot = 0;
@@ -65,7 +66,7 @@ export class Lobby {
   state() {
     return {
       ...this.info(), phaseEnd: this.phaseEnd || null, now: this.now(), raceSeq: this.raceSeq,
-      next: ROTATION[this.rot % ROTATION.length],
+      next: this.rotation[this.rot % this.rotation.length],
       members: this.humans.map(m => ({ cid: m.cid, racer: m.racer, racing: m.slot >= 0, order: m.order })),
     };
   }
@@ -174,8 +175,8 @@ export class Lobby {
     const racers = this.humans.filter(m => m.racer).sort((a, b) => a.order - b.order).slice(0, this.T.MAX_HUMANS);
     if (!racers.length) { this.phase = 'waiting'; this.phaseEnd = 0; this.broadcastState(); return; }
     for (const m of this.members.values()) { m.slot = -1; m.rep = null; m.repNew = false; m.hopsSeen = null; m.evSeen = null; m.teleports = 0; }
-    const trackId = ROTATION[this.rot % ROTATION.length]; this.rot++;
-    const track = trackOf(trackId);
+    const trackId = this.rotation[this.rot % this.rotation.length]; this.rot++;
+    const track = this.trackOf(trackId);
     const seed = 1 + Math.floor(Math.random() * 1e6);
     const r = rng(seed);
     // grid: humans in NET.HUMAN_SLOTS (join order), bots take the other racers, shuffled
@@ -274,7 +275,7 @@ export class Lobby {
         k.hitT = st.hitT; k.hitDur = st.hitDur; k.hitKind = st.hitKind; k.spinT = st.spinT;
         k.respawnT = st.respawnT; k.respawnAt = st.respawnAt; k.onRoad = st.onRoad;
         k.nrm.x = st.nx; k.nrm.z = st.nz; k.nrm.y = Math.sqrt(Math.max(0, 1 - st.nx * st.nx - st.nz * st.nz));
-        if (st.si < tr.n) k.si = st.si;
+        if (st.si < (tr.nAll ?? tr.n)) k.si = st.si;   // combined route index (branches): the projection below finds the route
         // hops since the last report drive TNT shaking (items.js counts 'hop' in k.ev)
         if (m.hopsSeen == null) m.hopsSeen = st.hops;
         const dh = (st.hops - m.hopsSeen) & 0xffff; m.hopsSeen = st.hops;
@@ -287,7 +288,7 @@ export class Lobby {
       }
       k.vel.x = Math.sin(k.yaw) * k.speed; k.vel.z = Math.cos(k.yaw) * k.speed; k.vel.y = k.air ? k.vy : 0;
       const pr = tr.project(k.pos, k.si, k._pr || (k._pr = {}));
-      k.si = pr.i; k.s = pr.s; k.lat = pr.lat; k.ground = pr.y; k.surface = pr.surface;
+      k.si = pr.i; k.s = pr.s; k.lat = pr.lat; k.ground = pr.y; k.surface = pr.surface; k.route = pr.route | 0; k.rs = k.route ? pr.rs : pr.s;
       if (isFinite(pr.y) && (k.pos.y < pr.y || !k.air && live)) k.pos.y = Math.max(k.pos.y, pr.y);
     }
   }

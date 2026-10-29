@@ -35,24 +35,49 @@ export function createBrain(kart, track, difficulty = 'easy', seed = 1) {
   const cfg = DIFFICULTY[difficulty] || DIFFICULTY.easy;
   const r = rng(seed * 7919 + kart.index * 104729 + 17);
   return {
-    kart, track, cfg, r,
+    kart, track, cfg, r, diff: difficulty,
     phase: r() * 100, lane: (r() - 0.5) * 0.5,   // personal spread across the road, as a fraction of half-width
     sliding: false, slideDir: 0, cornerId: -1, willSlide: false,
     plan: null, pressT: 0, reactT: 0,
     stuckT: 0, reverseT: 0, t: 0,
     releaseB: false,
     seen: new Map(),            // hazard/projectile id → noticed it? (decided once, by cfg.dodge)
+    pick: null,                 // branches: { b, lap, take } — this lap's decision for the next branch
   };
+}
+
+/**
+ * Branches (shortcuts): which branch this brain will take next, or -1. Decided once per lap per
+ * branch, ~150 m before it, with the branch's `ai[difficulty]` probability; `race.forceBranch`
+ * (tests / URL `&branch=<id>`; '-' = never) overrides it for every brain. Pure, cheap.
+ */
+function branchPlan(b, race) {
+  const k = b.kart, tr = b.track;
+  if (k.route) return -1;
+  let best = -1, bd = Infinity;
+  for (const br of tr.branches) {
+    const d = tr.dS(k.s, br.sEntry);
+    if (d < -br.zoneIn - 6 || d > 150) continue;     // passed it (missed the opening) / too far ahead
+    if (d < bd) { bd = d; best = br.index; }
+  }
+  if (best < 0) return -1;
+  const key = best * 1000 + k.lapsDone;
+  if (!b.pick || b.pick.key !== key) {
+    const br = tr.branches[best], f = b.forceBranch ?? race?.forceBranch;   // brain.forceBranch: per-brain test hook
+    const take = f ? f === br.id : b.r() < (br.ai[b.diff] ?? 0);
+    b.pick = { key, b: best, take };
+  }
+  return b.pick.take ? best : -1;
 }
 
 /** Lazily index the items world for the AI: box rows (by s) and track stars with their lat. */
 function pickIndex(W, tr) {
   if (W._aiIdx) return W._aiIdx;
   const rows = [];
-  for (const bx of W.boxes) { let r = rows.find(r => Math.abs(r.s - bx.s) < 0.5); if (!r) rows.push(r = { s: bx.s, boxes: [] }); r.boxes.push(bx); }
+  for (const bx of W.boxes) { const ro = bx.route | 0; let r = rows.find(r => Math.abs(r.s - bx.s) < 0.5 && r.route === ro); if (!r) rows.push(r = { s: bx.s, route: ro, boxes: [] }); r.boxes.push(bx); }
   const stars = [];
   let i = 0;
-  for (const row of tr.starRows) for (const p of row.points) { const st = W.stars[i++]; if (st) stars.push({ st, s: p.s, lat: p.lat }); }
+  for (const row of tr.allStarRows || tr.starRows) for (const p of row.points) { const st = W.stars[i++]; if (st) stars.push({ st, s: p.s, lat: p.lat, route: row.route | 0 }); }
   stars.sort((a, b) => a.s - b.s);
   return (W._aiIdx = { rows, stars });
 }
@@ -65,9 +90,11 @@ function pickIndex(W, tr) {
 function pickLat(b, race, lat, v, lim) {
   const k = b.kart, tr = b.track, cfg = b.cfg, W = race?.items;
   if (!W || race.noItems || race.phase !== 'race') return lat;
+  const route = k.route | 0;      // branches: only what's on our own route (lat is per route)
   // ---- dodge: hazards on the road ahead, bombs/shield shots rolling back at us
   let dodge = null, dBest = Infinity;
-  const consider = (id, s, hl, r) => {
+  const consider = (id, s, hl, r, ro) => {
+    if ((ro | 0) !== route) return;
     const d = tr.dS(k.s, s);
     if (d < 1.5 || d > 12 + v * 0.9 || d > dBest) return;
     if (Math.abs(hl - lat) > r + 1.5) return;
@@ -79,8 +106,8 @@ function pickLat(b, race, lat, v, lim) {
     const okL = left <= lim, okR = right >= -lim;
     dodge = okL && (!okR || Math.abs(left - lat) < Math.abs(right - lat)) ? left : okR ? right : lat;
   };
-  for (const h of W.hazards) if (h.alive && !(h.owner === k && h.t < 0.5)) consider(h.id, h.s, h.lat, h.r);
-  for (const p of W.projs) if (p.alive && p.owner !== k && p.v < 0) consider(p.id, p.s, p.lat, (p.blast || p.r) * 0.7);
+  for (const h of W.hazards) if (h.alive && !(h.owner === k && h.t < 0.5)) consider(h.id, h.s, h.lat, h.r, h.route);
+  for (const p of W.projs) if (p.alive && p.owner !== k && p.v < 0) consider(p.id, p.s, p.lat, (p.blast || p.r) * 0.7, p.route);
   if (dodge != null) return dodge;
   if (cfg.grab <= 0 || b.sliding && k.turbos < 1 && k.charge < 0.2) return lat;   // don't wreck a slide just started
   // ---- detour to a ? box when the slot is empty
@@ -89,6 +116,7 @@ function pickLat(b, race, lat, v, lim) {
   if (!k.item && k.roulT <= 0 && !(k.bomb && k.bomb.alive) && !k.shieldArmed) {
     let best = null, bd = Infinity;
     for (const r of I.rows) {
+      if (r.route !== route) continue;
       const d = tr.dS(k.s, r.s);
       if (d < 2 || d > far) continue;
       for (const bx of r.boxes) if (bx.alive || bx.respawnT < d / Math.max(8, v)) {
@@ -102,7 +130,7 @@ function pickLat(b, race, lat, v, lim) {
   if (k.stars < T.STARS_MAX) {
     let best = null, bd = Infinity;
     for (const e of I.stars) {
-      if (!e.st.alive) continue;
+      if (!e.st.alive || e.route !== route) continue;
       const d = tr.dS(k.s, e.s);
       if (d < 2 || d > far * 0.8) continue;
       const dl = Math.abs(e.lat - lat);
@@ -110,7 +138,9 @@ function pickLat(b, race, lat, v, lim) {
     }
     for (const sp of W.spills) {
       if (!sp.rest) continue;
-      const d = tr.dS(k.s, tr.wrapS(tr.project(sp, sp.si, sp._pr || {}).s ?? 0));
+      const q = tr.project(sp, sp.si, sp._pr || {});
+      if ((q.route | 0) !== route) continue;
+      const d = tr.dS(k.s, tr.wrapS(q.s ?? 0));
       if (d < 2 || d > far * 0.6) continue;
       const dl = Math.abs(sp.lat - lat);
       if (dl < reach * 0.6 && d + dl * 3 < bd) { bd = d + dl * 3; best = sp.lat; }
@@ -139,17 +169,23 @@ export function drive(b, race) {
   if (k.frozen || k.respawnT > 0) { b.sliding = false; return c; }
   const v = Math.max(0, k.speed);
   const s = k.s;
-  const hw = tr.HW[tr.idx(s)];
+  // the path ahead: this route, then the branch it chose (main) / the main road after the exit (branch).
+  // On an unbranched track this is exactly tr.idx(s + d) etc. (route 0, no plan).
+  const route = k.route | 0, rs = route ? k.rs : s, plan = tr.branches?.length ? branchPlan(b, race) : -1;
+  const at = d => tr.pathAt ? tr.pathAt(route, rs, d, plan) : { rt: tr, s: s + d };
+  const head = d => { const q = at(d); return q.rt.HEAD[q.rt.idx(q.s)]; };
+  const rt0 = route ? tr.routes[route] : tr;
+  const hw = rt0.HW[rt0.idx(rs)];
 
   // ---- where to aim
   const la = 6 + v * 0.5;
-  const ks = tr.idx(s + la);
-  let lat = tr.AIL[ks] * cfg.line;
+  const A = at(la), ks = A.rt.idx(A.s);
+  let lat = A.rt.AIL[ks] * cfg.line;
   const lane = (b.lane + 0.18 * Math.sin(b.t * 0.23 + b.phase)) * hw * 0.7;
-  lat += lane * (1 - Math.min(1, Math.abs(tr.AIL[ks]) / (hw * 0.5)));
+  lat += lane * (1 - Math.min(1, Math.abs(A.rt.AIL[ks]) / (hw * 0.5)));
   // aim for a pad in the next 45 m (medium/hard mostly)
-  for (const p of tr.pads) {
-    const d = tr.dS(s, p.s);
+  for (const p of rt0.pads) {
+    const d = rt0.dS(rs, p.s);
     if (d > 0 && d < 45 && b.r() < 0.02 + cfg.turbo * 0.08) b.padLat = p.lat;
     if (d > 0 && d < 45 && b.padLat != null) lat = lat * 0.3 + b.padLat * 0.7;
     if (d < -5 && d > -15) b.padLat = null;
@@ -159,7 +195,7 @@ export function drive(b, race) {
   lat = pickLat(b, race, clamp(lat, -lim, lim), v, lim);
   // avoidance of karts just ahead — wider round one that's crashed/spinning or much slower (no pile-ups)
   if (race) for (const o of race.karts) {
-    if (o === k || o.respawnT > 0) continue;
+    if (o === k || o.respawnT > 0 || (o.route | 0) !== route) continue;
     const d = tr.dS(s, o.s);
     const slow = o.hitT > 0 || o.spinT > 0 || o.speed < v - 6;
     const w = slow ? 3.2 : 2.4;
@@ -169,7 +205,8 @@ export function drive(b, race) {
     }
   }
   lat = clamp(lat, -lim, lim);
-  const tp = tr.pointAt(s + la, lat);
+  // a branch it's heading for: once the aim point is on it, the lateral clamp is the branch's
+  const tp = A.rt === rt0 ? A.rt.pointAt(A.s, lat) : A.rt.pointAt(A.s, clamp(lat, -(A.rt.HW[ks] - 1.4), A.rt.HW[ks] - 1.4));
   const want = Math.atan2(tp.x - k.pos.x, tp.z - k.pos.z);
   const err = wrapA(want - k.yaw);
 
@@ -184,8 +221,8 @@ export function drive(b, race) {
   if (b.stuckT > 1.1) { b.stuckT = 0; b.reverseT = 0.8; b.sliding = false; return c; }
 
   // ---- slide decision: read the corner ahead
-  const turn = tr.turnAhead(s, 3, 3 + 26 + v * 0.8);
-  const turnNear = tr.turnAhead(s, 0, 14 + v * 0.35);
+  const turn = wrapA(head(3 + 26 + v * 0.8) - head(3));
+  const turnNear = wrapA(head(14 + v * 0.35) - head(0));
   const corner = Math.floor(tr.dS(0, s + 40) / 60);
   if (!b.sliding) {
     if (corner !== b.cornerId) { b.cornerId = corner; b.willSlide = b.r() < cfg.slide; }
@@ -201,7 +238,7 @@ export function drive(b, race) {
     c.hopA = true;
     const dir = k.drift || b.slideDir;
     // steer to hold the line: needed yaw rate ≈ heading error correction + path curvature
-    const kap = tr.CURV[tr.idx(s + 4)];
+    const K4 = at(4), kap = K4.rt.CURV[K4.rt.idx(K4.s)];
     const need = err * 2.4 + v * kap * 1.05;
     const into = clamp((need * dir - T.DRIFT_BASE) / T.DRIFT_STEER, -1, 1);
     c.steer = k.drift ? into * dir : b.slideDir * (k.air ? 0.4 : 1);
@@ -213,9 +250,9 @@ export function drive(b, race) {
     const pr = k._pr;
     let wall = false;
     if (pr && pr.lx != null && k.drift) {
-      const tq = 0.5, rel = wrapA(k.yaw - tr.HEAD[tr.idx(s)]);
+      const tq = 0.5, rel = wrapA(k.yaw - head(0));
       const minRate = k.drift * (T.DRIFT_BASE - T.DRIFT_STEER) * (1 + (k.stats.turn - 3) * T.STAT);
-      const relRate = minRate - v * tr.CURV[tr.idx(s + v * tq * 0.5)];
+      const KQ = at(v * tq * 0.5), relRate = minRate - v * KQ.rt.CURV[KQ.rt.idx(KQ.s)];
       const pl = k.lat + v * Math.sin(rel) * tq + 0.5 * v * relRate * tq * tq;
       const limL = isFinite(pr.limL) ? pr.limL : pr.hw + 0.3, limR = isFinite(pr.limR) ? pr.limR : pr.hw + 0.3;
       wall = pl > limL - 0.9 || pl < -limR + 0.9;
@@ -260,7 +297,7 @@ export function kidAssist(k, tr, c) {
   const fall = side > 0 ? !isFinite(pr.limL) : !isFinite(pr.limR);
   if (fall) {
     // heading for a drop (also in the air — weak there): blend the stick toward "back onto the road"
-    const runUp = tr.FLAG[pr.i] & 16;
+    const runUp = (pr.flag ?? tr.FLAG[pr.i]) & 16;
     const pl = k.lat + vLat * (runUp || k.air ? A.jumpLook : A.fallLook), edge = pr.hw - A.fallMargin;
     const over = side * pl - edge;
     if (over > 0) {

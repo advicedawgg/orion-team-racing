@@ -38,7 +38,8 @@ export class ChaseCam {
     // heading: travel yaw, nudged toward the road ahead so the view opens into the corner
     let target = yaw;
     if (track) {
-      const ahead = track.frameAt(k.s + CAM.aheadS + Math.max(0, k.speed) * 0.3).yaw;
+      const d = CAM.aheadS + Math.max(0, k.speed) * 0.3;
+      const ahead = (k.route && track.kartFrame ? track.kartFrame(k, d) : track.frameAt(k.s + d)).yaw;   // on a branch: its own road ahead
       target = yaw + clamp(wrapA(ahead - yaw), -0.5, 0.5) * CAM.aheadW;
     }
     const lag = k.drift ? CAM.slideLag : CAM.yawLag;

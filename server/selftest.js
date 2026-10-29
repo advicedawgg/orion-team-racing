@@ -16,6 +16,7 @@ import { createRace } from '../src/race.js';
 import { createItems } from '../src/items.js';
 import { createBrain, drive } from '../src/ai.js';
 import { createKart, DT } from '../src/physics.js';
+import { fixtureDef, FIXTURE_ID } from '../tools/fixtures/branches.js';
 
 const roster = rosterFromSource(readFileSync(new URL('../src/racers.js', import.meta.url), 'utf8'));
 let fails = 0;
@@ -39,6 +40,11 @@ const f2 = v => (+v).toFixed(2);
   ok('snapshot round-trips (8 karts, items bits)', d.karts.length === 8 && d.karts[6].human && !d.karts[0].human && d.karts[3].item === 'rocket' && d.karts[3].itemCount === 3 && d.karts[3].tnt?.hops === 3
     && d.boxes[1] === false && d.boxes[2] === true && d.stars[3] === true && d.stars[4] === false && Math.abs(d.t - 20.25) < 1e-4, `${sb.byteLength} bytes for 8 karts`);
   ok('kart event codes round-trip', KEV.every(n => { const c = kevEncode(n, n === 'hit' ? 'spin' : n === 'respawn' ? 'splash' : 0.5); const r = kevDecode(c[0], c[1]); return r[0] === n; }));
+  // branches: the route rides in the kart flags, si is the combined route index
+  const kb = { ...k, route: 1, si: 1100, pos: { ...k.pos }, nrm: { ...k.nrm } };
+  const sb2 = decodeState(encodeState({ seq: 8, raceSeq: 3, rt: 13, kart: kb, hops: 0, evs: [] }));
+  const nb = decodeSnapshot(encodeSnapshot({ seq: 2, raceSeq: 3, t: 21, phase: 'race', karts: [kb, { ...k, index: 1 }], humanSet: new Set(), evs: [], W: W0 }));
+  ok('branches: route + combined si round-trip (state + snapshot), route 0 unchanged', sb2.route === 1 && sb2.si === 1100 && nb.karts[0].route === 1 && nb.karts[1].route === 0 && s.route === 0);
 }
 
 /* ============================================================== in-process world */
@@ -47,7 +53,7 @@ const clock = () => now;
 const logs = [];
 const mkLobby = (id = 'medium', laps = 1) => new Lobby(LOBBIES.find(l => l.id === id), { roster, now: clock, log: s => logs.push(s), manual: true, laps, timing: { WAIT_S: 6, LOAD_S: 1, RESULTS_S: 2 } });
 const tracks = new Map();
-const trackOf = id => { if (!tracks.has(id)) tracks.set(id, buildTrack(trackById(id))); return tracks.get(id); };
+const trackOf = id => { if (!tracks.has(id)) tracks.set(id, buildTrack(id === FIXTURE_ID ? fixtureDef() : trackById(id))); return tracks.get(id); };
 const stats = id => roster.find(r => r.id === id).stats;
 
 /** An in-process client: a memory connection + (when a race starts) the real client online core. */
@@ -180,6 +186,32 @@ function run(L, clients, secs, until = null) {
   ok('idle lobby does nothing (no steps)', L.stats.steps === before2);
   const avg = L.stats.lastTickMs.reduce((a, b) => a + b, 0) / Math.max(1, L.stats.lastTickMs.length);
   ok('server step cost', avg < 2, `${avg.toFixed(3)} ms per 60 Hz step (8 karts, items, snapshot encode incl.)`);
+}
+
+/* ============================================================== branches: a race on the shortcut fixture */
+{
+  const L = new Lobby(LOBBIES.find(l => l.id === 'medium'), { roster, now: clock, log: s => logs.push(s), manual: true, laps: 1, timing: { WAIT_S: 2, LOAD_S: 1, RESULTS_S: 2 },
+    rotation: [FIXTURE_ID], trackOf });
+  const A = client(L, 'BA');
+  A.join(); L.pick('BA', 'orion');
+  run(L, [A], 4, () => L.phase === 'starting');
+  A.pump();
+  const race = L.race, br = race?.track.branches[0];
+  race.forceBranch = br?.id;                       // the server's bots take it every lap
+  if (A.brain) A.brain.forceBranch = br?.id;       // …and so does the human's device (its AI brain drives)
+  const seen = { me: false, server: false, remote: false, shortcut: false };
+  const done = run(L, [A], 140, () => {
+    const me = A.race?.karts[6], sk = race.karts[6];
+    if (me?.route) seen.me = true; if (sk?.route) seen.server = true;
+    if (A.race?.karts.some((k, i) => i !== 6 && k.route)) seen.remote = true;
+    if (A.race?.events.some(e => e.type === 'kart' && e.kart === me && e.e === 'shortcut')) seen.shortcut = true;
+    return L.phase === 'results';
+  });
+  ok('branches online: the human\'s device takes the shortcut (route + "shortcut" event), the server\'s copy follows it onto the branch', !!br && seen.me && seen.shortcut && seen.server, JSON.stringify(seen));
+  ok('…bots take it too, the client sees remote karts on the branch (snapshot route bits)', seen.remote);
+  ok('…the 1-lap race finishes with every kart\'s lap counted', done && race.phase === 'done' && race.karts.every(k => k.finished && (k.estimated || k.lapsDone === 1)) && race.karts[6].lapsDone === 1,
+    `t ${f2(race.t)}, human place ${race.karts[6].finishPlace}, bots through the shortcut ${race.stats.filter((s, i) => i !== 6 && s.shortcuts).length}/7`);
+  A.leave();
 }
 
 /* ============================================================== a lobby on its own timer */

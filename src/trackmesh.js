@@ -159,22 +159,27 @@ export async function buildTrackMesh(track, { scene } = {}) {
   const lxA = k => track.TZ[k], lzA = k => -track.TX[k];
   const isGap = k => (track.FLAG[(k + n) % n] & 1) !== 0;
   const P = (k, lat, dy = 0) => { k = (k + n) % n; return [X[k] + lxA(k) * lat, bankY(Y[k], lat, HW[k], TB[k]) + dy, Z[k] + lzA(k) * lat]; };
+  /** the same for any route (branches: open, no wrap) */
+  const PR = (R, k, lat, dy = 0) => R === track ? P(k, lat, dy) : [R.X[k] + R.TZ[k] * lat, bankY(R.Y[k], lat, R.HW[k], R.TB[k]) + dy, R.Z[k] - R.TX[k] * lat];
+  const BR = track.branches || [];
   const updaters = [];
 
   // ------------------------------------------------ ribbon helper
-  // Builds a strip along the loop between lat a(k) and b(k), skipping gap samples.
-  function ribbon({ a, b, dy = 0, u0 = 0, u1 = 1, vScale = 1 / 16, keep = () => true, color = null, cols = 1 }) {
+  // Builds a strip along the loop between lat a(k) and b(k), skipping gap samples. R = the route (default
+  // the main loop; a branch is open: no wrap). uOf(k, lat) (optional) gives u from the lateral position.
+  function ribbon({ a, b, dy = 0, u0 = 0, u1 = 1, vScale = 1 / 16, keep = () => true, color = null, cols = 1, R = track, uOf = null }) {
     const pos = [], uv = [], col = [], idx = [];
     let prevOk = false, base = 0;
-    for (let j = 0; j <= n; j++) {
-      const k = j % n;
-      const ok = keep(k) && !isGap(k);
+    const main = R === track, rn = R.n, gapAt = main ? isGap : k => (R.FLAG[k] & 1) !== 0;
+    for (let j = 0; j <= (main ? n : rn - 1); j++) {
+      const k = main ? j % n : j;
+      const ok = keep(k) && !gapAt(k);
       if (!ok) { prevOk = false; continue; }
-      const la = a(k), lb = b(k), v = j * track.ds * vScale;
+      const la = a(k), lb = b(k), v = j * R.ds * vScale;
       const start = pos.length / 3;
       for (let c = 0; c <= cols; c++) {
         const lat = la + (lb - la) * c / cols;
-        pos.push(...P(k, lat, dy)); uv.push(u0 + (u1 - u0) * c / cols, v);
+        pos.push(...PR(R, k, lat, dy)); uv.push(uOf ? uOf(k, lat) : u0 + (u1 - u0) * c / cols, v);
         if (color) { const cc = color(k, c / cols, j); col.push(cc.r, cc.g, cc.b); }
       }
       if (prevOk) for (let c = 0; c < cols; c++) {
@@ -197,7 +202,18 @@ export async function buildTrackMesh(track, { scene } = {}) {
   const roadMat = new THREE.MeshLambertMaterial({ map: roadTex, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   // a real (tileable, line-free) road texture tiles every ROAD_TILE m; the procedural one spans the width
   const ROAD_TILE = 6;
-  const roadGeo = ribbon({ a: k => HW[k], b: k => -HW[k], cols: 2, vScale: 1 / ROAD_TILE, u1: HW[0] * 2 / ROAD_TILE });
+  let roadGeo = ribbon({ a: k => HW[k], b: k => -HW[k], cols: 2, vScale: 1 / ROAD_TILE, u1: HW[0] * 2 / ROAD_TILE });
+  // branches (shortcuts): each branch's road, CLIPPED where it lies over the main road at the junctions (one
+  // surface there, no z-fighting) and merged into the same mesh (no extra draw call)
+  const clip = BR.map(br => branchClips(track, br));
+  if (BR.length) {
+    const geos = [roadGeo];
+    BR.forEach((br, b) => {
+      const C = clip[b].road;
+      geos.push(ribbon({ R: br, a: k => C[k][1], b: k => C[k][0], cols: 2, vScale: 1 / ROAD_TILE, keep: k => !!C[k], uOf: (k, lat) => (br.HW[k] - lat) / ROAD_TILE }));
+    });
+    roadGeo = mergeGeos(geos.filter(g => g.index.count));
+  }
   const road = new THREE.Mesh(roadGeo, roadMat);
   road.receiveShadow = true; road.name = 'road';
   group.add(road);
@@ -205,6 +221,7 @@ export async function buildTrackMesh(track, { scene } = {}) {
   // ------------------------------------------------ shoulders (offroad strips), one mesh per surface
   const surfSet = new Set();
   for (let k = 0; k < n; k++) { surfSet.add(track.props[k].surfL); surfSet.add(track.props[k].surfR); }
+  for (const br of BR) for (let k = 0; k < br.n; k++) { surfSet.add(br.props[k].surfL); surfSet.add(br.props[k].surfR); }
   const groundTexName = texNames.ground;
   for (const surf of surfSet) {
     const tex = loadTex(texNames[surf] || surf, PROC[surf] || PROC.sand);
@@ -212,7 +229,14 @@ export async function buildTrackMesh(track, { scene } = {}) {
     const vs = 1 / 8;
     const gL = ribbon({ a: k => HW[k] + track.OFFL[k] + 0.5, b: k => HW[k] - 0.2, vScale: vs, u0: 0, u1: (track.OFFL[0] + 0.7) / 8, keep: k => track.props[k].surfL === surf && track.OFFL[k] > 0 });
     const gR = ribbon({ a: k => -HW[k] + 0.2, b: k => -HW[k] - track.OFFR[k] - 0.5, vScale: vs, u0: 0, u1: (track.OFFR[0] + 0.7) / 8, keep: k => track.props[k].surfR === surf && track.OFFR[k] > 0 });
-    for (const g of [gL, gR]) { if (!g.index.count) continue; const m = new THREE.Mesh(g, mat); m.receiveShadow = true; m.name = 'shoulder:' + surf; group.add(m); }
+    const parts = [gL, gR];
+    BR.forEach((br, b) => {   // a branch's shoulders, clipped off main's corridor at the junctions
+      const CL = clip[b].shL, CR = clip[b].shR;
+      parts.push(ribbon({ R: br, a: k => CL[k][1], b: k => CL[k][0], vScale: vs, keep: k => !!CL[k] && br.props[k].surfL === surf && br.OFFL[k] > 0, uOf: (k, lat) => (lat - br.HW[k]) / 8 }));
+      parts.push(ribbon({ R: br, a: k => CR[k][1], b: k => CR[k][0], vScale: vs, keep: k => !!CR[k] && br.props[k].surfR === surf && br.OFFR[k] > 0, uOf: (k, lat) => (-br.HW[k] - lat) / 8 }));
+    });
+    if (BR.length) { const gs = parts.filter(g => g.index.count); if (gs.length) { const m = new THREE.Mesh(mergeGeos(gs), mat); m.receiveShadow = true; m.name = 'shoulder:' + surf; group.add(m); } }
+    else for (const g of [gL, gR]) { if (!g.index.count) continue; const m = new THREE.Mesh(g, mat); m.receiveShadow = true; m.name = 'shoulder:' + surf; group.add(m); }
   }
 
   // ------------------------------------------------ kerbs (red/white rumble strips) on tight corners
@@ -231,15 +255,43 @@ export async function buildTrackMesh(track, { scene } = {}) {
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
     const geos = [];
     const lineC = () => white;
+    // branches: no main-road kerb / edge line across a junction's mouth (where the main road's edge runs into a branch's road)
+    const mouth = [null, null];
+    if (BR.length) for (const [si, side] of [[0, 1], [1, -1]]) {
+      const a = mouth[si] = new Uint8Array(n), q = {};
+      for (let k = 0; k < n; k++) {
+        if (!track.JR[k]) continue;
+        const p = P(k, side * (HW[k] - 0.3));
+        track.projectOn(track.JR[k], { x: p[0], y: p[1], z: p[2] }, track.JH[k], q);
+        if (q.past <= 0.05 && Math.abs(q.lat) <= q.hw && Math.abs(p[1] - q.y) < 1) a[k] = 1;
+      }
+      for (let r = 0; r < 2; r++) { const b = a.slice(); for (let k = 0; k < n; k++) if (b[(k + 1) % n] || b[(k - 1 + n) % n]) a[k] = 1; }   // a couple of samples either side
+    }
+    const open = (side, k) => mouth[side > 0 ? 0 : 1]?.[k];
     for (const side of [1, -1]) {
       geos.push(side > 0
-        ? ribbon({ a: k => HW[k] + 0.9, b: k => HW[k] - 0.15, dy: 0.05, keep: k => kerbOn[k], color: colr })
-        : ribbon({ a: k => -HW[k] + 0.15, b: k => -HW[k] - 0.9, dy: 0.05, keep: k => kerbOn[k], color: colr }));
+        ? ribbon({ a: k => HW[k] + 0.9, b: k => HW[k] - 0.15, dy: 0.05, keep: k => kerbOn[k] && !open(side, k), color: colr })
+        : ribbon({ a: k => -HW[k] + 0.15, b: k => -HW[k] - 0.9, dy: 0.05, keep: k => kerbOn[k] && !open(side, k), color: colr }));
       // painted edge line where there's no kerb
       geos.push(side > 0
-        ? ribbon({ a: k => HW[k] - 0.45, b: k => HW[k] - 0.8, dy: 0.02, keep: k => !kerbOn[k], color: lineC })
-        : ribbon({ a: k => -HW[k] + 0.8, b: k => -HW[k] + 0.45, dy: 0.02, keep: k => !kerbOn[k], color: lineC }));
+        ? ribbon({ a: k => HW[k] - 0.45, b: k => HW[k] - 0.8, dy: 0.02, keep: k => !kerbOn[k] && !open(side, k), color: lineC })
+        : ribbon({ a: k => -HW[k] + 0.8, b: k => -HW[k] + 0.45, dy: 0.02, keep: k => !kerbOn[k] && !open(side, k), color: lineC }));
     }
+    BR.forEach((br, b) => {
+      const C = clip[b].road, on = new Uint8Array(br.n);
+      for (let k = 0; k < br.n; k++) {
+        const kp = br.props[k].kerb;
+        if (kp === true) on[k] = 1;
+        else if (kp === 'auto' || kp == null) { let m = 0; for (let j = -6; j <= 6; j++) m = Math.max(m, Math.abs(br.CURV[Math.max(0, Math.min(br.n - 1, k + j))])); if (m > 1 / 55) on[k] = 1; }
+      }
+      // a side whose road edge is clipped (it runs into the main road there) gets no kerb / line
+      const fullL = k => C[k] && C[k][1] >= br.HW[k] - 0.01, fullR = k => C[k] && C[k][0] <= -br.HW[k] + 0.01;
+      const colb = (k, c, j) => (Math.floor(j * br.ds / 2.5) & 1) ? red : white;
+      geos.push(ribbon({ R: br, a: k => br.HW[k] + 0.9, b: k => br.HW[k] - 0.15, dy: 0.05, keep: k => on[k] && fullL(k), color: colb }));
+      geos.push(ribbon({ R: br, a: k => -br.HW[k] + 0.15, b: k => -br.HW[k] - 0.9, dy: 0.05, keep: k => on[k] && fullR(k), color: colb }));
+      geos.push(ribbon({ R: br, a: k => br.HW[k] - 0.45, b: k => br.HW[k] - 0.8, dy: 0.02, keep: k => !on[k] && fullL(k), color: lineC }));
+      geos.push(ribbon({ R: br, a: k => -br.HW[k] + 0.8, b: k => -br.HW[k] + 0.45, dy: 0.02, keep: k => !on[k] && fullR(k), color: lineC }));
+    });
     const m = new THREE.Mesh(mergeGeos(geos.filter(g => g.index.count)), mat); m.receiveShadow = true; m.name = 'kerbs+lines'; group.add(m);
   }
 
@@ -247,18 +299,20 @@ export async function buildTrackMesh(track, { scene } = {}) {
   {
     const pos = [], col = [], idx = [];
     const cA = new THREE.Color(), cB = new THREE.Color();
-    for (const side of [1, -1]) {
+    // every route; a wall is left out where it opens onto another route (junctions: OPENL/OPENR)
+    for (const R of [track, ...BR]) for (const side of [1, -1]) {
       let prev = null;
-      for (let j = 0; j <= n; j++) {
-        const k = j % n;
-        const style = side > 0 ? track.props[k].wallL : track.props[k].wallR;
+      const main = R === track, OPEN = side > 0 ? R.OPENL : R.OPENR;
+      for (let j = 0; j <= (main ? n : R.n - 1); j++) {
+        const k = main ? j % n : j;
+        const style = side > 0 ? R.props[k].wallL : R.props[k].wallR;
         const W = WALLS[style];
-        if (!W || isGap(k)) { prev = null; continue; }
-        const off = side > 0 ? track.OFFL[k] : track.OFFR[k];
-        const lat = side * (HW[k] + off + 0.15);
-        const base = P(k, lat, -0.4), top = P(k, lat, W[2]);
-        const outB = P(k, lat + side * 0.35, -0.4), outT = P(k, lat + side * 0.35, W[2]);
-        const stripe = Math.floor(j * track.ds / W[3]) & 1;
+        if (!W || (R.FLAG[k] & 1) || (OPEN && OPEN[k] > 0)) { prev = null; continue; }
+        const off = side > 0 ? R.OFFL[k] : R.OFFR[k];
+        const lat = side * (R.HW[k] + off + 0.15);
+        const base = PR(R, k, lat, -0.4), top = PR(R, k, lat, W[2]);
+        const outB = PR(R, k, lat + side * 0.35, -0.4), outT = PR(R, k, lat + side * 0.35, W[2]);
+        const stripe = Math.floor(j * R.ds / W[3]) & 1;
         cA.set(stripe ? W[1] : W[0]);
         const s0 = pos.length / 3;
         pos.push(...base, ...top, ...outT, ...outB);
@@ -287,11 +341,11 @@ export async function buildTrackMesh(track, { scene } = {}) {
   {
     const pos = [], idx = [];
     const wy = track.water ? track.water.y - 1 : track.gapFloor;
-    for (const gp of track.gaps) {
-      for (const [s, facing] of [[gp.s0 - track.ds * 0.5, 1], [gp.s0 + gp.len + track.ds * 0.5, -1]]) {
-        const k = track.idx(s);
-        const hw = HW[k] + Math.max(track.OFFL[k], track.OFFR[k]) + 0.5;
-        const a = P(k, hw), b = P(k, -hw);
+    for (const R of [track, ...BR]) for (const gp of R.gaps) {
+      for (const [s, facing] of [[gp.s0 - R.ds * 0.5, 1], [gp.s0 + gp.len + R.ds * 0.5, -1]]) {
+        const k = R.idx(s);
+        const hw = R.HW[k] + Math.max(R.OFFL[k], R.OFFR[k]) + 0.5;
+        const a = PR(R, k, hw), b = PR(R, k, -hw);
         const i0 = pos.length / 3;
         pos.push(...a, ...b, a[0], wy, a[2], b[0], wy, b[2]);
         if (facing > 0) idx.push(i0, i0 + 2, i0 + 1, i0 + 1, i0 + 2, i0 + 3); else idx.push(i0, i0 + 1, i0 + 2, i0 + 1, i0 + 3, i0 + 2);
@@ -353,14 +407,33 @@ export async function buildTrackMesh(track, { scene } = {}) {
     for (let j = -3; j <= 3; j++) { const k = (best + j + n) % n; if (skip && raisedA[k]) continue; const dx = x - X[k], dz = z - Z[k], d = dx * dx + dz * dz; if (d < bd) { bd = d; best = k; } }
     return best;
   };
-  const corridorInfo = (x, z, skipRaised = false) => {
+  const corridorMain = (x, z, skipRaised = false) => {
     const k = near(x, z, skipRaised);
     const lat = (x - X[k]) * lxA(k) + (z - Z[k]) * lzA(k);
     const lim = HW[k] + (lat > 0 ? track.OFFL[k] : track.OFFR[k]);
     // past the END of the nearest sample (only happens next to skipped `raised` samples — under a bridge):
     // distance along the road counts too, else the ground under a bridge snaps up to the approach's height
     const along = Math.abs((x - X[k]) * track.TX[k] + (z - Z[k]) * track.TZ[k]) - track.ds;
-    return { k, lat, e: Math.max(Math.abs(lat) - lim, along), planeY: bankY(Y[k], lat, HW[k], TB[k]), gap: isGap(k) };
+    return { k, lat, e: Math.max(Math.abs(lat) - lim, along), planeY: bankY(Y[k], lat, HW[k], TB[k]), gap: isGap(k), edgeY: bankY(Y[k], Math.sign(lat) * 1e3, HW[k], TB[k]) };
+  };
+  // branches: the same per branch (open: past either end counts as outside); the nearest corridor wins, so the
+  // terrain flattens under a branch too and scenery (isClear / claim) never blocks one
+  const brRaised = BR.map(br => { const a = new Uint8Array(br.n); for (let k = 0; k < br.n; k++) if (br.props[k].raised) a[k] = 1; return a; });
+  const corridorBranch = (b, x, z, skipRaised) => {
+    const R = BR[b], rn = R.n, ra = brRaised[b];
+    let k = -1, bd = Infinity;
+    for (let j = 0; j < rn; j += 3) { if (skipRaised && ra[j]) continue; const dx = x - R.X[j], dz = z - R.Z[j], d = dx * dx + dz * dz; if (d < bd) { bd = d; k = j; } }
+    if (k < 0) return null;
+    for (let j = Math.max(0, k - 3); j <= Math.min(rn - 1, k + 3); j++) { if (skipRaised && ra[j]) continue; const dx = x - R.X[j], dz = z - R.Z[j], d = dx * dx + dz * dz; if (d < bd) { bd = d; k = j; } }
+    const lat = (x - R.X[k]) * R.TZ[k] - (z - R.Z[k]) * R.TX[k];
+    const lim = R.HW[k] + (lat > 0 ? R.OFFL[k] : R.OFFR[k]);
+    const along = Math.abs((x - R.X[k]) * R.TX[k] + (z - R.Z[k]) * R.TZ[k]) - R.ds;
+    return { k, lat, e: Math.max(Math.abs(lat) - lim, along), planeY: bankY(R.Y[k], lat, R.HW[k], R.TB[k]), gap: (R.FLAG[k] & 1) !== 0, edgeY: bankY(R.Y[k], Math.sign(lat) * 1e3, R.HW[k], R.TB[k]), route: b + 1 };
+  };
+  const corridorInfo = !BR.length ? corridorMain : (x, z, skipRaised = false) => {
+    let ci = corridorMain(x, z, skipRaised);
+    for (let b = 0; b < BR.length; b++) { const c = corridorBranch(b, x, z, skipRaised); if (c && c.e < ci.e) ci = c; }
+    return ci;
   };
   const t0 = performance.now();
   const noTerrain = def.terrain === false;      // `terrain: false` = no ground at all (Star Road floats in space)
@@ -369,7 +442,7 @@ export async function buildTrackMesh(track, { scene } = {}) {
     const x = x0 + ix * CELL, z = z0 + iz * CELL;
     const ci = corridorInfo(x, z, true);
     let h = natural(x, z);
-    const edgeY = bankY(Y[ci.k], Math.sign(ci.lat) * 1e3, HW[ci.k], TB[ci.k]);
+    const edgeY = ci.edgeY;
     if (!ci.gap) {
       if (ci.e < 0.6) h = ci.planeY - 0.45;                        // under the shoulders: hidden, never pokes through
       else h = edgeY - 0.3 + (h - edgeY + 0.3) * smooth(0, 22, ci.e);
@@ -378,7 +451,7 @@ export async function buildTrackMesh(track, { scene } = {}) {
       if (ci.e > shore) h = Math.min(h, h - (ci.e - shore) * 0.12);
       const cd = carveDepth(x, z);
       if (cd > 0 && (ci.gap || ci.e > 1)) h = Math.min(h, water.y - cd * smooth(0, 1, cd / 3) + (h - water.y) * (1 - smooth(0, 1.5, cd)));
-      if (ci.gap) h = Math.min(h, water.y - 2);
+      if (ci.gap) { const k = ci.route ? smooth(1, 4, ci.e) : 0; h = Math.min(h, water.y - 2 + (h - water.y + 2) * k); }   // a branch's gap: a pool the width of its corridor
     }
     H[iz * nx + ix] = h;
   }
@@ -530,16 +603,16 @@ export async function buildTrackMesh(track, { scene } = {}) {
   }
 
   // ------------------------------------------------ turbo pads (glowing chevrons, scrolling)
-  if (track.pads.length) {
+  if (track.pads.length || BR.some(br => br.pads.length)) {
     const tex = loadTex('pad', PROC.pad, { file: false });
     const pos = [], uv = [], idx = [];
-    for (const p of track.pads) {
-      const steps = Math.max(2, Math.round(p.len / track.ds));
+    for (const R of [track, ...BR]) for (const p of R.pads) {
+      const steps = Math.max(2, Math.round(p.len / R.ds));
       const i0 = pos.length / 3;
       for (let i = 0; i <= steps; i++) {
-        const s = p.s + p.len * i / steps, f = track.frameAt(s);
+        const s = p.s + p.len * i / steps, f = R.frameAt(s);
         for (const [lat, u] of [[p.lat + p.w / 2, 0], [p.lat - p.w / 2, 1]]) {
-          const q = track.pointAt(s, lat); pos.push(q.x, q.y + 0.045, q.z); uv.push(u, i / steps * p.len / 3.5);
+          const q = R.pointAt(s, lat); pos.push(q.x, q.y + 0.045, q.z); uv.push(u, i / steps * p.len / 3.5);
         }
       }
       for (let i = 0; i < steps; i++) { const a = i0 + i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
@@ -574,7 +647,7 @@ export async function buildTrackMesh(track, { scene } = {}) {
     if (build) {
       let seed = 1234;
       const rng = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
-      scenery = await build({ THREE, group, track, def, env, rng, loadTex, groundAt: groundAtGrid, trackGroundAt: groundAt, naturalAt: natural, isClear, aboveWater, corridorInfo, bounds: { x0, z0, x1: x0 + (nx - 1) * CELL, z1: z0 + (nz - 1) * CELL } });
+      scenery = await build({ THREE, group, track, branches: BR, def, env, rng, loadTex, groundAt: groundAtGrid, trackGroundAt: groundAt, naturalAt: natural, isClear, aboveWater, corridorInfo, bounds: { x0, z0, x1: x0 + (nx - 1) * CELL, z1: z0 + (nz - 1) * CELL } });
     }
   } catch (e) {
     if (!/Failed to fetch|Importing a module script failed|error loading dynamically imported module|404/i.test(String(e))) console.warn('[trackmesh] scenery failed:', e);
@@ -585,6 +658,48 @@ export async function buildTrackMesh(track, { scene } = {}) {
     stats: { terrainMs, terrainVerts: nx * nz },
     update(dt, t) { for (const u of updaters) u(dt, t); if (scenery?.update) scenery.update(dt, t); },
   };
+}
+
+/**
+ * Branches: per branch sample, the lateral intervals [lo, hi] (branch lat) of its road and shoulders that
+ * are NOT already covered by the main road (road) / main corridor (shoulders) — outside the junction zones
+ * that's the whole strip; null = nothing to draw. Edges found to ~1 cm (bisection), so the clipped
+ * branch road abuts the main road's edge.
+ */
+function branchClips(track, br) {
+  const n = br.n, road = new Array(n), shL = new Array(n), shR = new Array(n), q = {}, pt = { x: 0, y: 0, z: 0 };
+  const inMain = (j, lat, kind) => {
+    pt.x = br.X[j] + br.TZ[j] * lat; pt.z = br.Z[j] - br.TX[j] * lat; pt.y = bankY(br.Y[j], lat, br.HW[j], br.TB[j]);
+    track.projectOn(0, pt, br.JH[j], q);
+    const lim = kind === 'road' ? q.hw : q.hw + (q.lat > 0 ? track.OFFL[q.i] : track.OFFR[q.i]);
+    return Math.abs(q.lat) <= lim && Math.abs(pt.y - q.y) < 2.5;
+  };
+  const cut = (j, lo, hi, kind) => {
+    if (!br.JR[j]) return [lo, hi];
+    const N = Math.max(2, Math.ceil((hi - lo) / 0.25)), out = [];
+    for (let i = 0; i <= N; i++) out.push(!inMain(j, lo + (hi - lo) * i / N, kind));
+    let best = null;
+    for (let i = 0; i <= N; i++) {            // the longest run of "outside main"
+      if (!out[i]) continue;
+      let e = i; while (e + 1 <= N && out[e + 1]) e++;
+      if (!best || e - i > best[1] - best[0]) best = [i, e];
+      i = e;
+    }
+    if (!best) return null;
+    const at = i => lo + (hi - lo) * i / N;
+    const edge = (inI, outI) => { let a = at(inI), b = at(outI); for (let r = 0; r < 7; r++) { const m = (a + b) / 2; if (inMain(j, m, kind)) a = m; else b = m; } return b; };
+    // a clipped road edge tucks 12 cm under the main road's (the ribbons are straight between samples: no crack)
+    const tuck = kind === 'road' ? 0.12 : 0;
+    const a = best[0] > 0 ? edge(best[0] - 1, best[0]) - tuck : lo, b = best[1] < N ? edge(best[1] + 1, best[1]) + tuck : hi;
+    return b - a > 0.05 + 2 * tuck ? [Math.max(lo, a), Math.min(hi, b)] : null;
+  };
+  for (let j = 0; j < n; j++) {
+    const hw = br.HW[j];
+    road[j] = cut(j, -hw, hw, 'road');
+    shL[j] = cut(j, hw - 0.2, hw + br.OFFL[j] + 0.5, 'corridor');
+    shR[j] = cut(j, -hw - br.OFFR[j] - 0.5, -hw + 0.2, 'corridor');
+  }
+  return { road, shL, shR };
 }
 
 /** Minimal BufferGeometry merge (position/normal/uv/color, all indexed or all not). */

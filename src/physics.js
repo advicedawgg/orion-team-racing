@@ -72,7 +72,7 @@ export function createKart({ racerId = 'orion', stats = { speed: 3, accel: 3, tu
     stars: 0, item: null, itemCount: 0, shieldT: 0, shieldSuper: false, invincT: 0,
     hitT: 0, hitDur: 1, hitKind: null, spinT: 0, slowT: 0, stallT: 0,
     // track / race
-    s: 0, si: -1, lat: 0, lap: 1, lapsDone: 0, nextCp: 0, place: 1, progress: 0,
+    s: 0, si: -1, lat: 0, route: 0, rs: 0, lap: 1, lapsDone: 0, nextCp: 0, place: 1, progress: 0,
     finished: false, finishTime: 0, lastLapT: 0, lapTimes: [], frozen: true,
     respawnT: 0, respawnAt: null, lastGoodS: 0, wallT: 0, bumpT: 0, padCool: new Map(), stuckT: 0,
     _a: false, _b: false, ev: [],
@@ -271,11 +271,19 @@ export function stepKart(k, c, track, dt = DT) {
   const pdecay = Math.exp(-5 * dt);
   k.push.x *= pdecay; k.push.z *= pdecay;
   k.vel.x = fx * k.speed + k.push.x; k.vel.z = fz * k.speed + k.push.z;
-  const prevS = k.s;
+  const prevS = k.s, prevRoute = k.route | 0, prevRs = prevRoute ? k.rs : k.s;
   k.pos.x += k.vel.x * dt; k.pos.z += k.vel.z * dt;
 
   const pr = track.project(k.pos, k.si, k._pr || (k._pr = {}));
   k.si = pr.i; k.s = pr.s; k.lat = pr.lat;
+  // route (branches / shortcuts, DESIGN.md "Branches"): 0 = the main road, b + 1 = track.branches[b];
+  // rs = s along that route. Main-road features below read track.* exactly as before.
+  const route = k.route = pr.route | 0; k.rs = route ? pr.rs : pr.s;
+  const rt = route ? track.routes[route] : track, rs = k.rs;
+  if (route !== prevRoute && prevRoute) {
+    const br = track.routes[prevRoute];
+    if (prevRs > br.length * 0.6) ev(k, ['shortcut', prevRoute - 1]);   // came out of the far end: a shortcut taken
+  }
 
   // ---------------------------------------------------------------- walls (boundary)
   const R = T.KART_R * 0.8;
@@ -319,8 +327,8 @@ export function stepKart(k, c, track, dt = DT) {
   }
   // ramp lip: crossing a jump's s on (or just above) the road launches you. "Just above" matters:
   // at speed you crest the ramp a hair before the lip and would otherwise sail off without the kick.
-  for (const j of track.jumps) {
-    const a = track.dS(j.s, prevS), b = track.dS(j.s, k.s);
+  if (route === prevRoute) for (const j of rt.jumps) {
+    const a = rt.dS(j.s, prevRs), b = rt.dS(j.s, rs);
     if (a < 0 && b >= 0 && k.speed > 3 && k.pos.y - ground < 1.2 && isFinite(ground)) {
       k.vy = Math.max(k.vy, j.vy); k.air = true; k.airT = 0; k.hop = false; ev(k, 'ramp');
     }
@@ -334,27 +342,30 @@ export function stepKart(k, c, track, dt = DT) {
 
   // ---------------------------------------------------------------- pads
   if (!k.air) {
-    for (let i = 0; i < track.pads.length; i++) {
-      const p = track.pads[i];
-      const d = track.dS(p.s, k.s);
+    for (let i = 0; i < rt.pads.length; i++) {
+      const p = rt.pads[i], key = route ? route * 1000 + i : i;
+      const d = rt.dS(p.s, rs);
       if (d >= 0 && d <= p.len && Math.abs(k.lat - p.lat) <= p.w / 2 + 0.4) {
-        const cool = k.padCool.get(i) || 0;
+        const cool = k.padCool.get(key) || 0;
         if (cool < 1) {
-          k.padCool.set(i, 999);
+          k.padCool.set(key, 999);
           addBoost(k, T.PAD.t, T.PAD.tier, T.PAD.kick); ev(k, 'pad');
         }
-      } else if (k.padCool.has(i) && (d < -5 || d > p.len + 5)) k.padCool.delete(i);
+      } else if (k.padCool.has(key) && (d < -5 || d > p.len + 5)) k.padCool.delete(key);
     }
   }
 
   // ---------------------------------------------------------------- fall / water / respawn
   if (track.killY != null && k.pos.y < track.killY && (pr.gap || !pr.onRoad && ground < track.killY)) {
     // fell in a jump's gap: the helper carries you ACROSS (kid-first), not back to try again
-    const g = pr.gap && track.gaps.find(g => { const d = track.dS(g.s0, k.s); return d >= -2 && d <= g.len + 2; });
-    beginRespawn(k, 'splash', track, g ? g.s0 + g.len + 8 : null);
+    // …except over a branch's needsBoost gap: that one is the shortcut's price, so back onto the main road
+    // just before the branch entry (the rescue still takes RESPAWN_T, well inside the 1.5 s kid rule)
+    const g = pr.gap && rt.gaps.find(g => { const d = rt.dS(g.s0, rs); return d >= -2 && d <= g.len + 2; });
+    if (g && g.needsBoost) beginRespawn(k, 'splash', track, track.respawnS(rt.sEntry - 2));
+    else beginRespawn(k, 'splash', track, g ? g.s0 + g.len + 8 : null, g ? route : 0);
   }
   else if (k.pos.y < (isFinite(ground) ? ground : pr.cy) - 12 || (!isFinite(ground) && k.pos.y < pr.cy - 8)) beginRespawn(k, 'fall', track);
-  if (!k.air && !pr.noRespawn && pr.onRoad) k.lastGoodS = k.s;
+  if (!k.air && !pr.noRespawn && pr.onRoad) k.lastGoodS = route ? track.csOf(route, rs) : k.s;   // combined (track.csOf): main s, or a spot on the branch
 
   // ground normal (for render tilt) from slope + bank, smoothed
   const tbN = pr.onRoad ? pr.tb : 0;
@@ -382,22 +393,26 @@ function land(k, c, ground) {
 }
 
 /** Start the helper's rescue: the kart vanishes, and `respawnAt` (s on the centre line) is decided
- *  NOW so the renderer can show the helper carrying it down there during respawnT. */
-export function beginRespawn(k, why, track, atS = null) {
+ *  NOW so the renderer can show the helper carrying it down there during respawnT. respawnAt and
+ *  lastGoodS are COMBINED coordinates (track.csOf): main-road s, or a branch spot past track.length;
+ *  `route` says which route `atS` is on (0 = main). A rescue on a branch drops you back on the branch. */
+export function beginRespawn(k, why, track, atS = null, route = 0) {
   if (k.respawnT > 0) return;
-  k.respawnAt = track.wrapS(atS != null ? atS : track.respawnS(k.lastGoodS));
+  k.respawnAt = atS != null ? (route ? track.csOf(route, atS) : track.wrapS(atS)) : track.respawnCS ? track.respawnCS(k.lastGoodS) : track.wrapS(track.respawnS(k.lastGoodS));
   endDrift(k);
   k.respawnT = T.RESPAWN_T; k.speed = 0; k.boostT = 0; k.boostTier = 0; k.push.x = k.push.z = 0;
   ev(k, ['respawn', why]);
 }
 /** Put a kart back on the centre line at its last good spot (called when respawnT runs out). */
 export function placeAtRespawn(k, track) {
-  const s = k.respawnAt != null ? k.respawnAt : track.respawnS(k.lastGoodS);
+  const s = k.respawnAt != null ? k.respawnAt : track.respawnCS ? track.respawnCS(k.lastGoodS) : track.respawnS(k.lastGoodS);
   k.respawnAt = null;
-  const p = track.pointAt(s, 0);
+  const q = track.csLoc && track.branches?.length ? track.csLoc(s) : null;
+  const rt = q?.route ? track.routes[q.route] : track, rs = q ? q.rs : s;
+  const p = rt.pointAt(rs, 0);
   k.pos.x = p.x; k.pos.z = p.z; k.pos.y = p.y + T.RESPAWN_DROP;
   k.yaw = p.yaw; k.speed = 9; k.vy = 0; k.lastGoodS = s; k.air = true; k.airT = 0; k.hop = true;
-  k.si = track.idx(s); k.s = s; k.respawnT = 0; k.hitT = 0; k.spinT = 0;
+  k.si = (rt.off || 0) + rt.idx(rs); k.s = q?.route ? rt.mainS(rs) : rs; k.route = q?.route || 0; k.rs = rs; k.respawnT = 0; k.hitT = 0; k.spinT = 0;
   k.invincT = Math.max(k.invincT, 0);  // no free invincibility
   ev(k, 'respawned');
 }
@@ -455,7 +470,7 @@ function impulse(k, dvx, dvz) {
 /** Put a kart on a grid slot, frozen until the race says go. */
 export function placeKart(k, slot, track) {
   k.pos.x = slot.x; k.pos.y = slot.y; k.pos.z = slot.z; k.yaw = slot.yaw;
-  k.speed = 0; k.vy = 0; k.air = false; k.si = track.idx(slot.s); k.s = slot.s; k.lat = slot.lat;
+  k.speed = 0; k.vy = 0; k.air = false; k.si = track.idx(slot.s); k.s = slot.s; k.lat = slot.lat; k.route = 0; k.rs = slot.s;
   k.lastGoodS = slot.s; k.frozen = true;
 }
 

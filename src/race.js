@@ -59,7 +59,8 @@ export function createRace({ track, entrants, playerIndex = -1, players = null, 
     humans: humans.map(h => karts[h.index]), humansDone: 0, firstHumanT: null,
     t: -COUNTDOWN, phase: 'countdown', events: [], order: karts.slice(), finishCount: 0,
     autoPlayer: false, systems: [], stepN: 0, doneT: null,
-    stats: karts.map(() => ({ stuck: 0, maxStuck: 0, respawns: 0, walls: 0, turbos: 0, fizzles: 0, overheats: 0, pads: 0, jumps: 0, bestLap: Infinity })),
+    stats: karts.map(() => ({ stuck: 0, maxStuck: 0, respawns: 0, walls: 0, turbos: 0, fizzles: 0, overheats: 0, pads: 0, jumps: 0, shortcuts: 0, bestLap: Infinity })),
+    forceBranch: null,   // branches: a branch id every brain takes (tests, URL &branch=<id>), '-' = none; null = each brain's ai odds
     addSystem(fn) { this.systems.push(fn); },
     step(playerCtrl) { stepRace(this, playerCtrl); },
     /** Results in finishing order: [{ kart, place, time, finished }] */
@@ -173,7 +174,7 @@ function stepRace(race, playerCtrl = NOCTRL) {
       emit(race, 'kart', k, { e: name, v: Array.isArray(e) ? e[1] : undefined });
       if (name === 'respawn') st.respawns++; else if (name === 'wall') st.walls++;
       else if (name.startsWith('turbo')) st.turbos++; else if (name === 'fizzle') st.fizzles++;
-      else if (name === 'overheat') st.overheats++; else if (name === 'pad') st.pads++; else if (name === 'ramp') st.jumps++;
+      else if (name === 'overheat') st.overheats++; else if (name === 'pad') st.pads++; else if (name === 'ramp') st.jumps++; else if (name === 'shortcut') st.shortcuts++;
     }
     if (race.netClient) continue;       // online client: laps come from the server
     if (k.respawnT > 0) { k._prevS = k.s; continue; }

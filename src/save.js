@@ -6,6 +6,7 @@
 //     unlocked: { star: false },                 // secret tracks by id
 //     cupWins: { easy: 0, medium: 0, hard: 0 },   // Orion Cup wins per difficulty
 //     best: { <trackId>: { lap: s, race: s, racer } },   // Time Trial + every race count
+//     shortcuts: { <trackId>: [branchId, …] },          // branches the player has driven (minimap shows them)
 //     settings: { master, music, sfx (0..1), autoAccel: 'easy'|'on'|'off', kidAssist: bool,
 //                 hd: bool, difficulty: 'easy'|'medium'|'hard', quality: 'auto'|'high'|'low',
 //                 mpAuto: [p1, p2], mpHelper: [p1, p2] (2 PLAYERS join screen, per player; absent until toggled) },
@@ -23,6 +24,7 @@ export const DEFAULTS = () => ({
   unlocked: { star: false },
   cupWins: { easy: 0, medium: 0, hard: 0 },
   best: {},
+  shortcuts: {},
   settings: { master: 0.9, music: 0.7, sfx: 1, autoAccel: 'easy', kidAssist: true, hd: true, hdDefaultV: 1, difficulty: 'easy', quality: 'auto' },
   lastRacer: 'orion', lastTrack: null,
 });
@@ -89,6 +91,21 @@ export function recordRace(trackId, { time, lapTimes = [], racer } = {}) {
   return { newLap, newRace, prev };
 }
 export const best = trackId => load().best[trackId] || {};
+
+/* ------------------------------------------------------------------ shortcuts (track branches) */
+/** The branch ids the player has driven on this track (a Set; empty if none / unreadable). */
+export function shortcutsSeen(trackId) {
+  try { const a = load().shortcuts?.[trackId]; return new Set(Array.isArray(a) ? a : []); } catch { return new Set(); }
+}
+/** Remember a driven branch. Returns true the first time (the HUD's "SHORTCUT!" callout). */
+export function markShortcut(trackId, branchId) {
+  try {
+    const d = load(), sc = d.shortcuts && typeof d.shortcuts === 'object' ? d.shortcuts : (d.shortcuts = {});
+    const a = Array.isArray(sc[trackId]) ? sc[trackId] : (sc[trackId] = []);
+    if (a.includes(branchId)) return false;
+    a.push(branchId); save(); return true;
+  } catch (e) { console.warn('[save] shortcut not saved', e); return false; }
+}
 
 /* ------------------------------------------------------------------ ghosts (Time Trial) */
 // Positions quantised: x,y,z in decimetres, yaw in milliradians → ~20 KB for a 3-lap race at 10 Hz.

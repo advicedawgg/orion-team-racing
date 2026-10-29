@@ -1,4 +1,4 @@
-// node tools/check.js [trackId] [--seed N] [--diff easy|medium|hard] [--quiet]
+// node tools/check.js [trackId | beach-fx] [--seed N] [--diff easy|medium|hard] [--quiet]
 //
 // THE GATE. Imports the REAL track.js / physics.js / ai.js / race.js — nothing here models the
 // game separately. For every registered track:
@@ -18,6 +18,8 @@ import { createBrain, drive, DIFFICULTY } from '../src/ai.js';
 import { createItems } from '../src/items.js';
 import { kidBot, wobblyKid } from './kidbots.js';
 import { runItemChecks } from './check-items.js';
+import { runBranchGeometry, runBranchRaces } from './check-branches.js';
+import { fixtureDef } from './fixtures/branches.js';
 
 const args = process.argv.slice(2);
 const only = args.find(a => !a.startsWith('--') && !/^\d+$/.test(a));
@@ -40,7 +42,8 @@ const ok = (name, pass, info = '') => { if (!pass || !QUIET) console.log(`  ${pa
 const warn = (name, info) => { console.log(`  WARN  ${name}  — ${info}`); warns++; };
 const f1 = v => v.toFixed(1);
 
-for (const def of TRACKS) {
+// + the branch (shortcut) test fixture: Bubbly Beach with one branch (tools/fixtures/branches.js), never shipped
+for (const def of [...TRACKS, fixtureDef()]) {
   if (only && def.id !== only) continue;
   console.log(`\n== ${def.id} (${def.name})`);
   let tr;
@@ -140,6 +143,8 @@ for (const def of TRACKS) {
     }
   }
 
+  if (tr.branches.length) runBranchGeometry(tr, ok, warn);
+
   // ------------------------------------------------------------ headless 8-AI races
   for (const diff of DIFFS) {
     const race = createRace({ track: tr, entrants: ENTRANTS, playerIndex: -1, difficulty: diff, seed: SEED });
@@ -227,6 +232,7 @@ for (const def of TRACKS) {
     ok('2P Easy: the AI is gentle with BOTH humans (≤ 5 flip/spin item hits each)', hits[0] <= 5 && hits[1] <= 5, `${hits[0]} / ${hits[1]}`);
   }
   if (ITEMS) runItemChecks(tr, ok);
+  if (tr.branches.length) runBranchRaces(tr, ok, warn, { ENTRANTS, SEED, ITEMS, QUIET });
 }
 
 console.log(`\n${fails ? 'FAIL' : 'PASS'} — ${fails} failing check(s), ${warns} warning(s)`);
