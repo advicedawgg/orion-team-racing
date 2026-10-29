@@ -51,6 +51,16 @@ export default function build(ctx) {
     }
   }
 
+  // ------------------------------------------------ the Sandcastle Cave: a giant sandcastle over every `tunnel` stretch of a branch
+  for (const br of ctx.branches || []) {
+    let u0 = -1;
+    for (let k = 0; k <= br.n; k++) {
+      const on = k < br.n && (br.FLAG[k] & 8) !== 0;
+      if (on && u0 < 0) u0 = k * br.ds;
+      else if (!on && u0 >= 0) { sandcastleCave(ctx, K, br, u0, (k - 1) * br.ds, updaters); u0 = -1; }
+    }
+  }
+
   // ------------------------------------------------ the pier: from the beach out into the sea, where the shore is nearest
   if (water) {
     let bestP = null;
@@ -346,4 +356,263 @@ export default function build(ctx) {
   K.chevrons({ rMax: 40, board: [4, 1.7] });
 
   return { update(dt, t) { for (const u of updaters) u(dt, t); } };
+}
+
+/**
+ * The Sandcastle Cave (the hidden shortcut — src/tracks/beach.js `branches`): a giant bucket-moulded sandcastle
+ * standing over the branch's `tunnel` stretch u0..u1. Inside: an arched cave lit by torches and glowing shells
+ * (emissive only — the light pool is fixed). Outside: crenellated walls, four bucket towers, a keep with a flag,
+ * shells and starfish pressed into the sand, a giant bucket and spade beside it. Its door is a crumbly sand wall
+ * (scenery only — physics never sees it) that bursts into a puff of sand when a kart drives into it and builds
+ * itself back once nobody is near. Draws: castle 1 (casts shadow), glow 1, door 1, and while bursting the sand
+ * chunks + dust 2. Karts are read from window.__OTR.race (scenery's update only gets dt, t).
+ */
+function sandcastleCave(ctx, K, br, t0, t1, updaters) {
+  // the castle starts a little before the tunnel stretch, so the branch's fence ends inside it
+  const u0 = Math.max(0, t0 - 1.2), u1 = Math.min(br.length, t1 + 0.5);
+  const { THREE, rng } = ctx;
+  const { paint, paintBy, merge, place, mesh, instanced } = K;
+  const WI = 7.4, AW = 3.0, AT = 9.4, WO = 10.5, HC = 11.5, BOT = -1.6, TR = 3.0;
+  const archH = l => AW + (AT - AW) * Math.sqrt(Math.max(0, 1 - (l / WI) ** 2));
+  const P = (u, l, h) => { const f = br.frameAt(u); return [f.x + f.lx * l, f.y + h, f.z + f.lz * l]; };
+  const us = []; for (let u = u0; u < u1 - 0.6; u += 1.5) us.push(u); us.push(u1);
+  const um = (u0 + u1) / 2;
+  // a quad grid through rows of points (every row the same length)
+  const ribbon = rows => {
+    const nc = rows[0].length, pos = [], idx = [];
+    for (const r of rows) for (const p of r) pos.push(p[0], p[1], p[2]);
+    for (let r = 0; r < rows.length - 1; r++) for (let c = 0; c < nc - 1; c++) { const a = r * nc + c, b = a + nc; idx.push(a, b, a + 1, a + 1, b, b + 1); }
+    const uv = [], dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+    rows.forEach((r, ri) => { let v = 0; r.forEach((p, c) => { if (c) v += dist(p, r[c - 1]); const u = ri ? dist(p, rows[ri - 1][c]) : 0; uv.push(u, v / 7); }); });
+    for (let c = 0; c < nc; c++) for (let ri = 1; ri < rows.length; ri++) uv[(ri * nc + c) * 2] += uv[((ri - 1) * nc + c) * 2];
+    for (let i = 0; i < uv.length; i += 2) uv[i] /= 7;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx); g.computeVertexNormals(); g.userData.uvDone = true; return g;
+  };
+  const along = prof => ribbon(us.map(u => prof.map(([l, h]) => P(u, l, h))));
+  // resample a (lat, h) polyline to n points by arc length
+  const resample = (poly, n) => {
+    const d = [0]; for (let i = 1; i < poly.length; i++) d.push(d[i - 1] + Math.hypot(poly[i][0] - poly[i - 1][0], poly[i][1] - poly[i - 1][1]));
+    const out = []; let j = 0;
+    for (let i = 0; i < n; i++) {
+      const t = d[d.length - 1] * i / (n - 1);
+      while (j < poly.length - 2 && d[j + 1] < t) j++;
+      const f = (t - d[j]) / Math.max(1e-6, d[j + 1] - d[j]);
+      out.push([poly[j][0] + (poly[j + 1][0] - poly[j][0]) * f, poly[j][1] + (poly[j + 1][1] - poly[j][1]) * f]);
+    }
+    return out;
+  };
+  /** orient a flat geometry (facing +z) to face direction n, then move it to p */
+  const _q = new THREE.Quaternion(), _z = new THREE.Vector3(0, 0, 1), _n = new THREE.Vector3();
+  const stick = (g, p, nx, ny, nz, spin = 0) => {
+    g.rotateZ(spin); _n.set(nx, ny, nz).normalize(); _q.setFromUnitVectors(_z, _n); g.applyQuaternion(_q); g.translate(p[0], p[1], p[2]); return g;
+  };
+  const sandA = 0xf2d7a0, sandB = 0xe3c084, sandIn = 0xb8925c;
+  const layered = base => (x, y) => (Math.floor((y - base) / 1.7) & 1 ? sandA : sandB);   // bucket-moulded layers
+  const fy = br.frameAt(um).y;
+  const parts = [], glow = [];
+
+  // ---- the cave: walls + arch (inside), outer walls + roof, the two front faces with the arched mouths
+  const inner = [[-WI, BOT], [-WI, AW]];
+  for (let i = 1; i < 16; i++) { const l = -WI + 2 * WI * i / 16; inner.push([l, archH(l)]); }
+  inner.push([WI, AW], [WI, BOT]);
+  parts.push(paintBy(along(inner), (x, y) => (y - fy > AW + 0.5 ? 0xa98552 : sandIn)));
+  for (const prof of [[[-WO, BOT], [-WO, HC]], [[-WO, HC], [WO, HC]], [[WO, HC], [WO, BOT]]]) parts.push(paintBy(along(prof), layered(fy)));
+  const outer = [[-WO, BOT], [-WO, HC], [WO, HC], [WO, BOT]], NF = 41;
+  const ri = resample(inner, NF), ro = resample(outer, NF);
+  for (const u of [u0, u1]) parts.push(paintBy(ribbon([ri.map(([l, h]) => P(u, l, h)), ro.map(([l, h]) => P(u, l, h))]), layered(fy)));
+  // ---- crenellations along the top edges
+  const merlon = (p, yaw) => parts.push(paintBy(place(new THREE.BoxGeometry(1.6, 1.5, 1.6), { x: p[0], y: p[1], z: p[2], ry: yaw }), () => sandA));
+  for (let u = u0 + 1.2; u < u1 - 0.8; u += 3.2) { const f = br.frameAt(u); for (const sd of [1, -1]) merlon(P(u, sd * (WO - 0.8), HC + 0.75), f.yaw); }
+  for (const u of [u0 + 0.8, u1 - 0.8]) { const f = br.frameAt(u); for (let l = -WO + 3.2; l < WO - 2; l += 3.2) merlon(P(u, l, HC + 0.75), f.yaw); }
+  // ---- four bucket towers on the corners + the keep on the roof (crenellated rims)
+  const tower = (c, r, h0, h1, nm) => {
+    const cy = new THREE.CylinderGeometry(r, r * 1.15, h1 - h0, 18), cu = cy.attributes.uv;
+    for (let i = 0; i < cu.count; i++) cu.setXY(i, cu.getX(i) * Math.PI * 2 * r / 7, cu.getY(i) * (h1 - h0) / 7);
+    cy.userData.uvDone = true;
+    parts.push(paintBy(place(cy, { x: c[0], y: c[1] + (h0 + h1) / 2, z: c[2] }), layered(fy)));
+    for (let i = 0; i < nm; i++) {
+      const a = i / nm * Math.PI * 2;
+      parts.push(paintBy(place(new THREE.BoxGeometry(1.2, 1.3, 1.0), { x: c[0] + Math.cos(a) * (r - 0.45), y: c[1] + h1 + 0.6, z: c[2] + Math.sin(a) * (r - 0.45), ry: -a }), () => sandA));
+    }
+  };
+  const corners = [];
+  for (const u of [u0, u1]) for (const sd of [1, -1]) { const c = P(u, sd * WO, 0); corners.push(c); tower([c[0], br.frameAt(u).y, c[2]], TR, BOT, HC + 3, 8); }
+  const keep = P(um, 0, 0); keep[1] = fy;
+  tower(keep, 4.2, HC - 0.5, HC + 5.5, 11);
+  // flags: a big one on the keep, small ones on the two front towers
+  const flag = (x, y, z, h, w, col) => {
+    parts.push(paint(new THREE.CylinderGeometry(0.1, 0.12, h, 6).translate(x, y + h / 2, z), 0xffffff));
+    const tri = new THREE.BufferGeometry();
+    tri.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, -w * 0.55, 0, w, -w * 0.28, 0], 3));
+    tri.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, 0], 2)); tri.computeVertexNormals();
+    parts.push(paint(place(tri, { x, y: y + h, z, ry: rng() * 6.28 }), col));
+  };
+  flag(keep[0], fy + HC + 5.5, keep[2], 6.5, 3.2, 0xff5d73);
+  flag(corners[0][0], fy + HC + 3, corners[0][2], 3.5, 1.8, 0xffd23f);
+  flag(corners[1][0], fy + HC + 3, corners[1][2], 3.5, 1.8, 0x2f8fe8);
+  // ---- shells + starfish pressed into the sand: around the mouths and over the outer walls
+  const scallop = (r, col) => { const g = new THREE.CircleGeometry(r, 9, 0, Math.PI); g.translate(0, -r * 0.35, 0); return paintBy(g, (x, y) => (Math.abs(Math.round(Math.atan2(y + r * 0.35, x) / 0.35)) & 1 ? col : 0xffffff)); };
+  const star = (r, col) => {
+    const sh = new THREE.Shape();
+    for (let i = 0; i < 10; i++) { const a = Math.PI / 2 + i * Math.PI / 5, rr = i & 1 ? r * 0.42 : r; i ? sh.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : sh.moveTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+    return paint(new THREE.ShapeGeometry(sh), col);
+  };
+  const shellCols = [0xff9fc8, 0xffc59a, 0xfff1d6, 0xc9b6ff, 0x9fe6ff], glowCols = [0xff6fb8, 0x5fe8ff, 0xb98bff, 0xffb35f];
+  for (const [u, dir] of [[u0, -1], [u1, 1]]) {
+    const f = br.frameAt(u);
+    for (let i = 0; i <= 12; i++) {   // a frame of shells round the mouth (makes it read as a doorway from the main road)
+      const l = -WI * 1.06 + 2 * WI * 1.06 * i / 12, h = (Math.abs(l) >= WI ? AW : archH(l)) + 0.55;
+      const g = i % 3 === 1 ? star(0.65, 0xff8a3d) : scallop(0.7, shellCols[i % shellCols.length]);
+      parts.push(stick(g, P(u + dir * 0.06, l, h), f.tx * dir, 0, f.tz * dir, Math.atan2(h - AW * 0.6, -l) - Math.PI / 2));
+    }
+  }
+  for (let i = 0; i < 14; i++) {      // scattered over both long walls
+    const u = u0 + 2 + rng() * (u1 - u0 - 4), sd = i & 1 ? 1 : -1, f = br.frameAt(u), h = 1.2 + rng() * (HC - 2.5);
+    const g = rng() < 0.35 ? star(0.5 + rng() * 0.3, 0xff8a3d) : scallop(0.5 + rng() * 0.35, shellCols[i % shellCols.length]);
+    parts.push(stick(g, P(u, sd * (WO + 0.05), h), f.lx * sd, 0, f.lz * sd, rng() * 0.8 - 0.4));
+  }
+  // ---- inside: torches on both walls (stick merged into the castle, flame glows) and glowing shells up the arch
+  for (let u = u0 + 4, i = 0; u < u1 - 2; u += 6.5, i++) {
+    const f = br.frameAt(u);
+    for (const sd of [1, -1]) {
+      const l = sd * (WI - 0.25), b = P(u, l, 2.6);
+      const stk = new THREE.CylinderGeometry(0.1, 0.13, 1.3, 6); place(stk, { x: b[0], y: b[1], z: b[2], ry: f.yaw, rz: sd * 0.35 });
+      parts.push(paint(stk, 0x7a4a24));
+      const top = P(u, l - sd * 0.25, 3.35);
+      glow.push(paint(new THREE.ConeGeometry(0.26, 0.75, 7).translate(top[0], top[1] + 0.3, top[2]), 0xffb02e));
+      glow.push(paint(new THREE.SphereGeometry(0.2, 7, 5).translate(top[0], top[1] + 0.12, top[2]), 0xfff07a));
+      // a shell lamp higher up the arch, facing the road
+      const ls = sd * WI * 0.7, hs = archH(ls) - 0.1, sp = P(u + 3.2, ls, hs), nl = -sd * 0.6;
+      glow.push(stick(scallop(0.95, glowCols[(i * 2 + (sd > 0 ? 0 : 1)) % glowCols.length]), sp, f.lx * nl - f.tx * 0.75, -0.35, f.lz * nl - f.tz * 0.75, 0));
+    }
+  }
+  // ---- a giant bucket and spade on the sand beside the castle (left of the way in — the side you see from the main road)
+  {
+    const b = P(u0 + 5, WO + 6.5, 0), c = K.claim(b[0], b[2], 3.2, { margin: 0.5 });
+    if (c) {
+      const bucket = new THREE.CylinderGeometry(2.3, 1.8, 3.2, 20, 1, true).translate(0, 1.6, 0); parts.push(paint(bucket, 0xe0332c));
+      parts.push(paint(new THREE.CircleGeometry(1.8, 20).rotateX(Math.PI / 2).translate(0, 0.02, 0), 0xc22a24));
+      parts.push(paint(new THREE.CircleGeometry(2.2, 20).rotateX(-Math.PI / 2).translate(0, 2.9, 0), sandB));
+      parts.push(paint(new THREE.TorusGeometry(2.3, 0.14, 6, 24).rotateX(Math.PI / 2).translate(0, 3.2, 0), 0xff5d5d));
+      parts.push(paint(new THREE.TorusGeometry(2.2, 0.08, 5, 20, Math.PI).rotateZ(0.25).translate(0, 3.1, 0), 0xffd23f));
+      const n = parts.length;
+      for (let i = n - 5; i < n; i++) place(parts[i], { x: c.x, y: c.y - 0.1, z: c.z, ry: rng() * 6.28, rz: 0.06 });
+      const sp = [paint(new THREE.BoxGeometry(1.5, 1.9, 0.14).translate(0, 0.95, 0), 0x2f8fe8),
+        paint(new THREE.CylinderGeometry(0.13, 0.13, 3.0, 8).translate(0, 3.3, 0), 0xffd23f),
+        paint(new THREE.BoxGeometry(1.0, 0.22, 0.22).translate(0, 4.85, 0), 0xffd23f)];
+      const s2 = P(u0 + 10, WO + 4.2, 0);
+      for (const g of sp) parts.push(place(g, { x: s2[0], y: c.y - 0.6, z: s2[2], ry: rng() * 6.28, rx: 0.32 }));
+    }
+  }
+  // keep every other prop off the castle
+  for (let u = u0 - 3; u <= u1 + 3; u += 3) for (const sd of [1, -1]) { const p = P(u, sd * (WO + 1), 0); K.spots.push({ x: p[0], z: p[2], r: 4.5 }); }
+  for (const c of corners) K.spots.push({ x: c[0], z: c[2], r: TR + 2.5 });
+
+  // one mesh: sand texture with world-space (triplanar-ish) uvs, tinted per vertex
+  for (const pg of parts) if (!pg.userData.uvDone) {
+    if (!pg.attributes.normal) pg.computeVertexNormals();
+    const p = pg.attributes.position, nn = pg.attributes.normal, uv = pg.attributes.uv;
+    if (uv) for (let i = 0; i < p.count; i++) {
+      const ax = Math.abs(nn.getX(i)), ay = Math.abs(nn.getY(i)), az = Math.abs(nn.getZ(i));
+      const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+      if (ay > 0.7) uv.setXY(i, x / 7, z / 7); else if (ax > az) uv.setXY(i, z / 7, y / 7); else uv.setXY(i, x / 7, y / 7);
+    }
+  }
+  const g = merge(parts);
+  const castle = mesh(g, new THREE.MeshLambertMaterial({ map: ctx.loadTex(ctx.def.tex?.ground || 'sand', null), vertexColors: true, side: THREE.DoubleSide }), { name: 'sandcastle', shadow: true });
+  castle.receiveShadow = true;
+  const glowMat = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false, side: THREE.DoubleSide });
+  mesh(merge(glow), glowMat, { name: 'sandcastle-glow', receive: false });
+
+  // ---- the crumbly door
+  const fd = br.frameAt(t0), D = { x: fd.x, y: fd.y, z: fd.z };
+  const sh = new THREE.Shape(); sh.moveTo(-WI + 0.05, -0.3); sh.lineTo(-WI + 0.05, AW);
+  for (let i = 1; i < 16; i++) { const l = -WI + 2 * WI * i / 16; sh.lineTo(l * 0.993, archH(l) - 0.05); }
+  sh.lineTo(WI - 0.05, AW); sh.lineTo(WI - 0.05, -0.3); sh.closePath();
+  const dg = new THREE.ExtrudeGeometry(sh, { depth: 0.9, bevelEnabled: false, curveSegments: 2 }); dg.translate(0, 0, -0.45);
+  const doorTex = K.canvasTex(256, 256, (c, w, h) => {
+    c.fillStyle = '#ecd096'; c.fillRect(0, 0, w, h);
+    for (let i = 0; i < 1400; i++) { c.fillStyle = rng() < 0.5 ? 'rgba(160,120,60,0.35)' : 'rgba(255,248,220,0.5)'; c.fillRect(rng() * w, rng() * h, 1 + rng() * 3, 1 + rng() * 3); }
+    for (let i = 0; i < 26; i++) { c.fillStyle = `rgba(${150 + rng() * 60 | 0},${110 + rng() * 50 | 0},${60 + rng() * 40 | 0},0.55)`; c.beginPath(); c.ellipse(rng() * w, rng() * h, 3 + rng() * 9, 3 + rng() * 7, rng() * 3, 0, 7); c.fill(); }
+    c.strokeStyle = 'rgba(110,72,30,0.85)'; c.lineCap = 'round';
+    for (let i = 0; i < 9; i++) {            // cracks
+      let x = w * (0.15 + rng() * 0.7), y = h * (0.1 + rng() * 0.8); c.lineWidth = 2 + rng() * 3; c.beginPath(); c.moveTo(x, y);
+      for (let j = 0; j < 6; j++) { x += (rng() - 0.5) * 50; y += (rng() - 0.5) * 50; c.lineTo(x, y); } c.stroke();
+    }
+    for (let i = 0; i < 6; i++) { c.fillStyle = ['#ff9fc8', '#fff1d6', '#9fe6ff'][i % 3]; c.beginPath(); c.arc(rng() * w, h * (0.15 + rng() * 0.7), 5 + rng() * 4, Math.PI, 0); c.fill(); }
+  });
+  doorTex.repeat.set(1 / (2 * WI), 1 / (AT + 0.3)); doorTex.offset.set(0.5, 0.3 / (AT + 0.3));
+  const door = mesh(dg, new THREE.MeshLambertMaterial({ map: doorTex }), { name: 'sandcastle-door' });
+  door.position.set(D.x, D.y, D.z); door.rotation.y = fd.yaw;
+
+  // ---- the burst: sand chunks (instanced, flung forward) + a dust puff (points)
+  const NC = 60, chunks = [];
+  for (let i = 0; i < NC; i++) chunks.push({ x: 0, y: -999, z: 0, vx: 0, vy: 0, vz: 0, rx: rng() * 6, ry: rng() * 6, s: 0.14 + rng() * 0.26, life: 0, color: [sandA, sandB, 0xd6b070, 0xf7e3b8][i % 4] });
+  const cim = instanced(paint(new THREE.DodecahedronGeometry(1, 0), 0xffffff), new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), chunks.map(c => ({ ...c, s: 0 })), { name: 'sandcastle-chunks' });
+  cim.frustumCulled = false; cim.visible = false;
+  const ND = 40, dpos = new Float32Array(ND * 3), dust = [];
+  for (let i = 0; i < ND; i++) dust.push({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 });
+  const dgeo = new THREE.BufferGeometry(); dgeo.setAttribute('position', new THREE.BufferAttribute(dpos, 3));
+  const dtex = K.canvasTex(64, 64, (c, w, h) => { const gr = c.createRadialGradient(w / 2, h / 2, 2, w / 2, h / 2, w / 2 - 1); gr.addColorStop(0, 'rgba(255,240,205,0.95)'); gr.addColorStop(0.6, 'rgba(240,215,160,0.55)'); gr.addColorStop(1, 'rgba(240,215,160,0)'); c.fillStyle = gr; c.fillRect(0, 0, w, h); });
+  const dmat = new THREE.PointsMaterial({ size: 2.4, map: dtex, color: 0xf2dcae, transparent: true, depthWrite: false, opacity: 1 });
+  const dpts = new THREE.Points(dgeo, dmat); dpts.name = 'sandcastle-dust'; dpts.frustumCulled = false; dpts.visible = false; ctx.group.add(dpts);
+
+  const st = { state: 'up', t: 0, grow: 1, burstT: 9 };
+  const burst = k => {
+    st.state = 'open'; st.t = 0; st.burstT = 0; door.visible = false; cim.visible = true; dpts.visible = true;
+    const dirF = Math.sign((k.vel?.x || Math.sin(k.yaw)) * fd.tx + (k.vel?.z || Math.cos(k.yaw)) * fd.tz) || 1, v = Math.max(8, k.speed || 0);
+    for (const c of chunks) {
+      const l = (rng() * 2 - 1) * (WI - 0.6), h = rng() * archH(l) * 0.9;
+      c.x = D.x + fd.lx * l; c.y = D.y + h; c.z = D.z + fd.lz * l; c.life = 1.1 + rng() * 0.8;
+      const f = dirF * (v * (0.45 + rng() * 0.6)), sdv = (rng() * 2 - 1) * 5;
+      c.vx = fd.tx * f + fd.lx * sdv; c.vz = fd.tz * f + fd.lz * sdv; c.vy = 2 + rng() * 6;
+    }
+    dust.forEach((d, i) => {
+      const l = (rng() * 2 - 1) * (WI - 1), h = rng() * archH(l) * 0.8;
+      d.x = D.x + fd.lx * l; d.y = D.y + h; d.z = D.z + fd.lz * l;
+      const f = dirF * (2 + rng() * 6), sdv = (rng() * 2 - 1) * 3;
+      d.vx = fd.tx * f + fd.lx * sdv; d.vz = fd.tz * f + fd.lz * sdv; d.vy = 0.5 + rng() * 2.5;
+    });
+  };
+  updaters.push((dt, t) => {
+    glowMat.color.setScalar(0.88 + 0.12 * Math.sin(t * 13) * Math.sin(t * 7.3));
+    const race = globalThis.__OTR?.race;
+    let near = false, hit = null;
+    if (race) for (const k of race.karts) {
+      const dx = k.pos.x - D.x, dz = k.pos.z - D.z, fw = dx * fd.tx + dz * fd.tz, la = dx * fd.lx + dz * fd.lz;
+      if (Math.abs(k.pos.y - D.y) > 6) continue;
+      if (dx * dx + dz * dz < 26 * 26) near = true;
+      if (Math.abs(fw) < 4.5 && Math.abs(la) < WI) hit = k;
+    }
+    if (hit && st.state !== 'open') burst(hit);
+    st.t += dt; st.burstT += dt;
+    if (st.state === 'open' && st.t > 3.5 && !near) { st.state = 'grow'; st.grow = 0; door.visible = true; }
+    if (st.state === 'grow') { st.grow = Math.min(1, st.grow + dt / 0.8); if (st.grow >= 1) st.state = 'up'; }
+    door.scale.set(1, st.state === 'grow' ? Math.max(0.02, st.grow * st.grow * (3 - 2 * st.grow)) : 1, 1);
+    if (cim.visible) {
+      let alive = false;
+      chunks.forEach((c, i) => {
+        c.life -= dt;
+        if (c.life > 0) {
+          alive = true; c.vy -= 22 * dt; c.x += c.vx * dt; c.y += c.vy * dt; c.z += c.vz * dt; c.rx += dt * 6; c.ry += dt * 4;
+          if (c.y < D.y + c.s * 0.4) { c.y = D.y + c.s * 0.4; c.vy = Math.abs(c.vy) * 0.25; c.vx *= 0.6; c.vz *= 0.6; }
+        }
+        K.setInstance(cim, i, { x: c.x, y: c.y, z: c.z, rx: c.rx, ry: c.ry, s: c.life > 0 ? c.s * Math.min(1, c.life / 0.4) : 0 });
+      });
+      cim.instanceMatrix.needsUpdate = true;
+      if (!alive) cim.visible = false;
+    }
+    if (dpts.visible) {
+      const a = st.burstT / 1.6;
+      if (a >= 1) dpts.visible = false;
+      else {
+        dust.forEach((d, i) => { d.x += d.vx * dt; d.y += d.vy * dt; d.z += d.vz * dt; d.vx *= 1 - dt * 1.5; d.vz *= 1 - dt * 1.5; dpos[i * 3] = d.x; dpos[i * 3 + 1] = d.y; dpos[i * 3 + 2] = d.z; });
+        dgeo.attributes.position.needsUpdate = true;
+        dmat.opacity = 1 - a * a; dmat.size = 2.4 + a * 3.5;
+      }
+    }
+  });
 }

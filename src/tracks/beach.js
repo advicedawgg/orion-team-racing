@@ -71,4 +71,35 @@ export default {
     { at: 17.2, lat: 4.5, n: 6, curve: 1.5 },
   ],
   checkpointCount: 8,
+  // SANDCASTLE CAVE — the hidden shortcut across the inside of the Lighthouse Hairpin (DESIGN.md
+  // "Branches (shortcuts)"). A gap in the inside fence on the shore straight's last bend leads to a
+  // giant sandcastle; you burst through its crumbly sand door (scenery only) into a short, straight,
+  // shell-lit cave and pop out onto the hairpin's exit. Wide, walled, no gaps: nothing to fall into.
+  // Junction points sit on the main road's banked surface (fit() in tools/fixtures/branches.js).
+  branches: [{
+    id: 'cave', name: 'Sandcastle Cave',
+    from: 5.25, to: 9.85, side: 'L',
+    width: 12,
+    defaults: { offL: 3, offR: 3, wallL: 'beach', wallR: 'beach' },
+    points: [
+      { x: 140.37, z: 164.15, y: 0.325, bank: 0.12 },          // 0  leaves the shore straight's last bend on the left lane
+      { x: 149.86, z: 156.55, y: 0.24, bank: 0.69 },           // 1  through the gap in the inside fence
+      { x: 155.28, z: 150.9, y: 0.3 },                          // 2  a r=30 m left across the sand…
+      { x: 159.06, z: 144.04, y: 0.3 },                         // 3
+      { x: 160.93, z: 136.43, y: 0.3 },                         // 4  …onto the turbo pad
+      { x: 161.11, z: 130, y: 0.3, tunnel: true, offL: 1, offR: 1, wallL: 'none', wallR: 'none' },   // 5  the crumbly door: into the cave
+      { x: 161.11, z: 120, y: 0.3 },                            // 6  inside: torches and glowing shells
+      { x: 161.11, z: 110, y: 0.3 },                            // 7
+      { x: 159.89, z: 98.11, y: 0.3, tunnel: false, offL: 3, offR: 3, wallL: 'beach', wallR: 'beach' },  // 8  out of the cave (r=80 m left)
+      { x: 156.28, z: 84.64, y: 0.3 },                          // 9
+      { x: 146.2, z: 67.2, y: 0.3 },                            // 10 straight down to the hairpin's exit
+      { x: 134.75, z: 48.56, y: 0.226, bank: 0.76 },           // 11
+      { x: 127.79, z: 40.77, y: 0.289, bank: 0.28 },           // 12 rejoins on the left lane
+    ],
+    pads: [{ at: 3.45, lat: 0, len: 8, w: 7 },                // burst through the door on a turbo
+           { at: 7.2, lat: 0, len: 8, w: 7 }],                // and another shoots you out of the cave
+    stars: [{ at: 2.0, lat: 0, n: 5, spacing: 3.5 }],         // a star trail leads from the fence gap to the door
+    ai: { easy: 0, medium: 0.25, hard: 0.5 },
+    hidden: true,
+  }],
 };

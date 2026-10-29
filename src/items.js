@@ -541,9 +541,17 @@ function alongRoute(tr, p, ds) {
   if (t && t.route && ds > 0) {
     const br = tr.routes[t.route], a = tr.dS(br.sEntry, s0), b = tr.dS(br.sEntry, p.s);
     if (a < 0 && b >= 0) { p.route = t.route; p.rs = b; p.s = br.mainS(b); p.lat = clamp(p.lat, -br.HW[0], br.HW[0]); return br; }
+    // the target turned off after the projectile had already passed the entry (right on its tail): join the
+    // branch while still inside its entry zone, where the two roads overlap, at the projectile's own spot
+    if (b >= 0 && br.uOfMainS(p.s) < br.zoneIn) {
+      br.projectLocal(p, -1, _bq);
+      const u = clamp(_bq.s, 0, br.zoneIn), hw = br.HW[br.idx(u)];
+      p.route = t.route; p.rs = u; p.s = br.mainS(u); p.lat = clamp(_bq.lat, -hw, hw); return br;
+    }
   }
   return tr;
 }
+const _bq = {};
 
 /** bomb / rocket: straight through the world (line of sight). Returns false if it ended. */
 const _lp = {}, _lq = { x: 0, y: 0, z: 0 };

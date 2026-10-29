@@ -393,6 +393,18 @@ hw, limL, limR, wallL, wallR, gap, tx, tz, lx, lz, tb, slope, noRespawn, tunnel}
 Super Orion worlds:
 
 1. **Bubbly Beach** — easy, wide, gentle sweepers, a jump over a lagoon inlet, palm trees.
+   *As built:* 1004 m, road 16–18 m, anticlockwise. Hidden shortcut, the SANDCASTLE CAVE (`branches`
+   id `cave`, 2026-10-29): a gap in the inside fence on the shore straight's last bend (`from` 5.25, side L)
+   and a star trail lead to a giant sandcastle inside the Lighthouse Hairpin; a turbo pad shoots you through
+   its crumbly sand door (scenery only: it bursts into sand chunks + a dust puff when a kart reaches it and
+   builds itself back 3.5 s after nobody is within 26 m) into a 32 m straight, torch- and shell-lit cave
+   (`tunnel`, roof 9.4 m, walls `none` with 1 m shoulders), a second pad shoots you out, and a r=80 m left
+   rejoins the hairpin's exit (`to` 9.85). 140.6 m vs 211 m of main road, 12 m wide, tightest r=26 m, no
+   gaps (nothing to fall into). Measured: solo lap saving hard 2.46 s (40.0 vs 42.5 s), medium 2.81 s (43.0
+   vs 45.8 s); natural take rate over 6 seeds × 8 AI × 3 laps: easy 0 %, medium 28 %, hard 51 %, max stuck
+   0.2 s. Scenery: castle (1 mesh, casts shadow) + glow (torch flames, shell lamps) + door, + chunks + dust
+   only while bursting; `playtest.mjs beach --perf`: grid 160 → 162 calls, mid p50/max 63/98 → 64/101
+   (67/101 forced through the cave), render CPU p50 1.7 → 1.8 ms, GPU p50 0.67 → 0.66 ms.
 2. **Ice Cream Peaks** — snowy ice-cream mountain, hairpins that teach sliding, a big jump.
    *As built:* 1123 m, road 14–18 m, clockwise (mostly RIGHT turns). Vanilla Sweeper → a 0 → 21 m
    climb up Strawberry Peak (pad) → Sprinkle Hairpin (r≈19, 180°) → summit ridge → pad-fed jump
@@ -622,7 +634,8 @@ branches: [{
   Avoidance and item/hazard/box/star picking only look at its own route. Server bots run the same brain.
 - **Items**: box/star rows of every route (`track.allItemRows/allStarRows`, main first; the
   snapshot's alive bits follow that order); projectiles fired on a branch start on it; warp stars /
-  shield shots follow a target onto its branch; hazards carry `route`.
+  shield shots follow a target onto its branch (also when it turned off right after the projectile passed the
+  entry: it joins inside the entry zone at its own projected spot — Bubbly Beach's warp-star check hit this); hazards carry `route`.
 - **Camera / HUD**: `track.kartFrame(k, ahead)` (the kart's own road ahead; wrong-way uses it too).
   Minimap: a branch is drawn (gold, on top) once `save.js` `shortcuts[trackId]` has it; the first time
   a human comes out of the far end, a big **SHORTCUT!** callout with the star icon pops (`main.js`
