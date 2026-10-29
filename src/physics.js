@@ -72,7 +72,7 @@ export function createKart({ racerId = 'orion', stats = { speed: 3, accel: 3, tu
     stars: 0, item: null, itemCount: 0, shieldT: 0, shieldSuper: false, invincT: 0,
     hitT: 0, hitDur: 1, hitKind: null, spinT: 0, slowT: 0, stallT: 0,
     // track / race
-    s: 0, si: -1, lat: 0, route: 0, rs: 0, lap: 1, lapsDone: 0, nextCp: 0, place: 1, progress: 0,
+    s: 0, si: -1, lat: 0, route: 0, rs: 0, brIn: 0, lap: 1, lapsDone: 0, nextCp: 0, place: 1, progress: 0,
     finished: false, finishTime: 0, lastLapT: 0, lapTimes: [], frozen: true,
     respawnT: 0, respawnAt: null, lastGoodS: 0, wallT: 0, bumpT: 0, padCool: new Map(), stuckT: 0,
     _a: false, _b: false, ev: [],
@@ -280,9 +280,14 @@ export function stepKart(k, c, track, dt = DT) {
   // rs = s along that route. Main-road features below read track.* exactly as before.
   const route = k.route = pr.route | 0; k.rs = route ? pr.rs : pr.s;
   const rt = route ? track.routes[route] : track, rs = k.rs;
-  if (route !== prevRoute && prevRoute) {
-    const br = track.routes[prevRoute];
-    if (prevRs > br.length * 0.6) ev(k, ['shortcut', prevRoute - 1]);   // came out of the far end: a shortcut taken
+  if (route !== prevRoute) {
+    if (prevRoute) {
+      // came out of the far end, having come on near the start: a shortcut taken (brushing the exit's mouth
+      // from the main road's shoulder, forwards or backwards, is not one)
+      const br = track.routes[prevRoute];
+      if (prevRs > br.length * 0.6 && k.brIn < br.length * 0.4) ev(k, ['shortcut', prevRoute - 1]);
+    }
+    if (route) k.brIn = rs;   // where it came onto the branch
   }
 
   // ---------------------------------------------------------------- walls (boundary)
@@ -412,6 +417,7 @@ export function placeAtRespawn(k, track) {
   const p = rt.pointAt(rs, 0);
   k.pos.x = p.x; k.pos.z = p.z; k.pos.y = p.y + T.RESPAWN_DROP;
   k.yaw = p.yaw; k.speed = 9; k.vy = 0; k.lastGoodS = s; k.air = true; k.airT = 0; k.hop = true;
+  if (q?.route && q.route !== k.route) k.brIn = rs;
   k.si = (rt.off || 0) + rt.idx(rs); k.s = q?.route ? rt.mainS(rs) : rs; k.route = q?.route || 0; k.rs = rs; k.respawnT = 0; k.hitT = 0; k.spinT = 0;
   k.invincT = Math.max(k.invincT, 0);  // no free invincibility
   ev(k, 'respawned');

@@ -42,7 +42,7 @@ export function fixtureDef() {
         on(19.7, 3.5),                         // 10 rejoins on the left lane
       ],
       items: [{ at: 3.55 }],
-      pads: [{ at: 4.62, lat: 0, len: 8, w: 9 }],   // full width: every kart that takes the cut gets the boost
+      pads: [{ at: 4.62, lat: 0, len: 8, w: 9 }],   // 9 of the 11 m: a kart within 1 m of an edge misses it (pool → rescue before the entry)
       jumps: [{ at: 4.98, vy: 9 }],
       gaps: [{ from: 5.03, to: 5.77 }],
       needsBoost: true,

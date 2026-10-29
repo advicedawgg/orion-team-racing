@@ -165,6 +165,19 @@ export function runBranchRaces(tr, ok, warn, { ENTRANTS, SEED, ITEMS, QUIET }) {
       ok(`${tag}: …nobody stuck > 3 s at the junctions`, maxStuck <= 3, `max ${f1(maxStuck)} s`);
       ok(`${tag}: …progress never jumps backwards (except rescues)`, backstep === 0, `${backstep} backward steps`);
     }
+    // ---- 8-AI races where nobody may take it: a brain that said no must not drift onto it at the mouth
+    //      (a slide past the main road's edge, a bump) and then commit to the shortcut
+    {
+      let sc = 0, fin = 0;
+      for (const sd of [1, 2, 3]) {
+        const race = createRace({ track: tr, entrants: ENTRANTS, playerIndex: -1, difficulty: 'medium', seed: sd });
+        race.forceBranch = '-';
+        if (ITEMS) createItems(race, { seed: sd });
+        simulate(race, { maxT: 60 + (tr.length / 12) * race.laps });
+        sc += race.stats.reduce((a, s) => a + s.shortcuts, 0); fin += race.results().filter(r => r.finished && !r.estimated).length;
+      }
+      ok(`${tag}: medium races (seeds 1–3), every brain told never to take it: nobody does, all finish`, sc === 0 && fin === 24, `${sc} shortcut(s), ${fin}/24 finished`);
+    }
     // ---- the drive-through test: two identical karts from the same spot, one through the branch, one round
     {
       const race = createRace({ track: tr, entrants: [{ racerId: 'A', stats: { speed: 3, accel: 3, turn: 3 } }, { racerId: 'B', stats: { speed: 3, accel: 3, turn: 3 } }], playerIndex: -1, difficulty: 'hard', seed: 3 });
@@ -195,6 +208,28 @@ export function runBranchRaces(tr, ok, warn, { ENTRANTS, SEED, ITEMS, QUIET }) {
         placeAt ? `A ${f1(tA)} s / place ${placeAt.a}, B ${f1(tB)} s / place ${placeAt.b}: ${f1(tB - tA)} s and ${f1(placeAt.pa - placeAt.pb)} m ahead` : 'never got there');
       ok(`${tag}: drive-through: checkpoints in the span credited, the lap counts at the line`, A.lapsDone >= 1 && B.lapsDone >= 1 && cpA < cps.length,
         `A laps ${A.lapsDone} (checkpoints from #${cpA}), B laps ${B.lapsDone}`);
+    }
+    // ---- the main road's shoulder past both mouths (forwards, then backwards): brushing a mouth is not a
+    //      shortcut (no 'shortcut' event → no SHORTCUT! callout / minimap discovery), and nobody gets stuck
+    {
+      const q = {}, lat = (br.side === 'R' ? -1 : 1) * (tr.HW[tr.idx(br.sEntry + 20)] + 1.5);
+      let sc = 0, stuck = 0, maxStuck = 0, resp = 0;
+      for (const back of [false, true]) {
+        const k = createKart({ racerId: 'sh' }); placeKart(k, tr.grid[0], tr); k.frozen = false;
+        const s0 = back ? br.sExit + 30 : br.sEntry - 30, s1 = back ? br.sEntry - 30 : br.sExit + 30, p = tr.pointAt(s0, lat);
+        k.pos.x = p.x; k.pos.y = p.y + 0.05; k.pos.z = p.z; k.yaw = p.yaw + (back ? Math.PI : 0); k.speed = back ? 8 : 16;
+        k.s = tr.wrapS(s0); k.si = tr.idx(s0); k.lat = lat; k.lastGoodS = k.s;
+        for (let i = 0; i < 60 * 40; i++) {
+          tr.projectOn(0, k.pos, -1, q);
+          if (back ? tr.dS(s1, q.s) < 0 : tr.dS(s1, q.s) > 0) break;
+          const tp = tr.pointAt(q.s + (back ? -9 : 9), lat), want = Math.atan2(tp.x - k.pos.x, tp.z - k.pos.z);
+          const st = Math.max(-1, Math.min(1, wrapA(want - k.yaw - (back ? Math.PI : 0)) * 2.5)) * (back ? -1 : 1);
+          k.ev.length = 0; stepKart(k, { steer: st, throttle: back ? 0 : 1, brake: back ? 1 : 0, hopA: false, hopB: false }, tr);
+          for (const e of k.ev) { const n = Array.isArray(e) ? e[0] : e; if (n === 'shortcut') sc++; if (n === 'respawn') resp++; }
+          if (Math.abs(k.speed) < 2 && k.respawnT <= 0) { stuck += DT; maxStuck = Math.max(maxStuck, stuck); } else stuck = 0;
+        }
+      }
+      ok(`${tag}: driving the main road's shoulder past both mouths (both ways) is not a shortcut`, sc === 0 && maxStuck < 1 && resp === 0, `lat ${f1(lat)}: ${sc} shortcut event(s), max stuck ${f1(maxStuck)} s, respawns ${resp}`);
     }
     // ---- rescues: in the needsBoost pool → the main road before the entry; a fall on the branch → back on the branch
     {

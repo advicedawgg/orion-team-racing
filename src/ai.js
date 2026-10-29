@@ -171,7 +171,15 @@ export function drive(b, race) {
   const s = k.s;
   // the path ahead: this route, then the branch it chose (main) / the main road after the exit (branch).
   // On an unbranched track this is exactly tr.idx(s + d) etc. (route 0, no plan).
-  const route = k.route | 0, rs = route ? k.rs : s, plan = tr.branches?.length ? branchPlan(b, race) : -1;
+  let route = k.route | 0, rs = route ? k.rs : s;
+  const plan = tr.branches?.length ? branchPlan(b, race) : -1;
+  // slid onto a branch it chose NOT to take (a drift past the main road's edge at the mouth, a bump): still in
+  // the entry zone, so steer on along the main road (from its own main-road projection) and the junction puts
+  // it back on main — instead of committing to the shortcut
+  if (route && rs < tr.routes[route].zoneIn && !(b.pick && b.pick.b === route - 1 && b.pick.take)) {
+    const br = tr.routes[route], h = br.JH[clamp(k.si - br.off, 0, br.n - 1)];
+    route = 0; rs = tr.projectOn(0, k.pos, h, b._mq || (b._mq = {})).s;
+  }
   const at = d => tr.pathAt ? tr.pathAt(route, rs, d, plan) : { rt: tr, s: s + d };
   const head = d => { const q = at(d); return q.rt.HEAD[q.rt.idx(q.s)]; };
   const rt0 = route ? tr.routes[route] : tr;

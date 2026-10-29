@@ -134,6 +134,8 @@ export function createHud(root, { pn = 0 } = {}) {
     const n = track.n, X = track.X, Z = track.Z;
     let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
     for (let i = 0; i < n; i++) { const x = -X[i], z = -Z[i]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z; }
+    // branches too (hidden ones as well, so the map doesn't rescale when one is discovered)
+    for (const b of track.branches || []) for (let i = 0; i < b.n; i++) { const x = -b.X[i], z = -b.Z[i]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z; }
     const sc = Math.min((W - 2 * pad) / (x1 - x0 || 1), (H - 2 * pad) / (z1 - z0 || 1));
     const ox = (W - (x1 - x0) * sc) / 2, oz = (H - (z1 - z0) * sc) / 2;
     const P = (x, z) => [ox + (-x - x0) * sc, oz + (-z - z0) * sc];

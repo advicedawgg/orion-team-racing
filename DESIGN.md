@@ -599,20 +599,26 @@ branches: [{
   human) gets the right route for free. Karts carry `route` + `rs`; `s` stays the **main-equivalent s**.
 - **u → s.** `br.mainS(u)` is monotonic: the projection of the branch centre while it's on the main
   road, linear in u between (projections deep inside a bend race ahead), and right at the junctions
-  the kart's own main projection, blended over `ROUTE.BLEND` (8 m) — so s never jumps when the route
-  switches. Laps, positions, the rubber band and checkpoints keep working on s; checkpoints inside a
+  the kart's own main projection, blended over `ROUTE.BLEND` (8 m) — so s doesn't jump when a kart
+  drives through. (A kart that slides onto a branch's mouth from the main road's shoulder and back off
+  it further along the zone sees s jump a few metres — 7 m measured on the fixture, from the mapping's
+  compression; harmless for checkpoints/laps, a brief position flicker.) Laps, positions, the rubber band and checkpoints keep working on s; checkpoints inside a
   branch's span are credited as s sweeps past them (no need to move them). Inverse: `br.uOfMainS(s)`.
 - **Physics** reads the kart's route for jumps, pads, gaps (main-road features in the skipped span
   never fire for a branch kart) and the rescue: `lastGoodS` / `respawnAt` are COMBINED coordinates
   (`track.csOf(route, rs)`: main s, or `br.csOff + u` past the lap length; `csLoc`, `csPoint`,
   `respawnCS`). A rescue on a branch drops you back on the branch; falling into a **needsBoost** gap
   drops you on the main road just before the entry (`respawnS(sEntry − 2)`, RESPAWN_T 1.2 s). Leaving
-  through the far end emits the kart event `['shortcut', b]` (race stats `shortcuts`).
+  through the far end (rs > 60 % of its length) having come on near the start (`k.brIn` < 40 %) emits
+  the kart event `['shortcut', b]` (race stats `shortcuts`); brushing the exit's mouth from the main
+  road's shoulder, either way, is not a shortcut.
 - **AI** (`ai.js`): ~150 m before a branch each brain decides once per lap (`br.ai[difficulty]`,
   `race.forceBranch` / `brain.forceBranch` override: an id, or `'-'` = never). Its path is
   `track.pathAt(route, rs, d, plan)` — the main road, then the chosen branch, then main after the exit —
   so the aim point, racing line (the branch's own `AIL`), pads, corner reading and wall prediction all
-  follow the route it will drive; a brain that isn't taking it never leaves the main road there.
+  follow the route it will drive; a brain that isn't taking it never leaves the main road there — and
+  one that slides onto the mouth anyway (a drift past the edge, a bump) keeps steering along the main
+  road while it's inside the entry zone, so the junction puts it back on main instead of it committing.
   Avoidance and item/hazard/box/star picking only look at its own route. Server bots run the same brain.
 - **Items**: box/star rows of every route (`track.allItemRows/allStarRows`, main first; the
   snapshot's alive bits follow that order); projectiles fired on a branch start on it; warp stars /
@@ -639,7 +645,9 @@ branches: [{
   it (seeds 1–3; target 1.5–3.5 s, WARN > 4 s); an 8-AI medium race forced through it counts every
   lap with nobody stuck > 3 s and no backward progress; a drive-through test (route 0 → b → 0,
   continuous progress, the branch kart ahead in place and progress, checkpoints + the lap counted);
-  the two rescues. `server/selftest.js` codes route + si and races the fixture online (bots + the
+  three medium 8-AI races with `forceBranch '-'` where nobody takes it; a kart on the main road's
+  shoulder (half-width + 1.5 m, the branch side) past both mouths, forwards and backwards, with no
+  `shortcut` event and nobody stuck; the two rescues. `server/selftest.js` codes route + si and races the fixture online (bots + the
   human's device through it, the server's copy follows, every lap counted).
 - **Debug**: `&fixture=1` (with `track=beach`, dev server only — `tools/` isn't deployed) swaps in the
   fixture; `&branch=<id>` makes every brain (AI + the `ai=1`/`t=` autopilot) take that branch each lap
@@ -647,7 +655,8 @@ branches: [{
   above and the autopilot's chase view through the branch to `shots/branch/` — look at them.
 - **Measured (fixture, 2026-10-29)**: Crab Cut 153.8 m vs 210.0 m of main road (s 729 → 939, skips
   checkpoints 753 and 878), 11 m wide, junction zones 45 / 47 m, a needsBoost 18.0 m tide pool (needs
-  ≥ 24 m/s: the full-width pad gives ~27; 21 m at the 30 m/s cap). Solo lap saving: hard 2.91 s
+  ≥ 24 m/s: the 9 m pad on the 11 m road gives ~27 — a kart within 1 m of either edge misses it and
+  lands in the pool; 21 m at the 30 m/s cap). Solo lap saving: hard 2.91 s
   (39.6 vs 42.6 s), medium 2.67 s (43.1 vs 45.8 s); drive-through: 2.7 s / 65 m ahead after the exit.
   Forced medium race: 24/24 laps through it, max stuck 0.2 s. `node tools/check.js` 32 → 47 s on the hub (the fixture's full track checks + these).
 
