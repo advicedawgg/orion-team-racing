@@ -4,7 +4,8 @@
 // start, a pad-fed leap over the first lava river, the Chilli Hairpin, the Taco Tunnel straight
 // through the volcano's flank, the Rock Bridge over the lava lake (no rails — you can fall in, the
 // cloud pops you straight back), S-bends, the Taco Turn, and a second lava leap onto the start
-// straight. The lava is the track's `water` (a splash = rescue); scenery makes it glow.
+// straight. The lava is the track's `water` (a splash = rescue); scenery makes it glow. Hidden shortcut: the
+// Chilli Crack across the inside of the Chilli Hairpin (`branches`, at the bottom).
 export default {
   id: 'volcano',
   name: 'Taco Volcano',
@@ -84,4 +85,37 @@ export default {
     { at: 19.4, lat: 0, n: 6, spacing: 4 },   // across the bridge — stay in the middle!
   ],
   checkpointCount: 8,
+  // Hidden shortcut (DESIGN.md "Branches (shortcuts)"): the CHILLI CRACK. Just as the Chilli Hairpin starts to
+  // climb, the inside (left) wall has a glowing gap with a star trail into it: a narrow crack between two
+  // lava-rock walls (scenery/volcano.js `chilliCrack`) that runs a tighter, flat U round a glowing rock spire
+  // inside the hairpin — no climb up the mesa — and a turbo pad shoots you back out onto the hairpin's exit.
+  // No gaps (nothing to fall into). Junction points sit on the main road's banked surface, banked along the
+  // branch's own heading (Δy ≤ 0.2 m); the U is a polar spiral round (-151, 90), tightest r=18.4 m at the turn-in.
+  branches: [{
+    id: 'crack', name: 'Chilli Crack',
+    from: 7.7, to: 11.9, side: 'L',
+    width: 10,
+    defaults: { offL: 1.5, offR: 1.5, wallL: 'basalt', wallR: 'basalt' },
+    points: [
+      { x: -185.65, z: 71.16, y: 5.893, bank: 7.82 },     // 0  leaves the hairpin's run-in on the left lane
+      { x: -183.52, z: 84.73, y: 6.611, bank: 6.32 },     // 1  through the glowing gap in the inside wall
+      { x: -177.97, z: 93.54, y: 7.564, bank: 2.21, wall: 'none' },   // 2  into the crack (turn-in, r≈18 m): the scenery's rock walls
+      { x: -172.19, z: 99.51, y: 8.024, bank: 2.69 },     // 3
+      { x: -166.21, z: 103.15, y: 8.03, bank: 5 },        // 4  flat U round the spire (r≈28–33 m)
+      { x: -160.58, z: 105.06, y: 8.03, bank: 5 },        // 5
+      { x: -155.48, z: 105.85, y: 8.03, bank: 5 },        // 6
+      { x: -150.75, z: 106, y: 8.04, bank: 5 },           // 7  the top
+      { x: -146.03, z: 105.69, y: 8.05, bank: 5 },        // 8
+      { x: -140.96, z: 104.73, y: 8.05, bank: 5 },        // 9
+      { x: -135.41, z: 102.65, y: 8.06, bank: 5 },        // 10
+      { x: -129.57, z: 98.82, y: 8.06, bank: 5 },         // 11 turbo pad, out of the crack
+      { x: -123.99, z: 92.68, y: 8.061, bank: 1.4 },      // 12
+      { x: -118.73, z: 83.72, y: 7.62, bank: 1.95, wall: 'basalt' },  // 13
+      { x: -112.62, z: 71.71, y: 7.188, bank: 1.66 },     // 14 rejoins on the left lane, heading down to the tunnel
+    ],
+    pads: [{ at: 10.9, lat: 0, len: 7, w: 7 }],
+    stars: [{ at: 1.4, lat: 0, n: 5, spacing: 4 }],         // the trail into the gap
+    ai: { easy: 0, medium: 0.25, hard: 0.5 },
+    hidden: true,
+  }],
 };

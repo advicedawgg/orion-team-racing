@@ -429,7 +429,21 @@ Super Orion worlds:
    climb to the Chilli Hairpin mesa (y 10) → down past the volcano (pad) → the ~150 m Taco Tunnel
    through its flank → the Rock Bridge over the lava lake (`raised`, `wall: 'fall'` both sides —
    the only place you can fall in) → S-bends → Taco Turn → Lava Leap 2 onto the start straight.
-   Offroad rock; basalt walls, chili hazard stripes by the lava. AI laps 42–63 s.
+   Offroad rock; basalt walls, chili hazard stripes by the lava. AI laps 42–63 s. Hidden shortcut, the CHILLI
+   CRACK (`branches` id `crack`, 2026-10-29): just as the Chilli Hairpin starts its climb, a glowing gap in the inside
+   (left) wall, flanked by two crystal-topped rock pillars, and a 5-star trail (`from` 7.7, side L) lead into a narrow
+   crack between jagged lava-rock walls with a glowing seam (branch walls `none`, the scenery draws them: 6.2 m on
+   the outside, 3.8 m on the inside so the chase cam on the chord isn't buried) that runs a flat (y ≈ 8) left U round
+   a crystal-studded rock spire instead of climbing the mesa; a turbo pad (7 of the 10 m) shoots you out onto the
+   hairpin's exit (`to` 11.9). 110.5 m vs 184.9 m of main road, 10 m wide, tightest r=18.4 m at the turn-in, then
+   r≈27–33; no gaps (nothing to fall into); junction points banked along the branch's own heading (max Δy 0.20 m).
+   Measured: solo lap saving hard 2.78 s (45.8 vs 48.5 s), medium 3.38 s (49.0 vs 52.4 s); natural take rate over
+   6 seeds × 8 AI × 3 laps (items on): easy 0 %, medium 27 %, hard 44 %, everyone finishes, nobody stuck or
+   rescued on the branch (max stuck 0.8 / 1.5 s medium / hard vs 0.2 s without it, and 9 vs 2 medium rescues, are
+   race-to-race variance at the S-bends, Taco Turn and the lava leaps). Scenery `chilliCrack` (scenery/volcano.js):
+   rock walls + spire + pillars in 1 textured mesh (no shadow), seams + crystals in 1 unlit mesh; `playtest.mjs
+   volcano --perf`: grid 153 → 152 calls, mid p50/max 64/81 → 64/81 (64/79 forced through the crack), render CPU
+   p50 1.7 → 1.7 ms, GPU p50 0.73 → 0.74 ms.
 4. **King Dad's Castle** — courtyard + castle halls, banners of King Dad, tight technical turns.
    *As built:* 1102 m, road 13–15 m, twilight with a big smiling moon. Forecourt start (bunting in the
    family colours, BBQ, the LOST SOCKS pile, washing line) → DRAWBRIDGE over the moat (a small hop at

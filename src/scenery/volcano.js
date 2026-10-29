@@ -287,6 +287,9 @@ export default function build(ctx) {
     }
   }
 
+  // ------------------------------------------------ the Chilli Crack (hidden shortcut, tracks/volcano.js `branches`)
+  chilliCrack(ctx, K);
+
   // ------------------------------------------------ props
   // cacti (saguaro with a pink flower), chillies, nacho chips, boulders
   const cacti = K.scatter({ step: 10, near: 5.5, far: 36, r: 1.8, chance: 0.6 }).map(c => ({ ...c, ry: rng() * 6.28, s: 0.8 + rng() * 0.7 }));
@@ -349,4 +352,138 @@ export default function build(ctx) {
   K.chevrons({ rMax: 40, board: [4, 1.7], post: 0x5a4a48 });
 
   return { update(dt, t) { for (const u of updaters) u(dt, t); } };
+}
+
+/**
+ * The Chilli Crack: wherever a branch's wall is `'none'` (and not open onto the main road) the boundary is a
+ * tall jagged lava-rock wall with a glowing seam along its face, so the branch reads as a narrow crack through
+ * the rock; a rock spire with glowing crystals stands inside the bend, and two crystal-topped pillars flank the
+ * gap in the main road's wall at the entry. Two meshes (rock: textured Lambert, no shadow; glow: unlit), all
+ * merged. Props are kept off it via K.spots.
+ */
+function chilliCrack(ctx, K) {
+  const { THREE, track, groundAt, rng } = ctx;
+  const { paint, merge, place, mesh } = K;
+  const rock = [], glow = [];
+  const GLOW = [0xff8a1f, 0xffb02e, 0xffd35a, 0xff6a1a];
+  const crystal = (x, y, z, s, c) => {
+    const g = new THREE.OctahedronGeometry(1, 0);
+    place(g, { x, y, z, sx: s * 0.55, sy: s * 1.5, sz: s * 0.55, rx: (rng() - 0.5) * 0.7, ry: rng() * 6.28, rz: (rng() - 0.5) * 0.7 });
+    glow.push(paint(g, c ?? GLOW[(rng() * GLOW.length) | 0]));
+  };
+  const cluster = (x, y, z, s) => { crystal(x, y + s * 0.9, z, s); for (let i = 0; i < 3; i++) { const a = rng() * 6.28, d = s * 0.7; crystal(x + Math.cos(a) * d, y + s * 0.5, z + Math.sin(a) * d, s * 0.6); } };
+  // a rock geometry gets world-mapped uvs (x+z along, y up) so the walls / spire / pillars tile like one material
+  const worldUV = g => { const p = g.attributes.position, uv = new Float32Array(p.count * 2); for (let i = 0; i < p.count; i++) { uv[i * 2] = (p.getX(i) + p.getZ(i)) / 6; uv[i * 2 + 1] = p.getY(i) / 6; } g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); return g; };
+  const tint = (g, lo, hi, y0, y1) => K.paintBy(g, (x, y) => new THREE.Color(lo).lerp(new THREE.Color(hi), Math.max(0, Math.min(1, (y - y0) / (y1 - y0)))));
+  const q = {};
+  for (const br of ctx.branches || []) {
+    // ---- the crack walls, one run of samples at a time. The wall on the inside of the bend stays lower (the
+    //      chase camera sits on the chord behind the kart, close to it, and the spire should show over it).
+    let curv = 0; for (let k = 0; k < br.n; k++) curv += br.CURV[k];
+    for (const side of [1, -1]) {
+      const HMAX = side === Math.sign(curv) ? 3.8 : 6.2;
+      const OPEN = side > 0 ? br.OPENL : br.OPENR, offA = side > 0 ? br.OFFL : br.OFFR;
+      const on = k => (side > 0 ? br.props[k].wallL : br.props[k].wallR) === 'none' && !(OPEN && OPEN[k] > 0) && !(br.FLAG[k] & 1);
+      for (let k0 = 0; k0 < br.n; k0++) {
+        if (!on(k0)) continue;
+        let k1 = k0; while (k1 + 1 < br.n && on(k1 + 1)) k1++;
+        const pos = [], col = [], idx = [], cA = new THREE.Color(0x5e3c34), cB = new THREE.Color(0x9a5e48), cc = new THREE.Color();
+        let row = 0;
+        for (let k = k0; k <= k1; k++) {
+          const u = k * br.ds, lat0 = br.HW[k] + offA[k] + 0.15;
+          // height: rises out of the basalt-wall height at both ends of the run, jagged on top
+          const ramp = Math.min(1, (k - k0) * br.ds / 9, (k1 - k) * br.ds / 9);
+          const jag = 1 + 0.16 * Math.sin(u * 0.83 + side) + 0.1 * Math.sin(u * 2.3 + side * 2);
+          const H = 1.7 + (HMAX - 1.7) * ramp * jag;
+          // thickness: as much as the room up to the main road's corridor allows (≤ 3 m)
+          let t = 3;
+          for (const tt of [3, 2.2, 1.5, 1, 0.6]) {
+            const p = br.pointAt(u, side * (lat0 + tt + 0.8)); track.projectOn(0, p, -1, q);
+            t = tt; if (Math.abs(q.lat) > q.hw + Math.max(track.OFFL[q.i], track.OFFR[q.i]) + 0.4) break;
+          }
+          const P = (l, dy) => { const p = br.pointAt(u, side * l); return [p.x, p.y + dy, p.z]; };
+          const ob = br.pointAt(u, side * (lat0 + t + 0.8)), gy = Math.min(groundAt(ob.x, ob.z), ob.y) - 0.6;
+          const prof = [P(lat0, -0.4), P(lat0 - 0.05, H * 0.55), P(lat0 + 0.15, H), P(lat0 + t * 0.55, H * (1.08 + 0.1 * Math.sin(u * 1.7))), P(lat0 + t, H * 0.7), [ob.x, gy, ob.z]];
+          for (const [i, v] of prof.entries()) { pos.push(...v); cc.copy(cA).lerp(cB, i === 3 ? 1 : i === 2 || i === 4 ? 0.7 : 0.15); col.push(cc.r, cc.g, cc.b); }
+          if (row++) { const a = (row - 2) * prof.length, b = a + prof.length; for (let i = 0; i < prof.length - 1; i++) { if (side > 0) idx.push(a + i, a + i + 1, b + i, b + i, a + i + 1, b + i + 1); else idx.push(a + i, b + i, a + i + 1, b + i, b + i + 1, a + i + 1); } }
+          // keep props off the wall
+          if (k % 3 === 0) { const m = br.pointAt(u, side * (lat0 + t * 0.5)); K.spots.push({ x: m.x, z: m.z, r: t * 0.5 + 0.8 }); }
+          // a glowing crystal on the crest now and then
+          if (ramp > 0.6 && k % 7 === 3 && rng() < 0.8) { const c = P(lat0 + t * 0.5, H * 1.05); cluster(c[0], c[1] - 0.4, c[2], 0.7 + rng() * 0.5); }
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+        g.setIndex(idx); g.computeVertexNormals(); rock.push(worldUV(g));
+        // the glowing lava seam: a wavy strip just in front of the wall's face (only where the wall stands tall)
+        const sp = [], si = [];
+        let srow = 0;
+        for (let k = k0; k <= k1; k++) {
+          const ramp = Math.min(1, (k - k0) * br.ds / 9, (k1 - k) * br.ds / 9), u = k * br.ds;
+          const lat0 = br.HW[k] + offA[k] + 0.15 - 0.06, H = 1.7 + (HMAX - 1.7) * ramp;
+          const yc = 0.95 + (H - 1.7) * (0.3 + 0.12 * Math.sin(u * 0.55 + side)), w = 0.12 + 0.15 * ramp;
+          const a = br.pointAt(u, side * lat0);
+          sp.push(a.x, a.y + yc - w, a.z, a.x, a.y + yc + w, a.z);
+          if (srow++) { const b = (srow - 2) * 2; si.push(b, b + 2, b + 1, b + 1, b + 2, b + 3); }
+        }
+        const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3)); sg.setIndex(si); sg.computeVertexNormals();
+        glow.push(paint(sg, 0xff8a1f));
+        k0 = k1;
+      }
+    }
+    // ---- the spire inside the bend: the spot inside the branch's middle stretch farthest from every corridor
+    {
+      let cx = 0, cz = 0, m = 0;
+      for (let k = br.jIn; k <= br.jOut; k++) { cx += br.X[k]; cz += br.Z[k]; m++; }
+      cx /= m; cz /= m;
+      let best = null;
+      for (let dx = -12; dx <= 12; dx += 1.5) for (let dz = -12; dz <= 12; dz += 1.5) {
+        const e = ctx.corridorInfo(cx + dx, cz + dz).e;
+        if (!best || e > best.e) best = { x: cx + dx, z: cz + dz, e };
+      }
+      if (best && best.e > 4) {
+        const R = Math.min(7, best.e - 2.5), y0 = groundAt(best.x, best.z) - 1, Hs = 15;
+        const g = new THREE.CylinderGeometry(R * 0.22, R, Hs, 10, 7);
+        const p = g.attributes.position;
+        for (let i = 0; i < p.count; i++) {
+          const x = p.getX(i), y = p.getY(i), z = p.getZ(i), a = Math.atan2(z, x), f = 1 + 0.16 * Math.sin(a * 3 + y * 0.6) + 0.08 * Math.sin(a * 7 - y);
+          p.setXYZ(i, x * f, y, z * f);
+        }
+        g.translate(0, Hs / 2, 0); g.rotateY(rng() * 6.28); g.translate(best.x, y0, best.z); g.computeVertexNormals();
+        rock.push(worldUV(tint(g, 0x5e3c34, 0x9a5e48, y0, y0 + Hs)));
+        // crystals bursting out of its sides and its top, a ring round its foot
+        cluster(best.x, y0 + Hs - 0.6, best.z, 1.5);
+        for (let i = 0; i < 6; i++) { const a = i * 1.05 + rng() * 0.4, h = 3 + (i % 3) * 3.3, r = R * (1 - h / Hs * 0.78) + 0.1; crystal(best.x + Math.cos(a) * r, y0 + h, best.z + Math.sin(a) * r, 0.9 + rng() * 0.5); }
+        for (let i = 0; i < 9; i++) { const a = i * 0.7 + rng() * 0.3, r = R + 0.6 + rng() * 1.2; const x = best.x + Math.cos(a) * r, z = best.z + Math.sin(a) * r; if (ctx.isClear(x, z, 0.6, 0.3)) crystal(x, groundAt(x, z) + 0.5, z, 0.6 + rng() * 0.5); }
+        K.spots.push({ x: best.x, z: best.z, r: R + 2.5 });
+      }
+    }
+    // ---- the mouth: crystal-topped rock pillars at both ends of the gap in the main road's inside wall
+    {
+      const sideM = br.side === 'R' ? -1 : 1, OPEN = sideM > 0 ? track.OPENL : track.OPENR, OFF = sideM > 0 ? track.OFFL : track.OFFR;
+      const open = []; for (let k = 0; k < track.n; k++) if (OPEN[k] > 0 && track.JR[k] === br.route && Math.abs(track.dS(k * track.ds, br.sEntry)) < 60) open.push(k * track.ds);
+      if (open.length) {
+        const s0 = Math.min(...open), s1 = Math.max(...open);
+        for (const [s, d] of [[s0 - 1.5, -1], [s1 + 1.5, 1]]) {
+          const f = track.frameAt(s);
+          for (let extra = 1.6; extra < 6; extra += 0.6) {
+            const lat = sideM * (f.hw + OFF[f.k] + extra), x = f.x + f.lx * lat, z = f.z + f.lz * lat;
+            if (!ctx.isClear(x, z, 1.4, 0.2)) continue;
+            const y0 = groundAt(x, z) - 0.6, Hp = 4.6 + (d > 0 ? 0.8 : 0);
+            const g = new THREE.CylinderGeometry(0.9, 1.6, Hp, 7, 3);
+            const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const a = Math.atan2(p.getZ(i), p.getX(i)), fct = 1 + 0.15 * Math.sin(a * 3 + p.getY(i)); p.setX(i, p.getX(i) * fct); p.setZ(i, p.getZ(i) * fct); }
+            g.translate(x, y0 + Hp / 2, z); g.computeVertexNormals();
+            rock.push(worldUV(tint(g, 0x5e3c34, 0x9a5e48, y0, y0 + Hp)));
+            cluster(x, y0 + Hp - 0.3, z, 1.1);
+            K.spots.push({ x, z, r: 2.4 });
+            break;
+          }
+        }
+      }
+    }
+  }
+  if (rock.length) {
+    const m = mesh(merge(rock), new THREE.MeshLambertMaterial({ map: ctx.loadTex('rock_volcanic', null), vertexColors: true, side: THREE.DoubleSide }), { name: 'chilli-crack', shadow: false });
+    m.receiveShadow = true;
+  }
+  if (glow.length) mesh(merge(glow), new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false, side: THREE.DoubleSide }), { name: 'chilli-crack-glow', receive: false });
 }
