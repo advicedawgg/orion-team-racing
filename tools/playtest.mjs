@@ -21,7 +21,7 @@ const opt = (k, d) => { const i = args.indexOf('--' + k); return i >= 0 ? args[i
 const flag = k => args.includes('--' + k);
 const valued = new Set(['--every', '--speed', '--out', '--size', '--query', '--max', '--throttle']);
 const tracks = args.filter((a, i) => !a.startsWith('--') && !valued.has(args[i - 1]));
-const TRACKS = tracks.length ? tracks : ['beach', 'ice', 'volcano', 'castle', 'star'];
+const TRACKS = tracks.length ? tracks : ['beach', 'ice', 'volcano', 'castle', 'star', 'jungle'];
 const EVERY = +opt('every', 4), SPEED = +opt('speed', 2), OUT = opt('out', 'shots/qa'), MAXT = +opt('max', 200);
 const [W, H] = opt('size', '1280x800').split('x').map(Number);
 const EXTRA = opt('query', '');

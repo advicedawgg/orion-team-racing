@@ -502,6 +502,34 @@ Super Orion worlds:
    main road's rail and glowing edge break across both mouths (`track.OPENL/OPENR`, inert unbranched), floating deco
    stars skip the ribbon; star gate +1 mesh, warp rings +1 instanced mesh; `playtest.mjs star --perf`: grid 151 → 152
    calls, mid p50/max 60/74 → 59/73 (58/77 forced through it), render CPU p50 1.8 → 1.7 ms, GPU p50 0.62 → 0.62 ms.
+6. **Jungle Jumble** — a sunny, friendly jungle: a big waterfall, a temple with Sootie's face, a rope bridge, hippos.
+   *As built (2026-10-29):* 1173 m, road 13–17 m (the rope bridge 13), clockwise (mostly RIGHT turns). Start straight
+   north toward the WATERFALL ROCK → the Waterfall Hairpin (right, 180°, r≈33–41: a 3-turbo slide) → back south → the
+   Parrot Sweeper (left, r≈29) → the straight ~50 m SOOTIE TEMPLE tunnel (`tunnel`, roof 9.6 m, walls `none`, a pad
+   inside): a stepped sandstone temple with a big carved Sootie face over the door (charcoal fur, glowing mint eyes, pink
+   nose, white whiskers, cat ears), two mint-eyed stone kitties by the door, her tail curling over the exit → the ROPE
+   BRIDGE over Hippo River (`raised`, sags 2.2 → 1.9 m, walls `none`: the scenery's posts, sagging rope rails, nets and
+   anchor posts) → the Coconut Hairpin (right, 180°, r≈28–33) → a pad-fed HIPPO HOP over the river (10 m gap, vy 9,
+   clears from 14 m/s, 0.7 s air at 22 m/s) → the Banana S-bends (r≈25–30) → Mango Corner → the line. Offroad grass (the
+   `jungle` texture), `mud` on the hop's run-up; walls `bamboo`, `mossy` on the hairpin's inside. Hippos bob in the
+   river, turtles sit on logs in the creek the falls feed, lily pads, parrots perched and circling, flower garlands over
+   the start straight. AI laps (gate, seed 1): easy 55–60 s, medium 48–55 s, hard 45–52 s. Hidden shortcut, BEHIND THE
+   WATERFALL (`branches` id `falls`, 2026-10-29): on the start straight, as the hairpin comes up, a gap in the inside
+   (right) bamboo fence (`from` 2.14, side R) between two mossy boulder piles and a 5-star trail lead onto a stone
+   causeway across the waterfall's pool (`raised`, walls `none`, scenery kerb stones) and straight through the falling
+   water (a scrolling transparent curtain; a kart crossing it throws up a burst of drops) into a wet, glow-lit cave
+   (`tunnel`, roof 9.6 m, 1 m shoulders; glowing bracket fungi, glow-worms, mint crystals, walls lifted ×1.75 because the
+   rock shades its own inside) that U-turns (r 23) inside the mossy rock filling the hairpin and lets you out onto the
+   return straight (`to` 11.61). 197.1 m vs 265.5 m of main road (s 85 → 351), 11 m wide, tightest r=17.1 m (the S out
+   of the fence gap), no gaps, no pads; junction points on main's banked surface (max Δy 0.052 m). The hairpin sits 50 m
+   north of the first draft so the entry is 85 m after the line: the gate's drive-through test starts 80 m before the
+   entry and failed with the entry 35 m after it. Measured: solo lap saving hard 2.77 s (46.5 vs 49.3 s), medium 2.54 s
+   (50.5 vs 53.1 s); drive-through 2.3 s / 54 m ahead; natural take rate over 6 seeds × 8 AI × 3 laps (items on): easy
+   0 %, medium 30 %, hard 51 %, everyone finishes, 0 rescues, max stuck 0.5 s. Scenery (`scenery/jungle.js`): 24 draws /
+   235k tris (+1 Points only while a splash is flying). `playtest.mjs jungle --perf`: grid 155 calls, mid p50/max 67/123,
+   429 ktris mid (the others 130–307: the instanced jungle trees + their shadow pass), render CPU p50 2.9 ms at the grid /
+   2.0 ms mid, GPU p50 0.84 / 0.90 ms; 2P grid 277, mid 115/167, GPU 1.38 ms. Not in the Orion Cup (Quick Race, Time
+   Trial, 2P and the online rotation).
 
 A **lap** = crossing the start line after passing all checkpoints in order (the track defines
 them as `s` values). 3 laps. Race positions from `(lap, s)`. Offroad (grass/sand/snow) slows
@@ -558,7 +586,7 @@ driving `+z` (Y up, forward = `(sin yaw, 0, cos yaw)`, left = `(fz, 0, −fx)`, 
 | prop | meaning |
 |---|---|
 | `offL`, `offR` (`off` = both) | metres of drivable offroad beyond each road edge, then the boundary |
-| `wallL`, `wallR` (`wall` = both) | boundary kind: a visible style (`fence`, `beach`, `wood`, `rock`, `ice`, `castle`, `neon`, `candy`, `waffle`, `wafer`, `chili`, `basalt` — `WALLS` in trackmesh.js, add yours), `'none'` = invisible wall, `'fall'` = no boundary, you can fall off (Star Road) |
+| `wallL`, `wallR` (`wall` = both) | boundary kind: a visible style (`fence`, `beach`, `wood`, `rock`, `ice`, `castle`, `neon`, `candy`, `waffle`, `wafer`, `chili`, `basalt`, `bamboo`, `mossy` — `WALLS` in trackmesh.js, add yours), `'none'` = invisible wall, `'fall'` = no boundary, you can fall off (Star Road) |
 | `surfL`, `surfR` (`surf` = both) | offroad surface name for that side |
 | `kerb` | `'auto'` (default: red/white kerbs where the corner is tighter than r≈55 m), `true`, `false` |
 | `bridge` | this stretch may pass over/under another stretch (≥5 m apart vertically) |
@@ -701,7 +729,7 @@ branches: [{
   `foundShortcut`; 2P: both HUDs redraw). Scenery hook ctx gets `branches` (= `track.branches`) and
   `isClear`/`claim`/terrain flattening see every branch corridor; a branch gap is a pool the width of
   its corridor (beach water).
-- **Online**: `PROTOCOL_VERSION` 3 — the kart's route rides in flag bits 8–12 of the kart block, and
+- **Online**: `PROTOCOL_VERSION` 3 (4 since Jungle Jumble joined `ROTATION`) — the kart's route rides in flag bits 8–12 of the kart block, and
   the STATE packet's `si` is the combined index (the server checks it against `track.nAll`); clients
   rebuild `rs`/`si` of remote karts from `s` + route (`uOfMainS`). Unbranched tracks: identical bytes
   apart from the version byte.
@@ -763,7 +791,7 @@ floats). Two helper kits (not themes): `scenery/kit.js` (castle, star) and `scen
 `scatter` placement that never blocks the road, `lofted` strips along the track, `chevrons()` —
 kid-readable arrow boards on the outside of every corner tighter than r≈40 m — `farGround`,
 `fitWater`, `terrainTint`). Budgets as built (scenery only): beach 19 draws / 52k tris, ice 15 /
-164k, volcano 23 / 98k, castle 27 / 164k, star 18 / 88k (castle/star replace the sky material
+164k, volcano 23 / 98k, castle 27 / 164k, star 18 / 88k, jungle 24 / 235k (castle/star replace the sky material
 themselves when `sky_castle` / `sky_star` load — the star sky keeps its painted lower half); ≤ 8 of them cast shadows (an InstancedMesh's shadow pass draws every
 instance — keep small props shadowless).
 
@@ -771,7 +799,7 @@ instance — keep small props shadowless).
 
 - **Quick Race** — pick racer, then track; 8 racers, 3 laps. Difficulty chips live on the main menu.
 - **Orion Cup** — `CUP_ORDER = beach → ice → volcano → castle` (whichever are registered, in that
-  order; missing ones are skipped). Points `POINTS = 10/8/6/5/4/3/2/1`; standings screen after every
+  order; missing ones are skipped; Jungle Jumble isn't in it). Points `POINTS = 10/8/6/5/4/3/2/1`; standings screen after every
   race (rows slide into the new order, points count up); **podium** at the end (3D: top 3 on the
   blocks cheering, trophy, confetti; 4th–8th at the sides, 6th–8th mildly `sad` — never the player).
   Winning (any difficulty) records `cupWins[diff]` and unlocks **Star Road** with a "STAR ROAD
@@ -957,7 +985,7 @@ minimap and results) and a gold **YOU** for yourself.
 3. → **starting.** START is sent `LOAD_S` (4 s) before the 3.6 s countdown, so every client has
    time to load and warm up. The countdown runs on the synced clock.
 4. → **racing** → **results.** Results stay up for 10 s, and the race keeps running behind them.
-5. → the next track in `ROTATION` (beach → ice → volcano → castle → **star**; Star Road is in, since
+5. → the next track in `ROTATION` (beach → ice → volcano → castle → jungle → **star**; Star Road is in, since
    online racing is its own reward).
 
 Humans who join mid-race pick a racer and then **spectate**. The camera starts on the leader and
@@ -1046,7 +1074,7 @@ every other menu):
   connection…" and reconnects by itself. A protocol mismatch shows "please refresh the page!" with
   REFRESH.
 
-**Wire** (`src/protocol.js`, `PROTOCOL_VERSION` 3, checked at HELLO; 3 = branches' kart route, see **Branches**):
+**Wire** (`src/protocol.js`, `PROTOCOL_VERSION` 4, checked at HELLO; 3 = branches' kart route, see **Branches**; 4 = `jungle` in `ROTATION`, which an older client can't build):
 - JSON messages `{t, …}` go over geckos `emit('m')`, where reliable = resent 4× every 50 ms, or over
   WebSocket text.
 - The two hot paths are binary frames: SNAPSHOT at 20 Hz, unreliable, ~490 B for 8 karts plus items;
@@ -1367,7 +1395,8 @@ vo_jelly_wobble vo_zapdrone_zap` (vocal SFX).
 `title` 63 s heroic brass/guitar (title) · `beach` 62 s surf guitar + steel drums (coast) · `ice`
 60 s glockenspiel + sleigh bells (frost) · `volcano` 81 s marimba + mariachi brass (dunes) · `castle`
 87 s silly medieval march (castle) · `star` 60 s synth arpeggios (cosmic) · `results` 40 s happy
-podium groove (skyway). Two audio models scored all seven 8-10/10, no vocals.
+podium groove (skyway). Two audio models scored all seven 8-10/10, no vocals. `jungle` 40 s marimba + kalimba +
+bongos (jungle), 2026-10-29, 1250 credits, not model-scored.
 
 ### Who should call what (not yet wired, as of this writing)
 - **ui/menu**: `menu_move/ok/back`; `audio.music('title')` + `vo_title` on the title screen,

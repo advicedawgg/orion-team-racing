@@ -13,7 +13,11 @@
 //   node tools/gentex.mjs logo            (the logo is ImageMagick only — tools/logo.sh)
 //
 // Backends (BACKEND=...):
-//   comfy       (default) Krea 2 Turbo fp8 on Unraid's second Arc B60, ComfyUI
+//   moss        (default since 2026-10-29) MOSS-Image on Unraid :8188 (comfy-moss,
+//               card1 — it REPLACED comfy-krea2 there): SFT int8 + the 4-step
+//               LoRA, euler/simple, 4 steps, cfg 1, ~12 s warm, t2i only
+//               (memory project_moss_image_b60). Free. Never stop/restart it.
+//   comfy       Krea 2 Turbo fp8 on Unraid's second Arc B60, ComfyUI
 //               `comfy-krea2` at http://192.168.15.100:8188 — Turbo settings
 //               euler/simple, 8 steps, cfg 1.0 (memory project_krea2_comfyui).
 //               Needs ~18 GB of card1 free; see renderComfy for the OOM trap.
@@ -44,13 +48,17 @@ const RAW = path.join(ROOT, 'work', 'krea');
 const UNET = 'krea2_turbo_fp8_scaled.safetensors';
 const CLIP = 'qwen3vl_4b_fp8_scaled.safetensors';
 const VAE = 'qwen_image_vae.safetensors';
+// MOSS-Image (BACKEND=moss, the default): what comfy-moss on :8188 serves now
+const MOSS_UNET = 'moss_image_sft_int8_convrot.safetensors', MOSS_LORA = 'moss_image_sft_4step_v2.0.safetensors';
+const MOSS_TE = 'qwen3.5_9b_int8_convrot.safetensors', MOSS_VAE = 'flux2-vae.safetensors';
 // BACKEND=comfy (default): Krea 2 Turbo on the B60. BACKEND=openrouter: hosted
 // Krea 2 via OpenRouter (OR_MODEL, default krea/krea-2-medium-turbo) — the
 // fallback used on 2026-09-25 when the B60 had no room (see renderComfy).
-const BACKEND = process.env.BACKEND || 'comfy';
+const BACKEND = process.env.BACKEND || 'moss';
 const OR_MODEL = process.env.OR_MODEL || 'krea/krea-2-medium-turbo';
 const MODEL = BACKEND === 'openrouter'
   ? `${OR_MODEL} via OpenRouter /api/v1/images (seed not honoured by the API)`
+  : BACKEND === 'moss' ? 'MOSS-Image SFT int8 + 4-step LoRA v2.0, euler/simple 4 steps cfg 1.0, ComfyUI (comfy-moss) on the Arc B60'
   : 'Krea 2 Turbo fp8 (krea2_turbo_fp8_scaled), euler/simple 8 steps cfg 1.0, ComfyUI on the Arc B60';
 
 // House style (SO2's, tuned for karts). Flat even lighting matters: the game
@@ -88,6 +96,7 @@ export const ASSETS = {
   road_ice: { kind: 'tex', seed: 3112, luma: 185, prompt: `Smooth packed strawberry and vanilla ice cream road surface seen from directly above, soft pastel pink with small creamy white flecks and fine shallow scoop marks, evenly textured all over with no large swirls, a few tiny rainbow sprinkles, ${ROADTONE}. ${STYLE}` },
   road_volcano: { kind: 'tex', flat: true, seed: 3103, luma: 130, prompt: `Grey basalt paving stones road seen from directly above, irregular flat hexagonal flagstones in light slate grey and warm grey, thin faint warm orange glow in a few of the narrow cracks between the stones, mostly grey, ${ROADTONE}. ${STYLE}` },
   road_castle: { kind: 'tex', flat: true, seed: 3114, luma: 150, prompt: `Castle courtyard road of large rounded cobblestones seen from directly above, about eight cobbles across the frame, evenly sized and tightly packed, light warm grey and pale sandstone beige stones with thin mortar lines, ${ROADTONE}. ${STYLE}` },
+  road_jungle: { kind: 'tex', flat: true, seed: 3116, luma: 150, prompt: `Packed reddish-brown jungle dirt road seen from directly above, firm smooth earth with fine gravel grain, small scattered pebbles and a few tiny fallen green leaves, warm terracotta and clay tones, uniform all-over texture with no large shapes, ${ROADTONE}. ${STYLE}` },
   road_star: { kind: 'tex', seed: 3125, luma: 190, prompt: `Shimmering opal rainbow road surface seen from directly above, smooth pearly surface with soft pastel pink, lilac, mint and sky blue colour patches blending gently, sprinkled all over with tiny white twinkling star sparkles and glitter. ${STYLE}` },
   // -------------------------------------------------------------- terrain
   sand: { kind: 'tex', seed: 3201, prompt: `Golden tropical beach sand from directly above, fine even grain with gentle wind ripple lines, warm cream and honey tones, a few tiny shell fragments. ${STYLE}` },
@@ -103,6 +112,10 @@ export const ASSETS = {
   metal: { kind: 'tex', seed: 3221, luma: 150, flat: true, prompt: `Shiny steel diamond-plate metal panel from directly above, raised tread pattern, light cool silver grey, perfectly uniform even brightness everywhere with no gradients, clean and bright. ${STYLE}` },
   hedge: { kind: 'tex', seed: 3212, prompt: `Neatly trimmed garden hedge seen straight on, dense small leaves, bright fresh green with lighter yellow-green leaf tips, even texture. ${STYLE}` },
   space: { kind: 'tex', seed: 3213, prompt: `Deep space starfield, dark navy and purple night sky densely scattered with small twinkling white, pale yellow and pale blue stars of various sizes, faint wisps of pink and violet nebula. Seamless repeating tile, flat, no planets, no text, no watermark, fills the frame edge to edge` },
+  jungle: { kind: 'tex', seed: 3216, prompt: `Lush jungle floor from directly above, soft bright green moss and short grass with tiny clover, small ferns and a few scattered small fallen leaves, fresh greens with lighter yellow-green patches, even texture all over. ${STYLE}` },
+  mud: { kind: 'tex', seed: 3217, luma: 135, prompt: `Soft wet chocolate-brown mud from directly above, smooth glossy patches, gentle squishy ripples and a few small shallow puddles, warm medium brown, friendly and clean looking. ${STYLE}` },
+  rock_mossy: { kind: 'tex', seed: 3218, luma: 140, prompt: `Mossy jungle rock surface seen straight on, rounded light grey stone with patches of bright green moss and tiny ferns in the cracks, light warm grey and fresh green tones, not dark. ${STYLE}` },
+  temple_stone: { kind: 'tex', flat: true, seed: 3239, luma: 170, prompt: `Ancient jungle temple wall seen straight on, big rectangular carved stone blocks of varied widths laid in a running-bond pattern, light warm sandstone beige and pale grey, thin light mortar lines, only a few small patches of soft green moss, bright and sunny. ${STYLE}` },
   cloud: { kind: 'tex', seed: 3214, prompt: `Soft fluffy white cartoon clouds seen from directly above, puffy rounded cloud tops filling the whole frame, bright white with very soft pale blue and lavender shading in the gaps. ${STYLE}` },
 
   // ----------------------------------------------------------------- skies
@@ -110,6 +123,7 @@ export const ASSETS = {
   sky_ice: { kind: 'sky', horizon: 0.95, seed: 3302, w: 1536, h: 768, prompt: `Pink and peach sunset sky over a distant range of snowy mountains shaped like scoops of strawberry and vanilla ice cream, soft cotton-candy clouds, warm pastel pink, lilac and gold. ${SKY}` },
   sky_volcano: { kind: 'sky', horizon: 0.88, seed: 3303, w: 1536, h: 768, prompt: `Smoky orange volcanic sky, warm amber and tangerine glow near the horizon fading to dusky red-purple above, soft billowing ash clouds, a few floating glowing embers, distant dark volcano silhouettes on the horizon, bright and friendly not scary. ${SKY}` },
   sky_castle: { kind: 'sky', horizon: 0.97, seed: 3304, w: 1536, h: 768, prompt: `Blue twilight sky at dusk, deep royal blue above fading to soft violet and warm peach glow at the horizon, first twinkling stars, a few soft lilac clouds, distant green hills along the horizon. ${SKY}` },
+  sky_jungle: { kind: 'sky', horizon: 0.66, seed: 3306, w: 1536, h: 768, prompt: `Sunny tropical jungle sky, bright clear blue gradient to soft pale aqua near the horizon, big fluffy white clouds, a distant range of misty green jungle-covered mountains with a thin far waterfall along the horizon. ${SKY}` },
   sky_star: { kind: 'sky', seed: 3307, w: 1536, h: 768, prompt: `Deep outer space, colourful swirling pink, violet and teal nebula clouds, dense twinkling starfield, a couple of small distant cartoon planets with rings, magical and bright. ${SKY}` },
 
   // ------------------------------------------------------------- key art
@@ -135,6 +149,7 @@ export const ASSETS = {
   track_ice: { kind: 'track', seed: 3502, w: 1344, h: 768, prompt: `Ice Cream Peaks kart race track: a winding pink and white road climbing snowy mountains made of giant scoops of strawberry and vanilla ice cream, waffle cone towers, sprinkles, candy canes, pink sunset sky. ${SCENE}` },
   track_volcano: { kind: 'track', seed: 3503, w: 1344, h: 768, prompt: `Taco Volcano kart race track: a dark stone road bridging over rivers of glowing orange lava, a big friendly volcano shaped like a taco in the background puffing smoke, ramps, orange sky. ${SCENE}` },
   track_castle: { kind: 'track', seed: 3504, w: 1344, h: 768, prompt: `King Dad's Castle kart race track: a cobblestone road through a grand fairy-tale castle courtyard, tall stone towers, colourful banners showing a golden crown, torches, blue twilight sky. ${SCENE}` },
+  track_jungle: { kind: 'track', seed: 3506, w: 1344, h: 768, prompt: `Jungle Jumble kart race track, an empty race track with no karts and no drivers: a reddish dirt road with red and white kerbs winding through a bright sunny jungle, giant green leaves and hanging vines, a big waterfall pouring into a muddy river where a friendly smiling hippo bathes, a wooden rope bridge, a mossy grey stone temple with a big carved smiling black cat face with glowing mint green eyes, colourful parrots and tropical fruit, blue sky. ${SCENE}` },
   track_star: { kind: 'track', seed: 3505, w: 1344, h: 768, prompt: `Star Road kart race track: a glowing rainbow road floating in outer space with no walls, looping through colourful nebula clouds, stars and small cartoon planets. ${SCENE}` },
 
   // ---------------------------------------------------------- item icons
@@ -181,13 +196,27 @@ const graph = (prompt, seed, w, h, tag) => ({
   9: { class_type: 'SaveImage', inputs: { images: ['8', 0], filename_prefix: `otr/${tag}` } },
 });
 
+// MOSS-Image: Flux2 latent + VAE, qwen3.5 text encoder, the 4-step distill LoRA (no img2img with it)
+const graphMoss = (prompt, seed, w, h, tag) => ({
+  1: { class_type: 'UNETLoader', inputs: { unet_name: MOSS_UNET, weight_dtype: 'default' } },
+  2: { class_type: 'CLIPLoader', inputs: { clip_name: MOSS_TE, type: 'moss_image', device: 'default' } },
+  3: { class_type: 'VAELoader', inputs: { vae_name: MOSS_VAE } },
+  4: { class_type: 'CLIPTextEncode', inputs: { text: prompt, clip: ['2', 0] } },
+  5: { class_type: 'CLIPTextEncode', inputs: { text: '', clip: ['2', 0] } },
+  6: { class_type: 'EmptyFlux2LatentImage', inputs: { width: w, height: h, batch_size: 1 } },
+  20: { class_type: 'LoraLoaderModelOnly', inputs: { model: ['1', 0], lora_name: MOSS_LORA, strength_model: 1.0 } },
+  7: { class_type: 'KSampler', inputs: { model: ['20', 0], positive: ['4', 0], negative: ['5', 0], latent_image: ['6', 0], seed, steps: 4, cfg: 1.0, sampler_name: 'euler', scheduler: 'simple', denoise: 1.0 } },
+  8: { class_type: 'VAEDecode', inputs: { samples: ['7', 0], vae: ['3', 0] } },
+  9: { class_type: 'SaveImage', inputs: { images: ['8', 0], filename_prefix: `otr/${tag}` } },
+});
+
 function specOf(name) {
   const s = ASSETS[name];
   const o = { w: 1024, h: 1024, ...s };
   if (process.env.SEEDOFS) o.seed += Number(process.env.SEEDOFS);   // for trying variants; bake the winner into the spec
   return o;
 }
-function rawPath(name, model = BACKEND === 'openrouter' ? OR_MODEL : UNET) {
+function rawPath(name, model = BACKEND === 'openrouter' ? OR_MODEL : BACKEND === 'moss' ? MOSS_UNET : UNET) {
   const s = specOf(name);
   const h = crypto.createHash('sha1').update(`${s.prompt}|${s.seed}|${s.w}x${s.h}|${model}`).digest('hex').slice(0, 8);
   return path.join(RAW, `${name}-${h}.png`);
@@ -196,7 +225,7 @@ function rawPath(name, model = BACKEND === 'openrouter' ? OR_MODEL : UNET) {
 // re-post-processing never needs the GPU or an API key); the current
 // backend's render wins when both exist.
 function cachedRaw(name) {
-  return [rawPath(name), rawPath(name, UNET), rawPath(name, OR_MODEL)].find(p => fs.existsSync(p));
+  return [rawPath(name), rawPath(name, UNET), rawPath(name, MOSS_UNET), rawPath(name, OR_MODEL)].find(p => fs.existsSync(p));
 }
 
 async function submit(prompt) {
@@ -253,7 +282,7 @@ const SPLIT = process.env.SPLIT === '1';
 
 async function renderComfy(name) {
   const s = specOf(name);
-  const g = graph(s.prompt, s.seed, s.w, s.h, name);
+  const g = (BACKEND === 'moss' ? graphMoss : graph)(s.prompt, s.seed, s.w, s.h, name);
   if (SPLIT) {
     await freeVram();
     await submit({ 2: g[2], 4: g[4], 5: g[5], 90: { class_type: 'PreviewAny', inputs: { source: ['5', 0] } }, 91: { class_type: 'PreviewAny', inputs: { source: ['4', 0] } } });

@@ -32,6 +32,7 @@ export const TRACKS = {
   volcano: { bpm: 155, ms: 100000, so2: 'dunes', prompt: `Taco Volcano race track music. Playful Mexican-flavoured kart racing tune: marimba melody, mariachi trumpets, nylon guitar strums, bouncy bass, driving drums with congas. Hot and fun, never scary. 155 BPM, A minor. ${COMMON}` },
   castle: { bpm: 145, ms: 100000, so2: 'castle', prompt: `King Dad's Castle race track music. Playful comedic medieval march: pompous brass fanfares, harpsichord, tuba bass, snare drum march beat, a little bit silly and royal. 145 BPM, C major. ${COMMON}` },
   star: { bpm: 150, ms: 100000, so2: 'cosmic', prompt: `Star Road race track music, a rainbow road in outer space. Sparkly synth arpeggios, retro synth lead melody, twinkling bells, pulsing synth bass, energetic electronic drums. Wondrous and exciting. 150 BPM, E major. ${COMMON}` },
+  jungle: { bpm: 150, ms: 100000, so2: 'jungle', prompt: `Jungle Jumble race track music, a sunny friendly jungle with waterfalls, parrots and hippos. Bouncy tropical adventure: marimba and kalimba melody, wooden flute, bongos and congas, shakers, bouncy slap bass, driving drums. Playful and cheeky, never scary. 150 BPM, G major. ${COMMON}` },
   results: { bpm: 120, ms: 50000, so2: 'skyway', prompt: `Race results and podium celebration music for a kids' kart racing game. Happy, proud, relaxed groove: brass and xylophone melody, bouncy bass, light drums, hand claps. 120 BPM, G major. Instrumental only, no vocals, no singing, no voice, no choir. Loops nicely, no fade-out ending.` },
 };
 

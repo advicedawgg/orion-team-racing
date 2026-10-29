@@ -2,7 +2,7 @@
 
 A Crash Team Racing-style kart racer for Orion (a young kid) and his family: the third Super
 Orion game, after Super Orion 1 (2D platformer) and Super Orion 2 (3D platformer). Eight
-racers, five tracks, the CTR power slide with 3-stage turbos, a full set of silly items, the
+racers, six tracks, the CTR power slide with 3-stage turbos, a full set of silly items, the
 Orion Cup, Time Trial with ghosts, a hidden shortcut on every track (follow the star trail), 2-player split screen, online lobbies, and an announcer. No reading is needed to play: title,
 Quick Race, racer, track is four presses of A.
 
@@ -103,6 +103,7 @@ Start on either pad pauses. The join screen shows which device each player has.
 | Ice Cream Peaks | strawberry snow, candy canes | hairpins that teach sliding, the Cherry Scoop jump |
 | Taco Volcano | lava, cacti, papel picado | two lava leaps, the Taco Tunnel, the Rock Bridge (you can fall in) |
 | King Dad's Castle | twilight, bunting | Great Hall, spiral ramp round the Remote Tower, battlements, moat jump, hedge maze |
+| Jungle Jumble | waterfall, hippos, parrots | the Sootie Temple tunnel, the rope bridge, the Hippo Hop over the river, a cave behind the waterfall |
 | Star Road *(secret)* | rainbow road in space | the helix, the Moon Loop, open edges |
 
 ## Racers
@@ -147,7 +148,7 @@ node tools/online-test.mjs [--lag 100 --jitter 30 --loss 0.05]
                                  # racers, lobby full, race, smoothness, results, rotation, pause, spectate, reconnect, idle reset,
                                  # CPU → shots/online/ → ONLINE TEST: PASS
 node tools/netbot.mjs --server http://127.0.0.1:8955 [--lobby medium] [--net rtc|ws] [--races N]   # one headless online player
-node tools/leakcheck.mjs 2       # switch through all 5 tracks twice: geometries/textures must stay flat (--query players=2)
+node tools/leakcheck.mjs 2       # switch through all 6 tracks twice: geometries/textures must stay flat (--query players=2)
 node tools/playtest.mjs [tracks] [--perf] [--throttle 4] [--query q=low]
                                  # AI-driven live race per track: chase shots every 4 s + contact sheet,
                                  # --perf = draw calls / tris / CPU ms in render() / GPU ms (timer query)
@@ -168,6 +169,7 @@ GPU timer queries and CPU time inside `renderer.render()`, not frame rate
 | Taco Volcano | 151 | 68 / 104 | 269 | 1.9 | 0.72 |
 | King Dad's Castle | 167 | 71 / 97 | 303 | 2.4 | 0.80 |
 | Star Road | 149 | 62 / 73 | 130 | 1.8 | 0.62 |
+| Jungle Jumble *(2026-10-29)* | 155 | 67 / 123 | 429 | 2.0 | 0.90 |
 
 The whole game frame (input, sim, particles, HUD and render) takes 2–2.5 ms of CPU at p50.
 
@@ -192,6 +194,7 @@ ANGLE's deferred submission lands in whichever query is open.
 | Taco Volcano | 272 | 113 / 196 | 374 | 2.9 | 1.19 | 2.9 |
 | King Dad's Castle | 291 | 119 / 214 | 411 | 3.3–4.0 | 1.23 | 3.3–3.8 |
 | Star Road | 268 | 113 / 237 | 255 | 3.8 | 1.01 | 3.4 |
+| Jungle Jumble *(2026-10-29)* | 277 | 115 / 167 | 646 | 2.7 | 1.38 | 2.5 |
 
 So 2P costs about 1.6× 1P's CPU and 1.5× its GPU mid-race. The start grid breaks the ~200-call
 guideline: every racer is in both views, and racers are 12–16 calls each. That only lasts for
@@ -214,7 +217,7 @@ src/items.js          PURE item sim + AI item brain          src/itemviews.js it
 src/input.js          keyboard + Gamepad API + touch, 2P per-player controllers   src/camera.js    chase camera (wall/tunnel clamp)
 src/fx.js             particles + skid marks (2+1 draw calls)
 src/trackmesh.js      track → road/walls/terrain/sky meshes, texture loader
-src/scenery/*.js      per-theme props (beach, ice, volcano, castle, star; kit.js/propkit.js helpers)
+src/scenery/*.js      per-theme props (beach, ice, volcano, castle, star, jungle; kit.js/propkit.js helpers)
 src/tracks/*.js       track data (one file each) + index.js registry
 src/racers.js         8 procedural racers + animation         src/hdracers.js  optional HD driver models
 src/hud.js src/itemhud.js src/menu.js src/save.js    HUD, menus, save (localStorage)

@@ -24,7 +24,7 @@ const O = {
 };
 const $ = (el, q) => el.querySelector(q);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const TRACK_NAME = { beach: 'Bubbly Beach', ice: 'Ice Cream Peaks', volcano: 'Taco Volcano', castle: "King Dad's Castle", star: 'Star Road' };
+const TRACK_NAME = { beach: 'Bubbly Beach', ice: 'Ice Cream Peaks', volcano: 'Taco Volcano', castle: "King Dad's Castle", star: 'Star Road', jungle: 'Jungle Jumble' };
 const trackName = id => K?.trackDef?.(id)?.name || TRACK_NAME[id] || id;
 
 export function init(kit) {

@@ -129,6 +129,7 @@ export const THEMES = {
   default: { road: 'road', ground: 'grass', grass: 'grass', fog: 0xcfe6ff, skyTop: 0x3b86d8, skyHorizon: 0xd6ecff },
   ice: { road: 'road_ice', ground: 'snow', grass: 'snow', fog: 0xf2c4d0, skyTop: 0xc58fd8, skyHorizon: 0xffc9d6 },
   volcano: { road: 'road_volcano', ground: 'rock_volcanic', grass: 'rock_volcanic', fog: 0xe89a6a, skyTop: 0x7a3a5a, skyHorizon: 0xffb070 },
+  jungle: { road: 'road_jungle', ground: 'jungle', grass: 'jungle', fog: 0xc8ecdc, skyTop: 0x2f8fe8, skyHorizon: 0xc8f0e0 },
 };
 /** Wall styles: [colour A, colour B (alternating every `seg` m), height, seg]. */
 export const WALLS = {
@@ -144,6 +145,8 @@ export const WALLS = {
   wafer: [0xffe08a, 0xf5a8c0, 1.2, 1.2],     // pink/yellow wafer bridge rail
   chili: [0xffc21f, 0xe0332c, 1.1, 2],       // hazard stripes by the lava (Taco Volcano)
   basalt: [0x8a6a5e, 0x77584e, 1.7, 5],      // warm volcanic rock
+  bamboo: [0xd8e070, 0x8cc04a, 1.1, 1.4],    // bamboo fence (Jungle Jumble)
+  mossy: [0xa8ae96, 0x7f9a66, 1.4, 4],       // mossy stone (round the Waterfall Rock)
 };
 
 /* =============================================================== build */
