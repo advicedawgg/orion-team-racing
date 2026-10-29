@@ -734,6 +734,20 @@ branches: [{
   lands in the pool; 21 m at the 30 m/s cap). Solo lap saving: hard 2.91 s
   (39.6 vs 42.6 s), medium 2.67 s (43.1 vs 45.8 s); drive-through: 2.7 s / 65 m ahead after the exit.
   Forced medium race: 24/24 laps through it, max stuck 0.2 s. `node tools/check.js` 32 → 47 s on the hub (the fixture's full track checks + these).
+- **Branch QA (all five tracks, 2026-10-29, on `shortcuts` @ 470f91b)**: physics, check.js (0 fail / 0 warn,
+  68 s), selftest (12/12 runs PASS — the one failure the ice agent saw in 7 runs is most likely the
+  wall-clock "server step cost < 2 ms" check on a busy hub), realflow, input-test, twoplayer-test,
+  leakcheck 2, online-test (clean and `--lag 100 --jitter 30 --loss 0.05`), ui-test flow + cup all PASS.
+  Online, real tracks (Lobby + an in-process NetRace client, 2 laps): forced medium on beach/ice, every bot
+  2/2 laps through it; natural hard on all five, 3–7 of 7 bots took it, every lap counted, max stuck
+  0.22 s, ≤ 1 rescue, the client saw remote karts on the branch. Save: driving the cave pops SHORTCUT!
+  once, `otrSave.shortcuts.beach = ['cave']`, and after a reload the race starts with it on the minimap;
+  a second drive doesn't pop it again. `playtest --perf` grid / mid p50/max calls: beach 162 / 64/101,
+  ice 153 / 61/76, volcano 152 / 64/81, castle 168 / 70/89, star 152 / 59/73 (all ≤ 200; render CPU p50
+  1.6–2.1 ms, GPU p50 0.63–0.82 ms; castle's ~50 ms mid-race CPU max is on master too). `balance.js
+  --n 12` vs master, same seeds: ALL win-share range easy 5–18 % (master 2–25), medium 3–20 % (8–15),
+  hard 3–22 % (3–20) — noise at N=12; AI field gap 1→8 widens 4.7/5.5/6.8 → 5.4/6.6/7.5 s (some bots
+  cut, some don't).
 
 ### Scenery hook (tracks agents)
 

@@ -3,7 +3,7 @@
 A Crash Team Racing-style kart racer for Orion (a young kid) and his family: the third Super
 Orion game, after Super Orion 1 (2D platformer) and Super Orion 2 (3D platformer). Eight
 racers, five tracks, the CTR power slide with 3-stage turbos, a full set of silly items, the
-Orion Cup, Time Trial with ghosts, 2-player split screen, online lobbies, and an announcer. No reading is needed to play: title,
+Orion Cup, Time Trial with ghosts, a hidden shortcut on every track (follow the star trail), 2-player split screen, online lobbies, and an announcer. No reading is needed to play: title,
 Quick Race, racer, track is four presses of A.
 
 It is plain ES modules and three.js r185 (vendored), with no build step. The repo is the
