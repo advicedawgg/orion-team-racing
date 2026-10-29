@@ -1,4 +1,4 @@
-// letterviews.js — the C-T-R letter tokens in 3D (src/letters.js is the pure state; DESIGN.md "Modes and UI").
+// letterviews.js — the O-T-R letter tokens in 3D (src/letters.js is the pure state; DESIGN.md "Modes and UI").
 //
 // Three chunky extruded letters (LETTER_SHAPES — no font), each in its own colour with a soft additive halo,
 // spinning and bobbing over the road. A collected one pops (scales up, fades) and is gone for the race.

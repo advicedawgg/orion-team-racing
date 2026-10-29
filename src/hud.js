@@ -17,7 +17,7 @@
 //   race.ui = [{ text, ms, cls, icon, kart, warn, key, on }]  — a queue a PURE module (items.js)
 //     may push to; the HUD drains it every frame and shows entries whose `kart` is the player or
 //     absent. `warn:true` entries call hud.warn(key, on ? text : null).
-//   C-T-R letters: when race.letters (letters.js) follows this HUD's kart, three letter slots sit left of the
+//   O-T-R letters: when race.letters (letters.js) follows this HUD's kart, three letter slots sit left of the
 //                                          stars and light up in each letter's colour as they're collected.
 //   hud.menuOwnsResults = true          — set by menu.js: hud.results() then only hides the stub panel.
 //   portraitURL(id, size)               — cached data-URL of racers.js renderPortrait (menus use it too).
@@ -283,7 +283,7 @@ export function createHud(root, { pn = 0 } = {}) {
         const simDt = Math.max(0, Math.min(0.25, race.t - (lastRaceT ?? race.t))); lastRaceT = race.t;   // sim time: correct under fast-forward/scripts
         set('wrong', wrongWay(P, race, simDt) || !!v.wrongWay, w => el.wrong.classList.toggle('on', w));
         itemEvents(P);
-        // C-T-R letters (letters.js): the slots light up as they're collected; a fresh one bumps, all three glow
+        // O-T-R letters (letters.js): the slots light up as they're collected; a fresh one bumps, all three glow
         const Lr = race.letters, mineL = !!Lr && Lr.kart === P && Lr.list.length === 3;
         set('ctrOn', mineL, on => { el.ctr.hidden = !on; });
         if (mineL) set('ctr', Lr.got.map(Number).join(''), m => {

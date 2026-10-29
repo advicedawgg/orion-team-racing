@@ -7,7 +7,7 @@
 // URL debug params (DESIGN.md): track, racer, skip, cam=x,y,z,tx,ty,tz, t (fast-forward s with
 // AI driving), ai=1 (AI drives the player), hud=0, diff=easy|medium|hard, slot (player grid slot
 // 0..7), laps, seed, touch=1, hd=1, shadows=0, fx=0, q=low|high|auto (quality).   window.__OTR exposes state for tests.
-// C-T-R letters (DESIGN.md "Modes and UI"): G.letters (menu.js: 1P Quick Race / Time Trial) puts them in the race;
+// O-T-R letters (DESIGN.md "Modes and UI"): G.letters (menu.js: 1P Quick Race / Time Trial) puts them in the race;
 // letters=1|0 forces them on/off, ctrgot=1 starts with all three collected (screenshots, never saved), paint=gold|rainbow
 // paints the player's kart (all URL-only).
 // Branches (DESIGN.md "Branches (shortcuts)"): branch=<id> makes every brain (the AI and the ai=1 / t= autopilot)
@@ -129,7 +129,7 @@ const chase2 = new ChaseCam(camera2);
 const views = [{ cam: camera, chase, hud }, { cam: camera2, chase: chase2, hud: hud2 }];
 const viewOf = k => views[k && k.pn > 0 ? k.pn : 0];
 const hudOf = k => viewOf(k).hud;
-const LV = createLetterViews({ scene });   // C-T-R letters (letterviews.js; state in letters.js)
+const LV = createLetterViews({ scene });   // O-T-R letters (letterviews.js; state in letters.js)
 const IV = createItemViews({ scene, fx, audio, chase, chaseFor: k => viewOf(k).chase, visuals: () => G.visuals });   // items (itemviews.js)
 if (Q.get('cam')) chase.pin(Q.get('cam').split(',').map(Number));
 const stateFns = new Set();
@@ -139,7 +139,7 @@ const G = {
   slot: qn('slot', 6), laps: Q.has('laps') ? qn('laps', 3) : undefined, seed: qn('seed', 1),
   acc: 0, timeScale: 1, paused: false, override: null, pendA: false, pendB: false, t: 0, frames: 0,
   hd: Q.get('hd') === '1',
-  letters: false, paint: Q.get('paint') || 'std',   // menu.js sets both per race (C-T-R letters / the unlocked kart paint)
+  letters: false, paint: Q.get('paint') || 'std',   // menu.js sets both per race (O-T-R letters / the unlocked kart paint)
   quality: 'auto', qLevel: 'high', autoLow: false,
   // 2P (menu.js sets these from the join screen; URL players=2 for tests)
   players: Q.get('players') === '2' ? 2 : 1, mp: false, racerId2: Q.get('racer2') || null,
@@ -295,7 +295,7 @@ async function startRace() {
   G.slotIndex = slot;
   buildVisuals(ids);
   IV.attach(G.race);                         // items: before compileAsync so item shaders are warmed too
-  // C-T-R letters: a solo human only (1P Quick Race / Time Trial, menu.js G.letters) — never 2P, online or the cup
+  // O-T-R letters: a solo human only (1P Quick Race / Time Trial, menu.js G.letters) — never 2P, online or the cup
   const wantL = Q.has('letters') ? Q.get('letters') === '1' : !!G.letters;
   if (wantL && !two && !G.net) {
     const L = attachLetters(G.race);
@@ -461,7 +461,7 @@ function foundShortcut(k, b, quiet) {
   if (!G.race.branchSeen.has(br.id)) { G.race.branchSeen.add(br.id); hud.refreshMap(); hud2.refreshMap(); }
   if (fresh && !quiet) { hudOf(k).event('SHORTCUT!', { cls: 'good', ms: 2200, icon: 'assets/ui/star.png' }); audio.play('lap'); audio.bark?.(k.racerId, 'boost'); }
 }
-/** the player touched a C-T-R letter (letters.js): chime + sparkle + the HUD slot lights (hud.js reads race.letters) */
+/** the player touched a O-T-R letter (letters.js): chime + sparkle + the HUD slot lights (hud.js reads race.letters) */
 function gotLetter(e, quiet) {
   const L = G.race?.letters, ent = L?.list.find(x => x.i === e.i);
   if (!L || !ent || quiet) return;

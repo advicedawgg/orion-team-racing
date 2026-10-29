@@ -78,7 +78,7 @@ export default {
     { at: 20.4, lat: -5, n: 6, curve: -1.5 },
   ],
   checkpointCount: 8,
-  // C-T-R letters (DESIGN.md "Track data format" → letters): C on the inside of the Sprinkle Hairpin's exit, T on the
+  // O-T-R letters (DESIGN.md "Track data format" → letters): C on the inside of the Sprinkle Hairpin's exit, T on the
   // outside of the S-bends' right kink, R at the end of the Wafer Leap (the sweep after the chocolate river).
   letters: [{ at: 10.3, lat: -5.5 }, { at: 17.0, lat: 4.5 }, { at: 7.5, lat: -1, route: 'wafer' }],
   // Hidden shortcut: the WAFER LEAP across the inside of Cherry Bend. Coming out of the S-bends, a gap in

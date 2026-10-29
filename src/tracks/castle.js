@@ -109,7 +109,7 @@ export default {
     { at: 45.2, lat: -3, n: 5, curve: -1.5 },
   ],
   checkpointCount: 8,
-  // C-T-R letters (DESIGN.md "Track data format" → letters): C in the Great Hall's left lane (the other side from its
+  // O-T-R letters (DESIGN.md "Track data format" → letters): C in the Great Hall's left lane (the other side from its
   // star row), T in King Dad's Secret Gallery after the second turbo carpet, R in the King's Hairpin.
   letters: [{ at: 5.6, lat: 3.5 }, { at: 10.6, lat: -2, route: 'gallery' }, { at: 46.0, lat: 1 }],
   // Hidden shortcut (DESIGN.md "Branches"): KING DAD'S SECRET GALLERY. On the north battlements, just past

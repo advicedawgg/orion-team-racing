@@ -21,7 +21,7 @@ node server/selftest.js        # every protocol/lobby/netgame change → must PA
 
 Browser tests run against GPU headless Chrome (CDP `http://192.168.15.100:9333`):
 `tools/realflow.mjs`, `input-test.mjs`, `twoplayer-test.mjs`, `leakcheck.mjs 2`,
-`online-test.mjs` (add `--lag 100 --jitter 30 --loss 0.05` for a bad network), `ctr-test.mjs` (the C-T-R letters
+`online-test.mjs` (add `--lag 100 --jitter 30 --loss 0.05` for a bad network), `ctr-test.mjs` (the O-T-R letters
 end to end), and
 `playtest.mjs <track> --perf`. Run realflow, input-test and twoplayer-test after any
 menu/input/online-hook change.

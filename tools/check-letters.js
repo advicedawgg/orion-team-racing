@@ -1,4 +1,4 @@
-// tools/check-letters.js — the C-T-R letters part of THE GATE (run by tools/check.js for every shipped track).
+// tools/check-letters.js — the O-T-R letters part of THE GATE (run by tools/check.js for every shipped track).
 //
 // For each track's `letters` (src/letters.js, DESIGN.md "Track data format" → letters):
 //   - exactly three (C, T, R), every one resolves (its branch exists), at least one on the hidden shortcut;
@@ -70,12 +70,12 @@ export function letterRun(tr, { seek = true, assist = true, diff = 'easy', seed 
 
 export function runLetterChecks(tr, ok, warn, { SEED = 1, QUIET = false } = {}) {
   const defs = tr.def.letters;
-  ok('C-T-R: three letters in the data', Array.isArray(defs) && defs.length === 3, defs ? `${defs.length}` : 'none');
+  ok('O-T-R: three letters in the data', Array.isArray(defs) && defs.length === 3, defs ? `${defs.length}` : 'none');
   if (!Array.isArray(defs) || defs.length !== 3) return;
   const list = resolveLetters(tr);
-  ok('C-T-R: every letter resolves (its route exists)', list.length === 3, list.map(e => e.routeId ? `${e.ch}@${e.routeId}` : e.ch).join(' '));
+  ok('O-T-R: every letter resolves (its route exists)', list.length === 3, list.map(e => e.routeId ? `${e.ch}@${e.routeId}` : e.ch).join(' '));
   if (list.length !== 3) return;
-  ok('C-T-R: at least one on the hidden shortcut', !tr.branches.length || list.some(e => e.route), list.filter(e => e.route).map(e => e.ch).join(''));
+  ok('O-T-R: at least one on the hidden shortcut', !tr.branches.length || list.some(e => e.route), list.filter(e => e.route).map(e => e.ch).join(''));
   for (const e of list) {
     const rt = e.route ? tr.routes[e.route] : tr, k = rt.idx(e.rs), hw = rt.HW[k];
     const pr = rt.props[k];
@@ -91,28 +91,28 @@ export function runLetterChecks(tr, ok, warn, { SEED = 1, QUIET = false } = {}) 
       if (dd < R.HW[j] + 1 && R.Y[j] > e.y + 0.5) over = Math.min(over, R.Y[j] - e.y);
     }
     const ail = rt.AIL[k];
-    ok(`C-T-R: ${e.ch} on the road, not near a gap or a fall edge`, Math.abs(e.lat) <= hw - 1.2 && !gapNear && fallM >= 4 && over >= LETTER.Y + LETTER.H / 2 + 2,
+    ok(`O-T-R: ${e.ch} on the road, not near a gap or a fall edge`, Math.abs(e.lat) <= hw - 1.2 && !gapNear && fallM >= 4 && over >= LETTER.Y + LETTER.H / 2 + 2,
       `${e.routeId || 'main'} s=${f1(e.rs)} lat ${f1(e.lat)} of ±${f1(hw)}${gapNear ? ', GAP within 8 m' : ''}${isFinite(fallM) ? `, ${f1(fallM)} m from a fall edge` : ''}${isFinite(over) ? `, deck ${f1(over)} m above` : ''}; ${f1(Math.abs(e.lat - ail))} m off the AI line`);
     // an item box row or a star right on the token would hide it
-    for (const row of e.route ? rt.itemRows : tr.itemRows) if (row.slots.some(sl => Math.hypot(sl.x - e.x, sl.z - e.z) < 3 && Math.abs(sl.y - e.y) < 3)) warn(`C-T-R: ${e.ch} sits on an item box`, `row s=${f1(row.s)}`);
+    for (const row of e.route ? rt.itemRows : tr.itemRows) if (row.slots.some(sl => Math.hypot(sl.x - e.x, sl.z - e.z) < 3 && Math.abs(sl.y - e.y) < 3)) warn(`O-T-R: ${e.ch} sits on an item box`, `row s=${f1(row.s)}`);
   }
   // one lap WITH the shortcut can collect all three: no main-road letter in the stretch a branch skips
   for (const e of list) if (!e.route) for (const br of tr.branches) {
     const inSkip = tr.dS(br.sEntry, e.s) > -br.zoneIn && tr.dS(e.s, br.sExit) > -br.zoneOut;
-    ok(`C-T-R: ${e.ch} isn't in the stretch ${br.id} skips`, !inSkip, `s=${f1(e.s)}, ${br.id} skips ${f1(br.sEntry)}–${f1(br.sExit)}`);
+    ok(`O-T-R: ${e.ch} isn't in the stretch ${br.id} skips`, !inSkip, `s=${f1(e.s)}, ${br.id} skips ${f1(br.sEntry)}–${f1(br.sExit)}`);
   }
   // spread: no two letters within 40 m of each other
   for (let a = 0; a < 3; a++) for (let b = a + 1; b < 3; b++) {
     const A = list[a], B = list[b], d = Math.hypot(A.x - B.x, A.z - B.z) + Math.abs(A.y - B.y);
-    if (d < 40) warn('C-T-R: letters close together', `${A.ch}–${B.ch} ${f1(d)} m`);
+    if (d < 40) warn('O-T-R: letters close together', `${A.ch}–${B.ch} ${f1(d)} m`);
   }
   // scripted runs: Easy + kid assist, and Hard without it
   const plain = letterRun(tr, { seek: false, seed: SEED, assist: false, diff: 'hard', brainDiff: 'hard' });
   for (const [name, o] of [['easy + kid assist', { assist: true, diff: 'easy', brainDiff: 'medium' }], ['hard', { assist: false, diff: 'hard', brainDiff: 'hard' }]]) {
     const r = letterRun(tr, { seek: true, seed: SEED, ...o });
-    ok(`C-T-R: a scripted ${name} run collects all three in one race, no rescue`, r.all && r.respawns === 0,
+    ok(`O-T-R: a scripted ${name} run collects all three in one race, no rescue`, r.all && r.respawns === 0,
       `${LETTER_CHARS.map((c, i) => `${c} ${r.t[i] != null ? f1(r.t[i]) + ' s' : 'MISSED'}`).join(', ')}; respawns ${r.respawns}, walls ${r.walls}${name === 'hard' && r.lapT && plain.lapT ? `; lap 1 ${f1(r.lapT)} s vs ${f1(plain.lapT)} s not seeking (same branch)` : ''}`);
-    if (r.walls > 4) warn(`C-T-R: the ${name} run bangs walls`, `${r.walls}`);
+    if (r.walls > 4) warn(`O-T-R: the ${name} run bangs walls`, `${r.walls}`);
   }
 }
 

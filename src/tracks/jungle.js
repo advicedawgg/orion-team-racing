@@ -102,7 +102,7 @@ export default {
     { at: 38.2, lat: 0, n: 6 },
   ],
   checkpointCount: 8,
-  // C-T-R letters (DESIGN.md "Track data format" → letters): C in the wet cave behind the waterfall (the outside of its
+  // O-T-R letters (DESIGN.md "Track data format" → letters): C in the wet cave behind the waterfall (the outside of its
   // U-turn), T in the Sootie Temple's right lane, R on the inside of the Coconut Hairpin.
   letters: [{ at: 12, lat: 2, route: 'falls' }, { at: 17.7, lat: -3.5 }, { at: 27.0, lat: -5.5 }],
   // Hidden shortcut (DESIGN.md "Branches (shortcuts)"): BEHIND THE WATERFALL. On the start straight, just before the

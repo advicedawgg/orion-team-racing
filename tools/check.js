@@ -5,7 +5,7 @@
 //   1. geometry: closed + sane length, widths, no self-overlap (except tagged bridges), smooth
 //      heights, pads / item rows / star rows on the road, checkpoints ordered, grid on the road,
 //      every jump clearable at the speed you can reach there.
-//      + the C-T-R letters (tools/check-letters.js): on the road, never near a gap / fall edge, a scripted run collects all three.
+//      + the O-T-R letters (tools/check-letters.js): on the road, never near a gap / fall edge, a scripted run collects all three.
 //   2. a headless 8-AI race per difficulty through the real sim: everyone finishes 3 laps inside
 //      a time limit, nobody is stuck > 3 s, lap times are sane, the AI actually power-slides and
 //      fires turbos.
@@ -235,7 +235,7 @@ for (const def of [...TRACKS, fixtureDef()]) {
   }
   if (ITEMS) runItemChecks(tr, ok);
   if (tr.branches.length) runBranchRaces(tr, ok, warn, { ENTRANTS, SEED, ITEMS, QUIET });
-  // C-T-R letters (tools/check-letters.js): every shipped track has three, on the road, collectable in one race
+  // O-T-R letters (tools/check-letters.js): every shipped track has three, on the road, collectable in one race
   if (TRACKS.includes(def)) runLetterChecks(tr, ok, warn, { SEED, QUIET });
 }
 

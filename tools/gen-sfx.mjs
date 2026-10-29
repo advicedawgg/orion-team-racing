@@ -74,7 +74,7 @@ export const SOUNDS = {
   cheer: ['small group of children cheering yay, happy, short', 1.5, 0.6, -15],
   splash: ['cartoon splash, a go-kart plunges through a puddle, big playful water splash', 0.8, 0.6, -14],
   star_spill: ['several small stars scattering and bouncing away, descending twinkly pings, cartoon', 0.7, 0.6, -15],
-  // C-T-R letters (2026-10-29): one per letter (main.js plays it a step higher each time), and the set's fanfare
+  // O-T-R letters (2026-10-29): one per letter (main.js plays it a step higher each time), and the set's fanfare
   letter: ['collecting a big magic letter token in a kids video game, bright rising glockenspiel chime with sparkles, short, cheerful, no drums', 0.9, 0.65, -15],
   ctr_fanfare: ['short joyful video game bonus fanfare, bright brass and bells, triumphant rising flourish ending on a big sparkly chord, kids game, no vocals', 2.2, 0.55, -14],
 };

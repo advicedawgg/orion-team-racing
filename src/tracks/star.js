@@ -86,7 +86,7 @@ export default {
     { at: 30.5, lat: 3, n: 6, curve: 1.5 },
   ],
   checkpointCount: 8,
-  // C-T-R letters (DESIGN.md "Track data format" → letters): C on the first space-wave crest, T on the Warp Ribbon
+  // O-T-R letters (DESIGN.md "Track data format" → letters): C on the first space-wave crest, T on the Warp Ribbon
   // after its turbo pad, R on the outside of the Moon Loop.
   letters: [{ at: 3.0, lat: 4 }, { at: 7.0, lat: 0, route: 'warp' }, { at: 31.0, lat: -2.5 }],
   // Hidden shortcut (DESIGN.md "Branches (shortcuts)"): the WARP RIBBON. Landing off the second space-wave,

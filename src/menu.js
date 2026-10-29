@@ -14,10 +14,10 @@
 //
 // URL: ?screen=title|menu|select|tracks|results|standings|podium|unlock|pause|settings|controls|join
 // jumps straight to a screen (screenshots). ?skip=1 etc. still go straight into a race. &unlock=paint shows the
-// kart-paint unlock; &ctr=all fakes every track's C-T-R (badges, paints), &ctrgot=1 a race with all three (save.js, main.js).
+// kart-paint unlock; &ctr=all fakes every track's O-T-R (badges, paints), &ctrgot=1 a race with all three (save.js, main.js).
 //
-// C-T-R letters (DESIGN.md "Modes and UI"): G.letters is on for 1P Quick Race and Time Trial. A finished race with
-// all three → save.js markLetters (the gold C-T-R badge on that track's card) and a results-screen C-T-R badge +
+// O-T-R letters (DESIGN.md "Modes and UI"): G.letters is on for 1P Quick Race and Time Trial. A finished race with
+// all three → save.js markLetters (the gold O-T-R badge on that track's card) and a results-screen O-T-R badge +
 // fanfare; the last track's → the kart paints unlock (unlock screen), picked with the swatches on the racer screen.
 //
 // 2 PLAYERS (multiplayer agent): main menu → `join` (P2 presses A/Start on another pad or a key on
@@ -41,7 +41,7 @@ const hdp = import('./hdracers.js').then(m => { HDM = m; }).catch(() => { /* opt
 export const CUP_ORDER = ['beach', 'ice', 'volcano', 'castle'];
 export const POINTS = [10, 8, 6, 5, 4, 3, 2, 1];
 const DIFFS = ['easy', 'medium', 'hard'];
-const PAINTS = ['std', 'gold', 'rainbow'];        // racers.js PAINTS (the kart paints the C-T-R letters unlock)
+const PAINTS = ['std', 'gold', 'rainbow'];        // racers.js PAINTS (the kart paints the O-T-R letters unlock)
 const DIFF_LABEL = { easy: 'EASY', medium: 'MEDIUM', hard: 'HARD' };
 const isSecret = t => !!t.secret || t.id === 'star';
 const trackDef = id => TRACKS.find(t => t.id === id);
@@ -81,7 +81,7 @@ const M = {
   cup: null, lastResults: null, resultsShown: false, finishTimer: 0, ghost: null, rec: null, record: null,
   focusMem: {}, pauseFrom: null, settingsFrom: 'menu', pendingUnlock: false,
   players: 1, racer2: null, devs: ['kb', null], mp: { auto: [true, false], helper: [true, false] },
-  stagePaint: null, ctr: null,     // C-T-R: the turntable's kart paint (racer screen / unlock), this race's letters result
+  stagePaint: null, ctr: null,     // O-T-R: the turntable's kart paint (racer screen / unlock), this race's letters result
 };
 const two = () => M.players === 2 && M.mode !== 'tt';
 
@@ -411,7 +411,7 @@ function applyRaceSettings() {
   G.solo = M.mode === 'tt';
   G.sitOut = M.mode === 'cup' ? M.cup?.sitOut : undefined;   // the cup keeps the same 8 racers all cup
   G.noItems = M.mode === 'tt';
-  // C-T-R letters: 1P Quick Race + Time Trial only (never the cup or 2P — main.js also keeps them out of online races)
+  // O-T-R letters: 1P Quick Race + Time Trial only (never the cup or 2P — main.js also keeps them out of online races)
   G.letters = (M.mode === 'quick' || M.mode === 'tt') && !two();
   G.paint = api.Q.has('paint') ? api.Q.get('paint') : !two() && S.paintUnlocked() ? (s.paint || 'std') : 'std';
   if (M.mode !== 'tt' && !api.Q.has('laps')) G.laps = undefined;
@@ -532,7 +532,7 @@ function showSelect(pn = 0) {
   const cur0 = pn === 1 ? M.racer2 : M.racer;
   const title = { quick: 'QUICK RACE', cup: 'ORION CUP', tt: 'TIME TRIAL' }[M.mode];
   const who = mp ? `<b class="pbadge pb${pn + 1}">P${pn + 1}</b> ` : '';
-  // kart paints (unlocked by every track's C-T-R): three swatches under the stats, 1P only; the turntable shows the pick
+  // kart paints (unlocked by every track's O-T-R): three swatches under the stats, 1P only; the turntable shows the pick
   const paints = !mp && S.paintUnlocked();
   M.stagePaint = paints ? (S.settings().paint || 'std') : null;
   const swatches = paints ? `<div class="paints">${PAINTS.map(p => `<button class="pnt pnt-${p}${p === M.stagePaint ? ' sel' : ''}" data-nav data-act="paint" data-v="${p}" data-key="paint-${p}"><i></i></button>`).join('')}</div>` : '';
@@ -829,7 +829,7 @@ function showUnlock(kind = 'star') {
   });
 }
 
-/** C-T-R on every track: the gold + rainbow kart paints. The player's racer spins on the turntable, flipping
+/** O-T-R on every track: the gold + rainbow kart paints. The player's racer spins on the turntable, flipping
  *  between the two; YAY goes to the racer screen, where the new swatches are. */
 function showPaintUnlock() {
   M.pendingUnlock = false;
@@ -1087,7 +1087,7 @@ function onState(s, prev) {
         M.rec.time = P.finishTime; S.saveGhost(tid, M.rec);
       }
       if (M.mode === 'tt' || G.race.karts.length === 1) api.hud.banner(M.record.newRace ? 'NEW RECORD!' : 'FINISH!', 2500);
-      // C-T-R: all three letters this race → the track's badge (save.js); every track → the kart paints unlock
+      // O-T-R: all three letters this race → the track's badge (save.js); every track → the kart paints unlock
       const L = G.race.letters;
       if (L?.all && L.kart === P) {
         M.ctr = { fresh: !L.fake && S.markLetters(tid) };

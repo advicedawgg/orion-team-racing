@@ -3,11 +3,11 @@
 //
 //   localStorage['otrSave'] = {
 //     v: 1,
-//     unlocked: { star: false, paint: false },   // secret tracks by id; paint = the gold/rainbow kart paints (C-T-R on every track)
+//     unlocked: { star: false, paint: false },   // secret tracks by id; paint = the gold/rainbow kart paints (O-T-R on every track)
 //     cupWins: { easy: 0, medium: 0, hard: 0 },   // Orion Cup wins per difficulty
 //     best: { <trackId>: { lap: s, race: s, racer } },   // Time Trial + every race count
 //     shortcuts: { <trackId>: [branchId, …] },          // branches the player has driven (minimap shows them)
-//     letters: { <trackId>: true },                     // C-T-R: all three letters collected in one finished race
+//     letters: { <trackId>: true },                     // O-T-R: all three letters collected in one finished race
 //     settings: { master, music, sfx (0..1), autoAccel: 'easy'|'on'|'off', kidAssist: bool,
 //                 hd: bool, difficulty: 'easy'|'medium'|'hard', quality: 'auto'|'high'|'low',
 //                 mpAuto: [p1, p2], mpHelper: [p1, p2] (2 PLAYERS join screen, per player; absent until toggled),
@@ -110,7 +110,7 @@ export function markShortcut(trackId, branchId) {
   } catch (e) { console.warn('[save] shortcut not saved', e); return false; }
 }
 
-/* ------------------------------------------------------------------ C-T-R letters */
+/* ------------------------------------------------------------------ O-T-R letters */
 // URL ?ctr=all | ?ctr=<id,id…> fakes completed tracks (and, for all, the paint unlock) for screenshots. URL-only:
 // it is read here, never written to the save.
 const CTR_Q = (() => { try { return new URLSearchParams(globalThis.location?.search || '').get('ctr'); } catch { return null; } })();
@@ -120,7 +120,7 @@ export function lettersDone(trackId) {
   if (ctrFake(trackId)) return true;
   try { return !!load().letters?.[trackId]; } catch { return false; }
 }
-/** Record a C-T-R on this track. Returns true the first time. */
+/** Record a O-T-R on this track. Returns true the first time. */
 export function markLetters(trackId) {
   try {
     const d = load(), l = d.letters && typeof d.letters === 'object' ? d.letters : (d.letters = {});
@@ -128,7 +128,7 @@ export function markLetters(trackId) {
     l[trackId] = true; save(); return true;
   } catch (e) { console.warn('[save] letters not saved', e); return false; }
 }
-/** the gold / rainbow kart paints: unlocked once every track has its C-T-R (menu.js unlocks 'paint') */
+/** the gold / rainbow kart paints: unlocked once every track has its O-T-R (menu.js unlocks 'paint') */
 export const paintUnlocked = () => CTR_Q === 'all' || isUnlocked('paint');
 
 /* ------------------------------------------------------------------ ghosts (Time Trial) */

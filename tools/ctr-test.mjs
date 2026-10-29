@@ -1,8 +1,8 @@
-// node tools/ctr-test.mjs [trackId]   — C-T-R letters end to end in the real browser (GPU headless Chrome).
+// node tools/ctr-test.mjs [trackId]   — O-T-R letters end to end in the real browser (GPU headless Chrome).
 //
 // A 1-lap `letters=1` race (default Bubbly Beach, through its shortcut): the autopilot drives and steers into each
 // letter as it comes up; the 6 OTHER tracks are pre-marked done in the save, so finishing with all three must:
-// mark this track (otrSave.letters), unlock the paints (otrSave.unlocked.paint), show the results C-T-R badge with
+// mark this track (otrSave.letters), unlock the paints (otrSave.unlocked.paint), show the results O-T-R badge with
 // WHAT'S THIS?! focused → (Enter) the GOLD KARTS UNLOCKED! screen → (Enter) the racer screen with 3 paint swatches.
 // Screenshots: shots/ctr/e2e-*.png. The browser profile's save is restored in `finally`; the page is always closed.
 import { chromium } from 'playwright-core';
@@ -55,7 +55,7 @@ try {
   await page.waitForTimeout(1500);
   const st = await page.evaluate(id => { const d = __OTR.menu.save.get(); return { mark: !!d.letters[id], paint: !!d.unlocked.paint, badge: !!document.querySelector('.rctr .ctrrow'), isNew: !!document.querySelector('.rctr em'), focus: document.querySelector('#ui .focus')?.dataset.key, slots: document.querySelector('#hCtr')?.dataset.m }; }, id);
   ok('save: this track marked, paints unlocked', st.mark && st.paint, JSON.stringify(st));
-  ok('results: C-T-R badge + NEW!, WHAT\'S THIS?! focused', st.badge && st.isNew && st.focus === 'unl');
+  ok('results: O-T-R badge + NEW!, WHAT\'S THIS?! focused', st.badge && st.isNew && st.focus === 'unl');
   await shot('results');
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => __OTR.menu.screen === 'unlock', null, { timeout: 10000 });

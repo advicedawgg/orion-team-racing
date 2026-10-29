@@ -49,7 +49,7 @@ const DARK = 0x2a2a32, TYRE = 0x26262c, CHROME = 0xc7cedb, ENGINE = 0x3a3f52;
 /* ======================================================================= build */
 const hasDOM = typeof document !== 'undefined';
 
-// Kart paints (DESIGN.md "Modes and UI" → C-T-R letters): unlocked when every track's letters are done. 'std' =
+// Kart paints (DESIGN.md "Modes and UI" → O-T-R letters): unlocked when every track's letters are done. 'std' =
 // the racer's own colours. Only the kart body changes — the driver, the face and the racer's colour (minimap
 // dots, menus) stay theirs. Gold uses MAT.gold on the body; rainbow gives each body panel its own colour.
 export const PAINTS = ['std', 'gold', 'rainbow'];

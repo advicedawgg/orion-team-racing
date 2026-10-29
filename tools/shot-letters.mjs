@@ -1,6 +1,6 @@
 // node tools/shot-letters.mjs [trackId,…] [--size 1280x800] [--grab]
 //
-// The C-T-R letters in chase view (DESIGN.md "Modes and UI" → C-T-R letters): for every track (default: all) a
+// The O-T-R letters in chase view (DESIGN.md "Modes and UI" → O-T-R letters): for every track (default: all) a
 // race with `letters=1` (and `branch=<id>` when a letter is on the shortcut), the autopilot drives up to each
 // letter in turn; one shot ~18 m before it (shots/ctr/<track>-<C|T|R>.jpg). --grab then steers into it and
 // shoots just after the pick-up (…-<C|T|R>-got.jpg: the sparkle + the lit HUD slot). The page is closed in finally.

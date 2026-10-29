@@ -38,7 +38,7 @@
   border-radius:1em;padding:.1em .5em .1em .2em;box-shadow:0 0 0 .1em rgba(255,255,255,.18)}
 .hx-stars img,.hx-stars span{width:1.3em;height:1.3em;display:inline-grid;place-items:center}
 .hx-stars b{min-width:1.1em;text-align:center;font-variant-numeric:tabular-nums}
-/* C-T-R letter slots (hud.js, letters.js letterSVG) */
+/* O-T-R letter slots (hud.js, letters.js letterSVG) */
 .hx-ctr{display:flex;align-items:center;gap:.08em;background:rgba(11,16,32,.45);border-radius:.7em;padding:.12em .3em;box-shadow:0 0 0 .1em rgba(255,255,255,.18)}
 .hx-ctr[hidden]{display:none}
 .hx-ctr i{width:1.15em;height:1.45em;display:grid;place-items:center}
@@ -415,7 +415,7 @@ img.mini{width:1.5em;height:1.5em;border-radius:50%}
 @keyframes ucardIn{from{transform:perspective(600px) rotateY(180deg) scale(.4);opacity:0}}
 .unl p{font-size:clamp(13px,2.6vmin,24px);color:#dfe8ff}
 
-/* ---------- C-T-R letters (letters.js letterSVG / ctrSVG): badges, results, kart paints */
+/* ---------- O-T-R letters (letters.js letterSVG / ctrSVG): badges, results, kart paints */
 .ctrrow{display:inline-flex;align-items:center;gap:.06em;vertical-align:middle}
 .ctrrow svg{height:1.4em;width:auto;display:block}
 .tcard .tctr{position:absolute;left:.35em;top:.35em;padding:.18em .35em;border-radius:.6em;font-size:clamp(13px,2.8vmin,26px);

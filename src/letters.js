@@ -1,11 +1,11 @@
-// letters.js — PURE (no THREE, no DOM): the C-T-R letters (DESIGN.md "Modes and UI" → C-T-R letters).
+// letters.js — PURE (no THREE, no DOM): the O-T-R letters (DESIGN.md "Modes and UI" → O-T-R letters).
 //
 // Every track has three floating letter tokens, C, T and R, authored as data (`def.letters`, in that
 // order — see DESIGN.md "Track data format"). They're only in the race for a solo human (1P Quick Race
 // and Time Trial; never the cup, 2P or online, so those races stay fair) — main.js decides and calls
 // attachLetters(race). Only race.player collects them: the AI, items, physics and the wire never see
 // them. Collect all three in ONE race and finish → save.js marks the track (the tracks screen's gold
-// C-T-R badge); all tracks → the gold / rainbow kart paints.
+// O-T-R badge); all tracks → the gold / rainbow kart paints.
 //
 //   const L = attachLetters(race);   // race.letters = L; a system checks the player every step
 //   L.list   [{ i, ch, color, route, rs, s, lat, x, y (road), z, cy (token centre) }]
@@ -16,8 +16,8 @@
 // The shapes (LETTER_SHAPES) are outlines in a unit box (height 1, y up): letterviews.js extrudes them
 // in 3D, letterSVG() draws the same outline for the HUD slots and the menu badges (no font, no emoji).
 
-export const LETTER_CHARS = ['C', 'T', 'R'];
-export const LETTER_COLORS = [0x2fb8ff, 0x7ed957, 0xff4f8a];      // C sky blue, T green, R pink: one colour each, everywhere
+export const LETTER_CHARS = ['O', 'T', 'R'];
+export const LETTER_COLORS = [0x2fb8ff, 0x7ed957, 0xff4f8a];      // O sky blue, T green, R pink: one colour each, everywhere
 export const LETTER = {
   Y: 2.0,          // token centre above the road surface (m): a kart drives straight through it
   H: 3.2,          // token height (m) — over twice a kart's: it reads from 60 m away
@@ -29,8 +29,8 @@ const arc = (cx, cy, r, a0, a1, n) => { const o = []; for (let k = 0; k <= n; k+
 const D = Math.PI / 180;
 /** Outlines, counter-clockwise, unit height; `w` = width. Chunky strokes (~0.28) so they read at 60 m. */
 export const LETTER_SHAPES = [
-  // C: a thick ring with the mouth open to the right
-  { w: 0.92, outer: [...arc(0.5, 0.5, 0.5, 42 * D, 318 * D, 22), ...arc(0.5, 0.5, 0.22, 318 * D, 42 * D, 14)], holes: [] },
+  // O: a thick ring (the hole is clockwise)
+  { w: 1, outer: arc(0.5, 0.5, 0.5, 0, 359 * D, 28), holes: [arc(0.5, 0.5, 0.22, 359 * D, 0, 18)] },
   // T
   { w: 0.9, outer: [[0, 1], [0, 0.72], [0.31, 0.72], [0.31, 0], [0.59, 0], [0.59, 0.72], [0.9, 0.72], [0.9, 1]], holes: [] },
   // R: stem + round bowl + kicked leg, one outline with the bowl's hole
@@ -39,7 +39,7 @@ export const LETTER_SHAPES = [
     holes: [[[0.28, 0.6], ...arc(0.47, 0.715, 0.115, -90 * D, 90 * D, 8), [0.28, 0.83]]] },
 ];
 
-/** An SVG of letter i (0 C, 1 T, 2 R): `on` = collected (its colour, glowing), else a dim slot outline. */
+/** An SVG of letter i (0 O, 1 T, 2 R): `on` = collected (its colour, glowing), else a dim slot outline. */
 export function letterSVG(i, { on = true, cls = '' } = {}) {
   const sh = LETTER_SHAPES[i], col = '#' + LETTER_COLORS[i].toString(16).padStart(6, '0');
   const pad = 0.14, W = sh.w + pad * 2, H = 1 + pad * 2;

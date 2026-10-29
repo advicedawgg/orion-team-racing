@@ -32,7 +32,7 @@ export const SFX_NAMES = [
   'menu_back', 'respawn',
   // extras (not in the original contract list, free to use)
   'meow', 'purr', 'cheer', 'splash', 'star_spill',
-  'letter', 'ctr_fanfare',   // C-T-R letters: one chime per letter (main.js raises its pitch per letter), the set's fanfare
+  'letter', 'ctr_fanfare',   // O-T-R letters: one chime per letter (main.js raises its pitch per letter), the set's fanfare
 ];
 
 // Announcer lines + character barks (ElevenLabs TTS). Missing files are silent no-ops.
