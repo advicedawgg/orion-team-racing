@@ -60,11 +60,11 @@ export default function build(ctx) {
   const bL = k => HW[K.wrap(k)] + track.OFFL[K.wrap(k)], bR = k => -(HW[K.wrap(k)] + track.OFFR[K.wrap(k)]);
   {
     let rowsU = [], rowsL = [], rowsR = [];
+    const flushL = () => { if (rowsL.length > 1) B.add('edge', K.strip(rowsL, { uS: 4, vS: 1, colors: r => rowsL[r].c })); rowsL = []; };
+    const flushR = () => { if (rowsR.length > 1) B.add('edge', K.strip(rowsR, { uS: 4, vS: 1, colors: r => rowsR[r].c })); rowsR = []; };
     const flush = () => {
       if (rowsU.length > 1) B.add('under', K.strip(rowsU, { uS: 8, vS: 8, color: 0xffffff }));
-      if (rowsL.length > 1) B.add('edge', K.strip(rowsL, { uS: 4, vS: 1, colors: r => rowsL[r].c }));
-      if (rowsR.length > 1) B.add('edge', K.strip(rowsR, { uS: 4, vS: 1, colors: r => rowsR[r].c }));
-      rowsU = []; rowsL = []; rowsR = [];
+      flushL(); flushR(); rowsU = [];
     };
     for (let j = 0; j <= n; j++) {
       const k = j % n;
@@ -73,8 +73,9 @@ export default function build(ctx) {
       const a = P(k, l, 0.02), b = P(k, r, 0.02), a1 = P(k, l, -0.7), b1 = P(k, r, -0.7), a2 = P(k, l * 0.7, -1.6), b2 = P(k, r * 0.7, -1.6);
       rowsU.push([a1, a2, b2, b1]);
       const c = hue(j * track.ds / 140);
-      const rl = [a, a1]; rl.c = c; rowsL.push(rl);
-      const rr = [b1, b]; rr.c = hue(j * track.ds / 140 + 0.5); rowsR.push(rr);
+      // a branch (shortcut) mouth: the boundary opens there (track OPENL/OPENR, 0 on unbranched tracks) — no edge across it
+      const rl = [a, a1]; rl.c = c; if (track.OPENL[k] > 0) flushL(); else rowsL.push(rl);
+      const rr = [b1, b]; rr.c = hue(j * track.ds / 140 + 0.5); if (track.OPENR[k] > 0) flushR(); else rowsR.push(rr);
     }
     flush();
   }
@@ -84,6 +85,7 @@ export default function build(ctx) {
   {
     for (const s of [1, -1]) {
       let rows = [], panel = [], last = -99;
+      const OPEN = s > 0 ? track.OPENL : track.OPENR;          // branch mouths: a gap in the rail
       const flush = () => {
         if (rows.length > 1) { B.add('glow', K.strip(rows, { uS: 4, vS: 1, colors: r => rows[r].c })); }
         if (panel.length > 1) { B.add('field', K.strip(panel, { uS: 6, vS: 1, colors: r => panel[r].c })); }
@@ -91,7 +93,7 @@ export default function build(ctx) {
       };
       for (let j = 0; j <= n; j++) {
         const k = j % n, sAt = j * track.ds;
-        if (isGap(k)) { flush(); continue; }
+        if (isGap(k) || OPEN[k] > 0) { flush(); continue; }
         const b = s > 0 ? bL(k) : bR(k);
         if (rail(k) === 'glow') {
           const c = hue(sAt / 90 + (s > 0 ? 0 : 0.5));
@@ -105,6 +107,7 @@ export default function build(ctx) {
       }
       flush();
     }
+    for (const br of ctx.branches || []) ribbonRails(br);     // the shortcut's rails join the same buckets + posts
     // posts: glowing sticks with a star cap
     const pg = K.merge([K.paint(new THREE.CylinderGeometry(0.1, 0.12, 1.3, 6).translate(0, 0.65, 0), 0xffffff), K.paint(new THREE.OctahedronGeometry(0.28, 0).translate(0, 1.45, 0), 0xffffff)]);
     const pm = K.instanced(pg, new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }), posts, 'posts');
@@ -146,12 +149,14 @@ export default function build(ctx) {
     const sg = new THREE.ExtrudeGeometry(starShape, { depth: 0.35, bevelEnabled: false }); sg.translate(0, 0, -0.175);
     K.paint(sg, 0xffffff);
     const deco = [];
+    let nDeco = 0;
     for (let s = 6; s < track.length; s += 11) {
       const k = track.idx(s); if (isGap(k)) continue;
       const side = (Math.floor(s / 11) % 2) ? 1 : -1;
       const b = side > 0 ? bL(k) : bR(k);
       const p = P(k, b + side * (3.5 + rng() * 9), 2.5 + rng() * 8);
-      deco.push({ x: p[0], y: p[1], z: p[2], ph: rng() * TAU, s: 0.9 + rng() * 1.3, c: [0xffe14a, 0xffffff, 0xff9dd8, 0x9fe8ff, 0xffd23f][deco.length % 5] });
+      const d = { x: p[0], y: p[1], z: p[2], ph: rng() * TAU, s: 0.9 + rng() * 1.3, c: [0xffe14a, 0xffffff, 0xff9dd8, 0x9fe8ff, 0xffd23f][nDeco++ % 5] };
+      if (!overRibbon(d.x, d.y, d.z)) deco.push(d);       // (rng drawn either way: the other stars don't move)
     }
     const dm = K.instanced(sg, new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }), deco, 'decostars');
     if (dm) {
@@ -310,6 +315,116 @@ export default function build(ctx) {
         });
         im.instanceMatrix.needsUpdate = true;
       });
+    }
+  }
+
+  /* =============================================================== THE WARP RIBBON (the hidden shortcut) */
+  // tracks/star.js `branches` (DESIGN.md "Branches"): the engine draws the ribbon's road (same rainbow material,
+  // merged into the road mesh). Here: its glowing edges + dark underside and its rails (into the existing buckets
+  // and posts: 0 extra calls), a big spinning rainbow STAR GATE over it just past the gap in the main road's inside
+  // rail (the landmark you see from the hairpin's run-in: +1 call), and a tunnel of WARP RINGS whose colours pulse
+  // along the ribbon toward the exit (instanced: +1 call). No lights.
+  function ribbonGeo(br) {
+    const L = br.length, q = {}, STEP = 1;
+    const kOf = u => br.idx(Math.max(0, Math.min(L, u)));
+    const at = (u, lat, dy = 0) => { const p = br.pointAt(Math.max(0, Math.min(L, u)), lat); return [p.x, p.y + dy, p.z]; };
+    const bnd = (u, s) => { const k = kOf(u); return s * (br.HW[k] + (s > 0 ? br.OFFL[k] : br.OFFR[k])); };
+    // metres outside the main road's corridor (< 0 = inside it)
+    const outMain = p => { track.projectOn(0, { x: p[0], y: p[1], z: p[2] }, -1, q); return Math.abs(q.lat) - (q.hw + (q.lat > 0 ? track.OFFL[q.i] : track.OFFR[q.i])); };
+    const onMainRoad = u => { const p = at(u, 0); track.projectOn(0, { x: p[0], y: p[1], z: p[2] }, -1, q); return Math.abs(q.lat) < q.hw; };
+    return { L, STEP, kOf, at, bnd, outMain, onMainRoad };
+  }
+  function ribbonRails(br) {
+    const { L, STEP, kOf, at, bnd, outMain } = ribbonGeo(br);
+    for (const s of [1, -1]) {
+      const OPEN = s > 0 ? br.OPENL : br.OPENR;
+      let rows = [], panel = [], last = -99;
+      const flush = () => {
+        if (rows.length > 1) B.add('glow', K.strip(rows, { uS: 4, vS: 1, colors: r => rows[r].c }));
+        if (panel.length > 1) B.add('field', K.strip(panel, { uS: 6, vS: 1, colors: r => panel[r].c }));
+        rows = []; panel = [];
+      };
+      for (let u = 0; u <= L + 1e-6; u += STEP) {
+        const k = kOf(u), b = bnd(u, s);
+        // no rail where the wall opens onto the main road, nor inside main's corridor (the junction's wedge)
+        if (OPEN[k] > 0 || outMain(at(u, b)) < 0.4) { flush(); continue; }
+        const c = hue(u / 60 + (s > 0 ? 0.25 : 0.75));
+        const r1 = [at(u, b, 1.05), at(u, b, 1.25), at(u, b + s * 0.2, 1.25)]; r1.c = c; rows.push(r1);
+        const p1 = [at(u, b + s * 0.05, 0), at(u, b + s * 0.05, 1.08)]; p1.c = c; panel.push(p1);
+        if (u - last >= 5) { last = u; const p = at(u, b + s * 0.08, 0); posts.push({ x: p[0], y: p[1], z: p[2], c }); }
+      }
+      flush();
+    }
+  }
+  function ribbonBody(br) {
+    const { L, STEP, kOf, at, bnd, outMain, onMainRoad } = ribbonGeo(br);
+    let rowsU = [], rowsE = [[], []];
+    const flushE = i => { const r = rowsE[i]; if (r.length > 1) B.add('edge', K.strip(r, { uS: 4, vS: 1, colors: j => r[j].c })); rowsE[i] = []; };
+    const flushU = () => { if (rowsU.length > 1) B.add('under', K.strip(rowsU, { uS: 8, vS: 8, color: 0xffffff })); rowsU = []; };
+    for (let u = 0; u <= L + 1e-6; u += STEP) {
+      // over the main road its underside would only hide under main's: start where the ribbon's centre leaves it
+      if (onMainRoad(u)) { flushU(); flushE(0); flushE(1); continue; }
+      const l = bnd(u, 1) + 0.5, r = bnd(u, -1) - 0.5;
+      rowsU.push([at(u, l, -0.7), at(u, l * 0.7, -1.6), at(u, r * 0.7, -1.6), at(u, r, -0.7)]);
+      [[1, l], [-1, r]].forEach(([s, lat], i) => {
+        const OPEN = s > 0 ? br.OPENL : br.OPENR;
+        if (OPEN[kOf(u)] > 0 || outMain(at(u, lat)) < 0.4) { flushE(i); return; }
+        const row = s > 0 ? [at(u, lat, 0.02), at(u, lat, -0.7)] : [at(u, lat, -0.7), at(u, lat, 0.02)];
+        row.c = hue(u / 60 + (s > 0 ? 0.25 : 0.75)); rowsE[i].push(row);
+      });
+    }
+    flushU(); flushE(0); flushE(1);
+  }
+  /** is (x, y, z) over/near a branch's corridor? (keeps the floating deco stars off the ribbon) */
+  function overRibbon(x, y, z) {
+    const q = {};
+    for (const br of ctx.branches || []) {
+      br.projectLocal({ x, y, z }, -1, q);
+      if (q.past <= 0.5 && Math.abs(q.lat) < q.hw + Math.max(br.OFFL[q.i], br.OFFR[q.i]) + 3 && Math.abs(y - q.y) < 14) return true;
+    }
+    return false;
+  }
+  for (const br of ctx.branches || []) {
+    ribbonBody(br);
+    const { L, kOf, at, bnd, outMain } = ribbonGeo(br);
+    const yawAt = u => { const k = kOf(u); return Math.atan2(br.TX[k], br.TZ[k]); };
+    // a ring of radius R round the ribbon at u is clear of the main road's corridor where it crosses the road's level
+    const ringClear = (u, R, dy) => { const w = Math.sqrt(Math.max(0, R * R - dy * dy)); return outMain(at(u, w)) > 1 && outMain(at(u, -w)) > 1; };
+    const hw = u => (bnd(u, 1) - bnd(u, -1)) / 2;
+    // ---- the STAR GATE: the first spot past the entry where a big ring fits
+    const GR = hw(br.zoneIn) + 3.2, GY = 3.4;
+    let ug = br.zoneIn; while (ug < L / 2 && !ringClear(ug, GR, GY)) ug += 0.5;
+    if (ug < L / 2) {
+      const tor = new THREE.TorusGeometry(GR, 0.75, 10, 64), cols = [], p = tor.attributes.position;
+      for (let i = 0; i < p.count; i++) { const a = Math.atan2(p.getY(i), p.getX(i)); cols.push(...col.set(hue(a / TAU)).toArray()); }
+      tor.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+      // five chunky gold stars round the rim (so you can SEE it spin)
+      const sh = new THREE.Shape();
+      for (let i = 0; i < 10; i++) { const a = Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 0.75 : 1.8; if (i === 0) sh.moveTo(Math.cos(a) * r, Math.sin(a) * r); else sh.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
+      const parts = [tor];
+      for (let i = 0; i < 5; i++) {
+        const a = i * TAU / 5 + Math.PI / 2, g = new THREE.ExtrudeGeometry(sh, { depth: 0.5, bevelEnabled: false });
+        g.translate(0, 0, -0.25); g.rotateZ(a - Math.PI / 2); g.translate(Math.cos(a) * GR, Math.sin(a) * GR, 0);
+        parts.push(K.paint(g, 0xffe14a));
+      }
+      const gate = new THREE.Mesh(K.merge(parts), new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }));
+      gate.name = 'scenery:stargate';
+      const holder = new THREE.Group(), c = at(ug, 0, GY);
+      holder.position.set(c[0], c[1], c[2]); holder.rotation.y = yawAt(ug); holder.add(gate); group.add(holder);
+      updaters.push((dt, t) => { gate.rotation.z = t * 0.7; });
+    }
+    // ---- the WARP RINGS: every ~11 m along the clear middle, a chase of colour running toward the exit
+    const rings = [], RR = hw(L / 2) + 2.2, RY = 2.6;
+    for (let u = ug + 12; u < L - br.zoneOut - 4; u += 11) if (ringClear(u, RR, RY)) {
+      const c = at(u, 0, RY); rings.push({ x: c[0], y: c[1], z: c[2], yaw: yawAt(u), u });
+    }
+    const rg = K.paint(new THREE.TorusGeometry(RR, 0.35, 8, 56), 0xffffff);
+    const rm = K.instanced(rg, new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false, transparent: true, opacity: 0.9 }), rings, 'warprings');
+    if (rm) {
+      group.add(rm);
+      const base = rings.map((r, i) => new THREE.Color(hue(i / 7)));
+      const paintRings = t => { for (let i = 0; i < rings.length; i++) { const w = 0.45 + 0.55 * Math.max(0, Math.sin(t * 5 - i * 0.9)); rm.setColorAt(i, col.copy(base[i]).multiplyScalar(w)); } rm.instanceColor.needsUpdate = true; };
+      paintRings(0); updaters.push((dt, t) => paintRings(t));
     }
   }
 

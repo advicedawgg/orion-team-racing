@@ -193,7 +193,8 @@ export function runBranchRaces(tr, ok, warn, { ENTRANTS, SEED, ITEMS, QUIET }) {
       }
       const seq = [], jumps = [0, 0];
       let lastP = [null, null], tA = null, tB = null, cpA = A.nextCp, placeAt = null;
-      for (let i = 0; i < 60 * 40; i++) {
+      // 40 s, or longer when the line is far from the entry (Star Road: 1086 m from s0 to the line)
+      for (let i = 0; i < 60 * Math.max(40, (tr.length - tr.dS(0, s0) + 80) / 14); i++) {
         race.step();
         if (seq[seq.length - 1] !== A.route) seq.push(A.route);
         for (const [n, k] of [[0, A], [1, B]]) { if (lastP[n] != null && (k.progress - lastP[n] > 3 || k.progress - lastP[n] < -0.5) && k.respawnT <= 0) jumps[n]++; lastP[n] = k.progress; }
@@ -213,16 +214,22 @@ export function runBranchRaces(tr, ok, warn, { ENTRANTS, SEED, ITEMS, QUIET }) {
     //      shortcut (no 'shortcut' event → no SHORTCUT! callout / minimap discovery), and nobody gets stuck
     {
       const q = {}, lat = (br.side === 'R' ? -1 : 1) * (tr.HW[tr.idx(br.sEntry + 20)] + 1.5);
+      // …but never off the drivable shoulder where it's narrower, and on the road's edge beside a fall (Star Road:
+      // 1.3–1.5 m of cloud, then space — this test's simple steering would drive off it)
+      const latAt = s => {
+        const k = tr.idx(s), R = br.side === 'R', off = R ? tr.OFFR[k] : tr.OFFL[k], fall = (R ? tr.props[k].wallR : tr.props[k].wallL) === 'fall';
+        return Math.sign(lat) * Math.min(Math.abs(lat), fall ? tr.HW[k] - 0.5 : tr.HW[k] + off - 0.8);
+      };
       let sc = 0, stuck = 0, maxStuck = 0, resp = 0;
       for (const back of [false, true]) {
         const k = createKart({ racerId: 'sh' }); placeKart(k, tr.grid[0], tr); k.frozen = false;
-        const s0 = back ? br.sExit + 30 : br.sEntry - 30, s1 = back ? br.sEntry - 30 : br.sExit + 30, p = tr.pointAt(s0, lat);
-        k.pos.x = p.x; k.pos.y = p.y + 0.05; k.pos.z = p.z; k.yaw = p.yaw + (back ? Math.PI : 0); k.speed = back ? 8 : 16;
-        k.s = tr.wrapS(s0); k.si = tr.idx(s0); k.lat = lat; k.lastGoodS = k.s;
+        const s0 = back ? br.sExit + 30 : br.sEntry - 30, s1 = back ? br.sEntry - 30 : br.sExit + 30, p = tr.pointAt(s0, latAt(s0));
+        k.pos.x = p.x; k.pos.y = p.y + 0.05; k.pos.z = p.z; k.yaw = p.yaw; k.speed = back ? -8 : 16;   // backwards = REVERSING (facing forward), as the steering below assumes
+        k.s = tr.wrapS(s0); k.si = tr.idx(s0); k.lat = latAt(s0); k.lastGoodS = k.s;
         for (let i = 0; i < 60 * 40; i++) {
           tr.projectOn(0, k.pos, -1, q);
           if (back ? tr.dS(s1, q.s) < 0 : tr.dS(s1, q.s) > 0) break;
-          const tp = tr.pointAt(q.s + (back ? -9 : 9), lat), want = Math.atan2(tp.x - k.pos.x, tp.z - k.pos.z);
+          const tp = tr.pointAt(q.s + (back ? -9 : 9), latAt(q.s + (back ? -9 : 9))), want = Math.atan2(tp.x - k.pos.x, tp.z - k.pos.z);
           const st = Math.max(-1, Math.min(1, wrapA(want - k.yaw - (back ? Math.PI : 0)) * 2.5)) * (back ? -1 : 1);
           k.ev.length = 0; stepKart(k, { steer: st, throttle: back ? 0 : 1, brake: back ? 1 : 0, hopA: false, hopB: false }, tr);
           for (const e of k.ev) { const n = Array.isArray(e) ? e[0] : e; if (n === 'shortcut') sc++; if (n === 'respawn') resp++; }

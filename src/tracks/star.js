@@ -11,6 +11,7 @@
 // Authored in "map" coordinates (mx = east, z = north); world x = −mx (+x is LEFT of a kart
 // driving +z). Walls are `none` where src/scenery/star.js draws glowing rails, `fall` where there
 // is nothing but space (off = the cloud shoulder you can still drive on).
+// Hidden shortcut: the Warp Ribbon across the inside of the Comet Hairpin (`branches`, at the bottom).
 const M = (mx, z, y, extra = {}) => ({ x: -mx, z, y, ...extra });
 
 // the helix: centre (80, −80), radius 40, clockwise from the east point, 450°, dropping 8 m per turn
@@ -85,4 +86,39 @@ export default {
     { at: 30.5, lat: 3, n: 6, curve: 1.5 },
   ],
   checkpointCount: 8,
+  // Hidden shortcut (DESIGN.md "Branches (shortcuts)"): the WARP RIBBON. Landing off the second space-wave,
+  // the inside (right) rail of the Comet Hairpin has a gap under a big spinning rainbow star gate, with a star
+  // trail into it: a narrow glowing ribbon (scenery/star.js `warpRibbon`) that cuts straight across the inside
+  // of the hairpin through a tunnel of warp rings, over a turbo pad, and rejoins at the top of the Rainbow
+  // Drop. Glowing rails both sides (walls `none`), no gaps. Points are WORLD x/z (not M()): a Hermite chord
+  // from the hairpin's run-in to its exit, resampled every ~9 m; the points over the main road sit in its
+  // banked surface plane along the branch's own heading (Δy ≤ 0.24 m). Tightest r=32 m.
+  // offL 3 (the side facing the main road) at both ends stretches the junction zones, so a kart riding main's inside
+  // shoulder past a mouth slides back onto the main road instead of being carried down the ribbon.
+  branches: [{
+    id: 'warp', name: 'Warp Ribbon',
+    from: 6.3, to: 9.95, side: 'R',
+    width: 10,
+    defaults: { offL: 1.5, offR: 1.5, wallL: 'none', wallR: 'none', rail: 'glow' },
+    points: [
+      { x: -8.28, z: 98.08, y: 5.895, bank: -2.16, offL: 3 }, // 0  leaves the hairpin's run-in on the right lane (offL 3 at both ends: see below)
+      { x: -15.14, z: 109.49, y: 6.473, bank: -4.27 },    // 1  through the gap in the inside rail, under the star gate
+      { x: -21.62, z: 115.95, y: 7.14, bank: -3.37 },     // 2
+      { x: -29.43, z: 120.74, y: 8.083, bank: -3.59, offL: 1.5 }, // 3  the warp rings
+      { x: -37.94, z: 124.04, y: 8.973, bank: -5.45 },    // 4
+      { x: -46.89, z: 126.1, y: 9.731, bank: -6 },        // 5  turbo pad
+      { x: -55.98, z: 127.02, y: 10.489, bank: -6 },      // 6
+      { x: -65.14, z: 126.91, y: 11.246, bank: -6 },      // 7
+      { x: -74.27, z: 125.74, y: 12.004, bank: -6 },      // 8
+      { x: -83.13, z: 123.48, y: 12.762, bank: -5.45 },   // 9
+      { x: -91.56, z: 120, y: 13.793, bank: -1.94 },      // 10
+      { x: -99.28, z: 115.09, y: 14.779, bank: 0.92, offL: 3 }, // 11
+      { x: -105.68, z: 108.57, y: 14.906, bank: -1.47 },  // 12
+      { x: -111.69, z: 100.93, y: 14.99, bank: -2.17 },   // 13 rejoins on the right lane at the top of the Rainbow Drop
+    ],
+    pads: [{ at: 5.2, lat: 0, len: 7, w: 7 }],
+    stars: [{ at: 0.9, lat: 0, n: 5, spacing: 4 }],         // the trail into the gap
+    ai: { easy: 0, medium: 0.25, hard: 0.5 },
+    hidden: true,
+  }],
 };

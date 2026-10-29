@@ -485,7 +485,23 @@ Super Orion worlds:
    light studs on `fall` edges, planets, a ringed planet, an asteroid ring, shooting stars, the
    giant Sootie constellation (mint eyes), rainbow hoops and floating stars. 24 collectible stars
    only: more and the leader's permanent 10-star Super split the easy field > 35 s (that was with the
-   old +8 % Super; see **Balance** for the star economy now). AI laps 43–67 s.
+   old +8 % Super; see **Balance** for the star economy now). AI laps 43–67 s. Hidden shortcut, the WARP RIBBON
+   (`branches` id `warp`, 2026-10-29): landing off the second space-wave, the Comet Hairpin's inside (right) rail has a
+   gap (`from` 6.3, side R) with a 5-star trail into it, under a big spinning rainbow STAR GATE (gold stars on its rim)
+   that you can see from the run-in; behind it a narrow glowing ribbon (same rainbow road, glowing rails both sides,
+   walls `none`) cuts straight across the inside of the hairpin through a tunnel of 7 warp rings whose colours chase
+   toward the exit, over a turbo pad (7 of the 10 m), and rejoins on the right lane at the top of the Rainbow Drop
+   (`to` 9.95). 124.2 m vs 171.0 m of main road (s 221 → 392), 10 m wide, climbs 5.9 → 15.0 m (≤ 12 %), tightest
+   r=32 m, no gaps. Its points are a Hermite chord resampled every ~9 m, the ones over the main road sitting in main's
+   banked surface plane along the ribbon's own heading (max Δy 0.236 m); `offL` 3 at both ends (the side facing the
+   main road) lengthens the junction zones so a kart riding main's 1.5 m inside shoulder past a mouth slides back onto
+   main instead of being carried down the ribbon. Measured: solo lap saving hard 2.19 s (48.1 vs 50.3 s), medium
+   2.65 s (51.9 vs 54.5 s); drive-through 2.1 s / 50 m ahead; natural take rate over 6 seeds × 8 AI × 3 laps (items
+   on): easy 0 %, medium 22 %, hard 53 %, everyone finishes, 0 rescues, max stuck 0.2 / 1.2 s medium / hard (1.2 s
+   without the branch too). Scenery `warpRibbon` (scenery/star.js): body + rails join the existing buckets/posts, the
+   main road's rail and glowing edge break across both mouths (`track.OPENL/OPENR`, inert unbranched), floating deco
+   stars skip the ribbon; star gate +1 mesh, warp rings +1 instanced mesh; `playtest.mjs star --perf`: grid 151 → 152
+   calls, mid p50/max 60/74 → 59/73 (58/77 forced through it), render CPU p50 1.8 → 1.7 ms, GPU p50 0.62 → 0.62 ms.
 
 A **lap** = crossing the start line after passing all checkpoints in order (the track defines
 them as `s` values). 3 laps. Race positions from `(lap, s)`. Offroad (grass/sand/snow) slows
@@ -703,7 +719,10 @@ branches: [{
   continuous progress, the branch kart ahead in place and progress, checkpoints + the lap counted);
   three medium 8-AI races with `forceBranch '-'` where nobody takes it; a kart on the main road's
   shoulder (half-width + 1.5 m, the branch side) past both mouths, forwards and backwards, with no
-  `shortcut` event and nobody stuck; the two rescues. `server/selftest.js` codes route + si and races the fixture online (bots + the
+  `shortcut` event and nobody stuck (clamped to the drivable shoulder where it's narrower, and to the road's edge
+  beside a `fall` edge; the backwards run reverses facing forward — it used to start facing backwards and spin
+  round, the "max stuck 0.2 s" the other tracks used to show); the two rescues. The drive-through gets 40 s or
+  enough to reach the line from 80 m before the entry (Star Road's entry is 1086 m from it). `server/selftest.js` codes route + si and races the fixture online (bots + the
   human's device through it, the server's copy follows, every lap counted).
 - **Debug**: `&fixture=1` (with `track=beach`, dev server only — `tools/` isn't deployed) swaps in the
   fixture; `&branch=<id>` makes every brain (AI + the `ai=1`/`t=` autopilot) take that branch each lap
@@ -730,7 +749,7 @@ floats). Two helper kits (not themes): `scenery/kit.js` (castle, star) and `scen
 `scatter` placement that never blocks the road, `lofted` strips along the track, `chevrons()` —
 kid-readable arrow boards on the outside of every corner tighter than r≈40 m — `farGround`,
 `fitWater`, `terrainTint`). Budgets as built (scenery only): beach 19 draws / 52k tris, ice 15 /
-164k, volcano 23 / 98k, castle 27 / 164k, star 16 / 78k (castle/star replace the sky material
+164k, volcano 23 / 98k, castle 27 / 164k, star 18 / 88k (castle/star replace the sky material
 themselves when `sky_castle` / `sky_star` load — the star sky keeps its painted lower half); ≤ 8 of them cast shadows (an InstancedMesh's shadow pass draws every
 instance — keep small props shadowless).
 
