@@ -70,6 +70,9 @@ export default function build(ctx) {
     cell('window', 1240, 640, 120, 200, (c, w, h) => { const gr = c.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#ffe9a8'); gr.addColorStop(1, '#ffb347'); c.fillStyle = gr; c.fillRect(0, 0, w, h); c.fillStyle = '#5a3a20'; c.fillRect(w / 2 - 5, 0, 10, h); c.fillRect(0, h * 0.45, w, 10); c.strokeStyle = '#5a3a20'; c.lineWidth = 14; c.strokeRect(0, 0, w, h); });
     // --- sock (for the washing line and the pile)
     cell('sock', 1360, 640, 120, 160, (c, w, h) => { c.clearRect(0, 0, w, h); });
+    // --- the Secret Gallery's door: a wide King Dad portrait (curtains, crown wallpaper) + its wooden back
+    cell('portraitWide', 1484, 644, 560, 370, (c, w, h) => drawKingDadWide(c, w, h));
+    cell('woodBack', 1362, 812, 116, 96, (c, w, h) => { c.fillStyle = '#7a5236'; c.fillRect(0, 0, w, h); c.fillStyle = '#5e3e28'; for (let x = 0; x < w; x += 19) c.fillRect(x, 0, 3, h); });
   });
   atlasTex.generateMipmaps = true;
   const atlasMat = new THREE.MeshBasicMaterial({ map: atlasTex, vertexColors: true, toneMapped: false, side: THREE.DoubleSide, fog: true });
@@ -114,7 +117,12 @@ export default function build(ctx) {
       const k = ks[i], b = bLat(k, s), base = P(k, b);
       if (i > 0) along += track.ds;
       const out = (d, dy) => P(k, b + s * d, dy);
-      if (style === 'low' || style === 'parapet') {
+      // a branch (shortcut) mouth: the wall opens there (track OPENL/OPENR) — break the parapet, keep the skirt
+      const opened = (s > 0 ? track.OPENL : track.OPENR)[k] > 0;
+      if ((style === 'low' || style === 'parapet') && opened) {
+        if (rowsWall.length > 1) B.add('stone', strip(rowsWall.splice(0), { uS: 4, vS: 4, color: style === 'low' ? STONE_LIGHT : 0xf4ece0 }));
+        rowsWall.length = 0; lastMerlon = along;
+      } else if (style === 'low' || style === 'parapet') {
         const h = style === 'low' ? 1.3 : 1.2, t = style === 'low' ? 0.9 : 1.1;
         // inner face → top → outer face (repeated points = crisp creases)
         rowsWall.push([out(0, -0.6), out(0, h), out(0, h), out(t, h), out(t, h), out(t, style === 'parapet' ? -0.3 : -0.6)]);
@@ -147,7 +155,7 @@ export default function build(ctx) {
           rowsSkirt.push([top, [top[0], bottom, top[2]]]);
           if (below) rowsUnder.push(k);
           // family banners hanging on the outside of the walls (break up the long stone faces)
-          else if (style === 'parapet' && along - lastBanner >= 21 && top[1] - gy > 8) {
+          else if (style === 'parapet' && !opened && along - lastBanner >= 21 && top[1] - gy > 8) {
             lastBanner = along;
             const pb = out(t + 0.06, -3.6), yawB = Math.atan2(s * K.lxA(k), s * K.lzA(k));
             B.add('atlas', quad(2.4, 6.4, pb[0], pb[1], pb[2], yawB, [cells.bannerCrown, cells.bannerRemote, cells.bannerStar][bannerN++ % 3], 0xe8e8e8));
@@ -594,6 +602,185 @@ export default function build(ctx) {
     hm.name = 'scenery:hills'; group.add(hm);
   }
 
+  /* =============================================================== KING DAD'S SECRET GALLERY (the hidden shortcut) */
+  // tracks/castle.js `branches` (DESIGN.md "Branches"): a covered portrait gallery on stone arches, high over
+  // the inner ward, from the north battlements to the east ones. Where the branch is clear of the main road's
+  // corridor it gets the gallery (walls, gable roof, ceiling beams, King Dad portraits, torches, chandeliers,
+  // lit windows outside) on arches; the open deck at both ends gets parapets like the battlements and a curtain
+  // skirt. Its door is a giant wide King Dad portrait that swings up when a kart comes (its own mesh: +1 draw
+  // call); everything else joins the existing buckets / instanced merlons + flames (0 extra draw calls).
+  for (const br of ctx.branches || []) secretGallery(br);
+  function secretGallery(br) {
+    const L = br.length, q = {};
+    const at = (u, lat, dy = 0) => { const p = br.pointAt(Math.max(0, Math.min(L, u)), lat); return [p.x, p.y + dy, p.z]; };
+    const kOf = u => br.idx(Math.max(0, Math.min(L, u)));
+    const bnd = (u, s) => { const k = kOf(u); return s * (br.HW[k] + (s > 0 ? br.OFFL[k] : br.OFFR[k])); };
+    const yawAt = u => { const k = kOf(u); return Math.atan2(br.TX[k], br.TZ[k]); };
+    const lft = u => { const k = kOf(u); return [br.TZ[k], -br.TX[k]]; };
+    // how far a point is outside the main road's corridor (m; < 0 = inside it)
+    const outMain = p => { track.projectOn(0, { x: p[0], y: p[1], z: p[2] }, -1, q); return Math.abs(q.lat) - (q.hw + (q.lat > 0 ? track.OFFL[q.i] : track.OFFR[q.i])); };
+    const sideOut = (u, s) => outMain(at(u, bnd(u, s) + s * 0.55)) > 0.6;
+    const clearAt = u => [1, -1].every(s => outMain(at(u, bnd(u, s) + s * 1.3)) > 1.8);
+    const opened = (u, s) => (s > 0 ? br.OPENL : br.OPENR)[kOf(u)] > 0;
+    // the clear stretch (arches + gallery): from the entry zone's end to the exit zone's start
+    let uc0 = br.zoneIn, uc1 = L - br.zoneOut;
+    while (uc0 < uc1 && !clearAt(uc0)) uc0 += 0.5;
+    while (uc1 > uc0 && !clearAt(uc1)) uc1 -= 0.5;
+    if (uc1 - uc0 < 30) return;
+    const ug0 = uc0 + 3, ug1 = uc1 - 3;           // the gallery building
+    const H = 9.4, WT = 1.0, PT = 1.1, STEP = 0.5;
+    const inG = u => u >= ug0 && u <= ug1;
+
+    // ---- arches: piers every ~11 m under the clear stretch
+    const nSp = Math.max(1, Math.round((uc1 - uc0) / 11)), SP = (uc1 - uc0) / nSp, PW = 2.4;
+    const piers = []; for (let i = 0; i <= nSp; i++) piers.push(uc0 + i * SP);
+    const deckBot = u => at(u, 0)[1] - 1.6;
+    const archY = u => {                          // null inside a pier (the face goes to the ground)
+      const i = Math.min(nSp - 1, Math.floor((u - uc0) / SP)), a = piers[i] + PW / 2, b = piers[i + 1] - PW / 2;
+      if (u <= a || u >= b) return null;
+      const rise = (b - a) / 2, t = (u - a) / (b - a), apex = deckBot(u) - 0.5;
+      return apex - rise + rise * Math.sqrt(Math.max(0, 1 - (2 * t - 1) ** 2));
+    };
+    const us = []; for (let u = uc0; u <= uc1 + 1e-6; u += STEP) us.push(u);
+    for (const p of piers) for (const e of [p - PW / 2, p + PW / 2]) if (e > uc0 && e < uc1) us.push(e, e);
+    us.sort((a, b) => a - b);
+    // outer faces (spandrels + piers) on both sides
+    for (const s of [1, -1]) {
+      const rows = [];
+      for (let j = 0; j < us.length; j++) {
+        // a pier edge comes twice: the first copy takes the side before it, the second the side after it
+        const u = us[j], side = us[j + 1] === u ? -1 : j > 0 && us[j - 1] === u ? 1 : 0;
+        const top = at(u, bnd(u, s) + s * (inG(u) ? WT : PT), -0.3);
+        const ay = archY(u + side * 1e-3);
+        rows.push([top, [top[0], ay === null ? gY(top[0], top[2]) - 0.8 : ay, top[2]]]);
+      }
+      B.add('stone', strip(rows, { uS: 4, vS: 4, color: STONE_DARK, vAbs: true }));
+    }
+    // arch soffits + the pier faces under them
+    for (let i = 0; i < nSp; i++) {
+      const a = piers[i] + PW / 2, b = piers[i + 1] - PW / 2, rows = [];
+      for (let u = a; u <= b + 1e-6; u += STEP / 2) {
+        const y = archY(Math.min(b - 1e-3, Math.max(a + 1e-3, u))), lL = bnd(u, 1) + (inG(u) ? WT : PT), lR = bnd(u, -1) - (inG(u) ? WT : PT);
+        const pl = at(u, lL), pr = at(u, lR); rows.push([[pl[0], y, pl[2]], [pr[0], y, pr[2]]]);
+      }
+      B.add('stone', strip(rows, { uS: 4, vS: 4, color: 0xc8beb0 }));
+      for (const e of [a, b]) {
+        const lL = bnd(e, 1) + (inG(e) ? WT : PT), lR = bnd(e, -1) - (inG(e) ? WT : PT), y = deckBot(e) - 0.5 - (SP - PW) / 2;
+        const pl = at(e, lL), pr = at(e, lR);
+        B.add('stone', strip([[[pl[0], gY(pl[0], pl[2]) - 0.8, pl[2]], [pl[0], y, pl[2]]], [[pr[0], gY(pr[0], pr[2]) - 0.8, pr[2]], [pr[0], y, pr[2]]]], { uS: 4, vS: 4, color: STONE_DARK, vAbs: true }));
+      }
+    }
+
+    // ---- the open deck at both ends: parapets where clear of the main road, a curtain skirt below
+    for (const s of [1, -1]) {
+      let wall = [], skirt = [], along = 0, lastM = -99;
+      const fW = () => { if (wall.length > 1) B.add('stone', strip(wall, { uS: 4, vS: 4, color: 0xf4ece0 })); wall = []; };
+      const fS = () => { if (skirt.length > 1) B.add('stone', strip(skirt, { uS: 4, vS: 4, color: STONE_DARK, vAbs: true })); skirt = []; };
+      for (let u = 0; u <= L + 1e-6; u += STEP) {
+        if (inG(u) || !sideOut(u, s) || opened(u, s)) { fW(); fS(); continue; }
+        const b = bnd(u, s), o = (d, dy) => at(u, b + s * d, dy);
+        wall.push([o(0, -0.6), o(0, 1.2), o(0, 1.2), o(PT, 1.2), o(PT, 1.2), o(PT, -0.3)]);
+        if (u <= uc0 || u >= uc1) { const t = o(PT, -0.3); skirt.push([t, [t[0], gY(t[0], t[2]) - 1.0, t[2]]]); } else fS();   // the arches take over
+        along += STEP;
+        if (along - lastM >= 2.6 && wall.length > 2) { lastM = along; const p = o(PT / 2, 1.2); merlonList2.push({ x: p[0], y: p[1], z: p[2], yaw: yawAt(u) - Math.PI / 2, sx: 1.2, sy: 0.9, sz: PT + 0.02 }); }
+      }
+      fW(); fS();
+    }
+
+    // ---- the gallery: walls, roof, ceiling + beams, end gables
+    const midLat = u => (bnd(u, 1) + bnd(u, -1)) / 2;
+    for (const s of [1, -1]) {
+      const rows = [];
+      for (let u = ug0; u <= ug1 + 1e-6; u += STEP) { const b = bnd(u, s), o = (d, dy) => at(u, b + s * d, dy); rows.push([o(0, -0.6), o(0, H), o(0, H), o(WT, H), o(WT, H), o(WT, -0.3)]); }
+      B.add('stoneHall', strip(rows, { uS: 4, vS: 4, color: 0xf2e9dc }));
+    }
+    {
+      const roof = [], ceil = [], RH = 4.2, EV = 1.6;
+      for (let u = ug0 - 1.2; u <= ug1 + 1.2 + 1e-6; u += 1) {
+        const uu = Math.max(ug0, Math.min(ug1, u)), bL = bnd(uu, 1), bR = bnd(uu, -1);
+        const k0 = at(u, bL + WT + EV, H - 0.35), k1 = at(u, midLat(uu), H + RH), k2 = at(u, bR - WT - EV, H - 0.35);
+        roof.push([k0, k1, k1, k2]);
+        if (u >= ug0 && u <= ug1) ceil.push([at(u, bL, H), at(u, bR, H)]);
+      }
+      B.add('roof', strip(roof, { uS: 4, vS: 4, color: 0x6f7aa8 }));
+      B.add('ceiling', strip(ceil, { uS: 4, vS: 4, color: 0xfff0d0 }));
+      for (let u = ug0 + 3; u < ug1 - 1; u += 7) { const c = at(u, midLat(u), H - 0.8); B.add('ceiling', box(bnd(u, 1) - bnd(u, -1) + 0.4, 0.8, 0.7, c[0], c[1], c[2], yawAt(u), 0x9a6a40, 2)); }
+      // gables over both openings (stone triangles under the roof's end) + chimneys on the ridge
+      for (const u of [ug0, ug1]) {
+        const bL = bnd(u, 1), bR = bnd(u, -1);
+        const a = at(u, bL + WT + EV - 0.4, H - 0.35), m = at(u, midLat(u), H + RH - 0.15), c = at(u, bR - WT - EV + 0.4, H - 0.35);
+        const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute([...a, ...m, ...c], 3)); g.computeVertexNormals();
+        B.add('stoneHall', K.worldUV(K.paint(g, 0xeee4d6), 4));
+      }
+      for (let u = ug0 + 12; u < ug1 - 6; u += 22) { const c = at(u, midLat(u) + 1.8, H + RH * 0.55); B.add('roof', box(1.2, 2.8, 1.2, c[0], c[1], c[2], yawAt(u), 0xa33a2a)); }
+    }
+    // the gold picture frame round the entrance; plain stone jambs at the exit (they also cap the wall ends)
+    for (const [u, gold] of [[ug0, true], [ug1, false]]) {
+      const yw = yawAt(u), y0 = at(u, 0)[1];
+      for (const s of [1, -1]) { const p = at(u, bnd(u, s) + s * ((WT + 0.9) / 2 - 0.06)); B.add(gold ? 'props' : 'stoneHall', box(WT + 0.9, H + 0.6, 1.4, p[0], y0 - 0.6, p[2], yw, gold ? GOLD : 0xeee4d6)); }
+      const c = at(u, midLat(u), 0);
+      B.add(gold ? 'props' : 'stoneHall', box(bnd(u, 1) - bnd(u, -1) + 2 * WT + 0.9, 1.1, 1.4, c[0], y0 + H - 0.2, c[2], yw, gold ? GOLD : 0xeee4d6));
+      if (gold) for (let i = 0; i < 5; i++) { const p = at(u, midLat(u) + (i - 2) * 1.5, H + 1.0); B.add('props', K.paint(new THREE.ConeGeometry(0.5, 1.4 - Math.abs(i - 2) * 0.25, 5).translate(p[0], p[1] + 0.6, p[2]), GOLD)); }
+    }
+    // inside: King Dad portraits + banners on both walls, torches between, chandeliers; lit windows outside
+    let pv = 0;
+    for (let u = ug0 + 7; u < ug1 - 4; u += 11) {
+      const yw = yawAt(u), [lx, lz] = lft(u);
+      for (const s of [1, -1]) {
+        const w = at(u, bnd(u, s) - s * 0.05, 0), face = Math.atan2(-s * lx, -s * lz), nx = -s * lx, nz = -s * lz;
+        B.add('props', box(0.3, 4.9, 3.9, w[0], w[1] + 2.4, w[2], yw, GOLD));
+        B.add('atlas', quad(3.3, 4.2, w[0] + nx * 0.2, w[1] + 4.85, w[2] + nz * 0.2, face, cells['portrait' + (pv++ % 3)], 0xe8e8e8));
+        const t = at(u + 5.5, bnd(u + 5.5, s) - s * 0.05, 0);
+        if (u + 5.5 < ug1 - 3) { addTorch(t[0], t[1] + 4.2, t[2], face); B.add('atlas', quad(1.8, 3.6, t[0] + nx * 0.12, t[1] + 7.2, t[2] + nz * 0.12, face, [cells.bannerCrown, cells.bannerRemote, cells.bannerStar][(pv + (s > 0 ? 0 : 1)) % 3], 0xe0e0e0)); }
+        // windows on the outer face
+        for (const du of [-3, 3]) {
+          const o = at(u + du, bnd(u + du, s) + s * (WT + 0.04), 0);
+          B.add('atlas', quad(1.4, 2.4, o[0], o[1] + 5.2, o[2], Math.atan2(s * lx, s * lz), cells.window, 0xffffff));
+        }
+      }
+    }
+    for (let u = ug0 + 12; u < ug1 - 6; u += 22) {
+      const c = at(u, midLat(u), H - 3.0);
+      B.add('props', K.paint(new THREE.TorusGeometry(2.0, 0.12, 5, 20).rotateX(Math.PI / 2).translate(c[0], c[1], c[2]), 0x5a4a3a));
+      B.add('props', cyl(0.05, 0.05, 3.0, 4, c[0], c[1], c[2], 0x3a3a3a));
+      for (let i = 0; i < 8; i++) { const a = i / 8 * TAU; flames.push({ x: c[0] + Math.cos(a) * 2.0, y: c[1] + 0.35, z: c[2] + Math.sin(a) * 2.0, s: 0.5 }); }
+    }
+    // stone posts with gold balls where the main road's parapet opens onto the branch (both mouths)
+    {
+      const sideM = br.side === 'R' ? -1 : 1, OPEN = sideM > 0 ? track.OPENL : track.OPENR;
+      for (let k = 0; k < n; k++) {
+        const a = OPEN[k] > 0 && track.JR[k] === br.route, pa = OPEN[K.wrap(k - 1)] > 0 && track.JR[K.wrap(k - 1)] === br.route;
+        if (a === pa) continue;
+        const kk = a ? K.wrap(k - 1) : k, p = P(kk, bLat(kk, sideM) + sideM * 0.55);
+        B.add('stone', box(1.9, 3.4, 1.9, p[0], p[1] - 0.6, p[2], track.HEAD[kk], 0xf6eee2));
+        B.add('props', sphere(0.75, p[0], p[1] + 3.5, p[2], GOLD, 12, 8));
+      }
+    }
+
+    // ---- the portrait door: hinged along the top of the opening, swings up (into the gallery) as a kart comes
+    {
+      const uD = ug0 + 0.9, bL = bnd(uD, 1) - 0.15, bR = bnd(uD, -1) + 0.15, Wd = bL - bR, Hd = H - 0.35;
+      const g = K.merge([quad(Wd, Hd, 0, -Hd / 2, 0, 0, cells.portraitWide, 0xffffff), quad(Wd, Hd, 0, -Hd / 2, -0.08, Math.PI, cells.woodBack, 0xffffff)]);
+      const door = new THREE.Mesh(g, atlasMat);
+      const hp = at(uD, (bL + bR) / 2, Hd + 0.02);
+      door.position.set(hp[0], hp[1], hp[2]); door.rotation.order = 'YXZ'; door.rotation.y = yawAt(uD) + Math.PI;
+      door.name = 'scenery:gallery-door'; group.add(door);
+      let ang = 0, vel = 0, quiet = 99;
+      updaters.push((dt) => {
+        const race = globalThis.__OTR?.race;
+        let near = false;
+        if (race) for (const k of race.karts) if (k.route === br.route && k.rs > uD - 34 && k.rs < uD + 10) near = true;
+        quiet = near ? 0 : quiet + dt;
+        const want = near || quiet < 1.2 ? 1.42 : 0;
+        // a springy swing: quick to open, a little wobble when it drops shut
+        const kS = want ? 60 : 18, dmp = want ? 12 : 4.5;
+        vel += ((want - ang) * kS - vel * dmp) * Math.min(dt, 0.05); ang += vel * Math.min(dt, 0.05);
+        if (ang < 0) { ang = 0; vel = -vel * 0.35; }
+        door.rotation.x = ang;
+      });
+    }
+  }
+
   /* =============================================================== chevron signs before the sharp corners */
   {
     const done = [];
@@ -769,6 +956,29 @@ function drawKingDad(c, w, h, pose) {
   // frame
   c.strokeStyle = '#b8860b'; c.lineWidth = 16; c.strokeRect(8, 8, w - 16, h - 16);
   c.strokeStyle = '#ffd23f'; c.lineWidth = 8; c.strokeRect(8, 8, w - 16, h - 16);
+}
+/** the Secret Gallery's door: King Dad (thumbs up) between open velvet curtains on crown wallpaper, big gold frame */
+function drawKingDadWide(c, w, h) {
+  c.fillStyle = '#ffe2a0'; c.fillRect(0, 0, w, h);
+  c.fillStyle = 'rgba(214,150,40,.45)';
+  for (let r = 0, y = 26; y < h; y += 44, r++) for (let x = 22 + (r % 2) * 28; x < w; x += 56) {
+    c.beginPath(); c.moveTo(x - 10, y + 6); c.lineTo(x - 10, y - 6); c.lineTo(x - 5, y); c.lineTo(x, y - 9); c.lineTo(x + 5, y); c.lineTo(x + 10, y - 6); c.lineTo(x + 10, y + 6); c.closePath(); c.fill();
+  }
+  c.save(); c.translate(w / 2 - 150, 0); c.beginPath(); c.rect(0, 0, 300, h); c.clip(); drawKingDad(c, 300, h, 2); c.restore();
+  // open curtains with gold tie-backs
+  for (const s of [-1, 1]) {
+    const x0 = s < 0 ? 0 : w, inX = x0 - s * 128;
+    const gr = c.createLinearGradient(x0, 0, inX, 0); gr.addColorStop(0, '#7a1424'); gr.addColorStop(0.6, '#c0283a'); gr.addColorStop(1, '#e04050');
+    c.fillStyle = gr; c.beginPath(); c.moveTo(x0, 0); c.lineTo(inX, 0); c.quadraticCurveTo(x0 - s * 60, h * 0.45, x0 - s * 44, h * 0.62); c.quadraticCurveTo(x0 - s * 70, h * 0.8, x0 - s * 86, h); c.lineTo(x0, h); c.closePath(); c.fill();
+    c.strokeStyle = 'rgba(80,10,20,.45)'; c.lineWidth = 4;
+    for (let i = 1; i < 4; i++) { c.beginPath(); c.moveTo(x0 - s * i * 30, 0); c.quadraticCurveTo(x0 - s * i * 14, h * 0.5, x0 - s * (14 + i * 8), h * 0.62); c.stroke(); }
+    c.fillStyle = '#ffd23f'; c.beginPath(); c.ellipse(x0 - s * 46, h * 0.62, 16, 9, 0, 0, 7); c.fill();
+    c.beginPath(); c.arc(x0 - s * 46, h * 0.62 + 22, 8, 0, 7); c.fill();
+  }
+  // pelmet
+  c.fillStyle = '#a81e30'; c.fillRect(0, 0, w, 30); c.fillStyle = '#ffd23f'; for (let x = 10; x < w; x += 34) { c.beginPath(); c.arc(x, 32, 7, 0, 7); c.fill(); }
+  c.strokeStyle = '#b8860b'; c.lineWidth = 20; c.strokeRect(10, 10, w - 20, h - 20);
+  c.strokeStyle = '#ffd23f'; c.lineWidth = 10; c.strokeRect(10, 10, w - 20, h - 20);
 }
 function drawBanner(c, w, h, bg, fg, emblem) {
   c.fillStyle = bg; c.beginPath(); c.moveTo(0, 0); c.lineTo(w, 0); c.lineTo(w, h); c.lineTo(w / 2, h - 50); c.lineTo(0, h); c.closePath(); c.fill();

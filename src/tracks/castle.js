@@ -109,4 +109,42 @@ export default {
     { at: 45.2, lat: -3, n: 5, curve: -1.5 },
   ],
   checkpointCount: 8,
+  // Hidden shortcut (DESIGN.md "Branches"): KING DAD'S SECRET GALLERY. On the north battlements, just past
+  // the spiral exit, the inside (right) parapet has a gap and a star trail; behind it a covered portrait
+  // gallery on stone arches cuts diagonally across the inner ward, high over the trees, to the east
+  // battlements. Its door is a giant King Dad portrait that swings up out of the way (scenery only). Three
+  // turbo carpets inside; it rejoins at the top of the sally ramp. Points from an RSR (right arc r 25,
+  // straight, right arc r 30) laid between main `at` 21.2 and 27.7 on the right lane; the end points sit on
+  // the main road's surface (y/bank from the built main road, like the fixture's fit()).
+  branches: [{
+    id: 'gallery', name: "King Dad's Secret Gallery",
+    from: 21.2, to: 27.7, side: 'R',
+    width: 11,
+    defaults: { offL: 2.5, offR: 1, wallL: 'none', wallR: 'none', raised: true },
+    points: [
+      { x: -85.69, z: 151.73, y: 11.904, bank: -3.68 },    // 0  leaves the north battlements on the right lane
+      { x: -93.5, z: 156.4, y: 11.983, bank: -1.96 },      // 1
+      { x: -102.11, z: 159.19, y: 11.999, bank: -0.34 },   // 2  star trail through the gap in the parapet
+      { x: -111.15, z: 158.74, y: 12.028, bank: 0.26 },    // 3
+      { x: -119.43, z: 155.09, y: 12.08, bank: 0.48 },     // 4
+      { x: -125.88, z: 148.74, y: 12, bank: 0, surf: 'dirt', kerb: false },   // 5  the portrait door: into the gallery (tiled floor)
+      { x: -129.84, z: 140.58, y: 12, bank: 0 },           // 6  turbo carpet 1
+      { x: -133.18, z: 132.11, y: 12, bank: 0 },           // 7
+      { x: -136.53, z: 123.65, y: 12, bank: 0 },           // 8
+      { x: -139.91, z: 115.09, y: 12, bank: 0 },           // 9  turbo carpet 2
+      { x: -143.25, z: 106.63, y: 12, bank: 0 },           // 10
+      { x: -146.6, z: 98.17, y: 12, bank: 0 },             // 11
+      { x: -149.94, z: 89.71, y: 12, bank: 0 },            // 12 turbo carpet 3
+      { x: -153.29, z: 81.24, y: 12, bank: 0, surf: 'grass', kerb: 'auto' },   // 13 out of the gallery
+      { x: -156.63, z: 72.78, y: 12, bank: 0 },            // 14
+      { x: -159.98, z: 64.32, y: 12.088, bank: 0 },        // 15 through the gap in the east parapet
+      { x: -163.33, z: 55.85, y: 11.875, bank: 0 },        // 16
+      { x: -166.43, z: 47.31, y: 11.524, bank: 0 },        // 17
+      { x: -168.33, z: 38.31, y: 11.007, bank: 0 },        // 18 rejoins on the right lane, top of the sally ramp
+    ],
+    pads: [{ at: 6.0, lat: 0, len: 7, w: 8 }, { at: 9.2, lat: 0, len: 7, w: 8 }, { at: 12.4, lat: 0, len: 7, w: 8 }],
+    stars: [{ at: 1.6, lat: 0, n: 5, spacing: 4 }],
+    ai: { easy: 0, medium: 0.25, hard: 0.5 },
+    hidden: true,
+  }],
 };

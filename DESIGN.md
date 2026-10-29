@@ -456,7 +456,23 @@ Super Orion worlds:
    ~1 s air) → the GARDEN MAZE (hedge walls, 90° zig-zags, Sootie topiary, fountain) → King's
    Hairpin → forecourt. Offroad grass (the hall's is `dirt` wearing the tiled floor). Walls are all
    `none`: the scenery draws the boundary to match a scenery-only `look` tag on the points
-   (`court/drawbridge/gate/hall/ward/tower/battlement/ramp/hedge`). AI laps 41–61 s.
+   (`court/drawbridge/gate/hall/ward/tower/battlement/ramp/hedge`). AI laps 41–61 s. Hidden shortcut, KING DAD'S SECRET
+   GALLERY (`branches` id `gallery`, 2026-10-29): just past the spiral exit, the north battlements' inside (right)
+   parapet has a gap between two gold-balled posts and a 5-star trail (`from` 21.2, side R). Behind it a covered
+   portrait gallery on stone arches cuts diagonally across the inner ward, 12 m up, to the top of the sally ramp
+   (`to` 27.7). Its door is a giant wide King Dad portrait (curtains, crown wallpaper) in a gold frame that swings up
+   into the gallery when a kart on the branch comes within 34 m (scenery only, springy close 1.2 s after). Inside
+   it's 65 m long (roof 9.4 m), with King Dad portraits, banners, torches, two chandeliers, lit windows outside, a
+   tiled floor (`surf: 'dirt'`, no kerbs) and three turbo carpets (pads 8 of the 11 m). 164.0 m vs 203.2 m of main
+   road (s 484 → 687), 11 m wide (offL 2.5 so a kart on main's shoulder past the long, shallow mouth goes back to
+   main), tightest r=20.7 m, `raised`, no gaps. The main parapet opens where `track.OPENL/OPENR` say (scenery,
+   inert on unbranched tracks). Measured: solo lap saving hard 1.75 s (42.4 vs 44.1 s), medium 2.33 s (45.4 vs
+   47.7 s). Natural take rate over 6 seeds × 8 AI × 3 laps (items on): easy 0 %, medium 28 %, hard 46 %. Everyone
+   finishes, max stuck 0.2 s. There was one easy moat-jump rescue (seed 3, a kart that never took the branch; 0
+   without the branch, so it's race variance). Scenery `secretGallery` (scenery/castle.js): everything in
+   existing buckets/instances. The door is its own mesh (+1 call). `playtest.mjs castle --perf`: grid 169 → 168
+   calls, mid p50/max 71/98 → 70/89 (70/99 forced through the gallery), render CPU p50 2.1 → 2.1 ms, GPU p50
+   0.80 → 0.83 ms.
 5. **Star Road** (secret, unlocked by winning the Orion Cup) — rainbow road in space, can fall off.
    *As built:* 1227 m, road 14–17 m, `secret: true`, `terrain: false`. Two space-waves (a hop off
    the second) → Comet Hairpin (walled) → the RAINBOW DROP (`wall: 'fall'`, cloud shoulders, a star
