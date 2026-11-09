@@ -45,9 +45,9 @@ const purls = new Map();
 export function portraitURL(id, size = 96) {
   const key = id + ':' + size;
   if (purls.has(key)) return purls.get(key);
-  let url = '';
+  let url = '', pending = false;
   try {
-    if (R?.renderPortrait) url = R.renderPortrait(id, size).toDataURL('image/png');
+    if (R?.renderPortrait) { const c = R.renderPortrait(id, size); url = c.toDataURL('image/png'); pending = !!c.pending; }
   } catch (e) { console.warn('[hud] portrait failed', id, e); }
   if (!url) {
     const c = document.createElement('canvas'); c.width = c.height = size; const g = c.getContext('2d');
@@ -58,10 +58,13 @@ export function portraitURL(id, size = 96) {
     url = c.toDataURL();
     if (!R) return url;          // don't cache the fallback while racers.js is still loading
   }
-  purls.set(key, url);
+  if (!pending) purls.set(key, url);   // a stand-in while the HD racer loads: ask again after racersReady
   return url;
 }
-export const racersReady = rp;
+/** racers.js is in AND the HD racers have loaded (or failed): portraits asked for after this are final. Screens
+ *  that drew portraits earlier re-ask then (they're stand-ins until the HD models are in). */
+export const racersReady = rp.then(() => R?.hdPortraitsReady?.());
+export const portraitFinal = (id, size = 96) => purls.has(id + ':' + size);
 export const racerDef = id => R?.RACERS?.find(r => r.id === id) || null;
 export const racerName = id => racerDef(id)?.name || id;
 export const racerColor = id => { const d = racerDef(id); return d ? hex(d.colors.kart) : '#4ec5f1'; };
@@ -120,7 +123,7 @@ export function createHud(root, { pn = 0 } = {}) {
       d.className = 'hx-rank' + (k === me ? ' me' : k.isPlayer ? ' mate pn' + (k.pn + 1) : k.netHuman ? ' net' : '');   // net: another human online
       d.innerHTML = `<span class="n"></span><img alt="">`;
       const img = d.querySelector('img'); img.src = portraitURL(k.racerId, 96);
-      if (!R) rp.then(() => { purls.delete(k.racerId + ':96'); img.src = portraitURL(k.racerId, 96); });
+      if (!portraitFinal(k.racerId, 96)) racersReady.then(() => { img.src = portraitURL(k.racerId, 96); });
       el.ranks.appendChild(d);
       return { k, d, n: d.firstChild, place: -1 };
     });

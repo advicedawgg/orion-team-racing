@@ -782,9 +782,11 @@ export function animateRacer(rig, s, dt) {
 // rig.driver is hidden, the HD root (origin = seat contact, +Z forward) is parented to rig.driver so
 // it inherits our lean/pitch/bob, and animateRacer() calls hdracers.animateHD every frame after. The
 // kart stays procedural; rig.head is re-pointed at the HD head tracker (TNT-on-head keeps working).
-let hdMod = null;
+// HD drivers are the only drivers now (2026-11-09: the procedural ones are retired to a stand-in while a GLB
+// loads, a fallback if one is missing, and ?hd=0 for debugging), so the module loads with this one.
+let hdM = null;
+const hdMod = import('./hdracers.js').then(m => (hdM = m)).catch(() => null);
 function attachHD(rig) {
-  if (!hdMod) hdMod = import('./hdracers.js').catch(() => null);
   // rig.hdReady settles once the HD driver is in (or known absent): main.js startRace awaits it so the GLB
   // decode + its shaders happen during the pre-race warm-up, not as a hitch mid-countdown/race.
   rig.hdReady = hdMod.then(m => {
@@ -802,9 +804,18 @@ function attachHD(rig) {
 
 /* ======================================================================= portraits */
 // Head + shoulders, 3/4 front, rendered once per (id, size, bg) into a 2D canvas and cached.
-// One shared offscreen WebGLRenderer; call disposePortraits() to free it (and the cache).
+// One shared offscreen WebGLRenderer, dropped (context and all) 2 s after the last portrait so the HD
+// models' textures don't sit in a second GL context; disposePortraits() also clears the cache.
+// Portraits are of the HD racer (2026-11-09). Until its GLB has loaded the procedural one stands in and the
+// canvas comes back with `pending = true` and isn't cached: callers re-ask after hdPortraitsReady().
 let pr = null;
 const portraitCache = new Map();
+let portraitHD = true;
+/** main.js: portraits of the HD racers (default) or, with ?hd=0, the procedural ones */
+export function setPortraitHD(on) { if (portraitHD !== !!on) { portraitHD = !!on; portraitCache.clear(); } }
+/** settles once every HD model has loaded (or failed): portraits asked for after this are final */
+export function hdPortraitsReady() { return hdMod.then(m => m?.preloadHD?.()).then(() => {}, () => {}); }
+function dropPortraitRenderer() { if (pr) { clearTimeout(pr.timer); pr.renderer.dispose(); pr.renderer.forceContextLoss?.(); pr = null; } }
 export function renderPortrait(id, size = 128, { bg = true } = {}) {
   const key = `${id}:${size}:${bg}`;
   if (portraitCache.has(key)) return portraitCache.get(key);
@@ -831,7 +842,31 @@ export function renderPortrait(id, size = 128, { bg = true } = {}) {
       pr = { renderer, scene, cam };
     }
     const { renderer, scene, cam } = pr;
+    clearTimeout(pr.timer); pr.timer = setTimeout(dropPortraitRenderer, 2000);
     renderer.setSize(size, size, false);
+    const st = !portraitHD ? 'none' : !hdM ? 'loading' : hdM.hdState(id);
+    out.pending = st === 'loading';
+    const hd = st === 'ready' ? hdM.buildHDNow(id, { wheel: false }) : null;
+    if (hd) {
+      for (let i = 0; i < 3; i++) hdM.animateHD(hd.rig, {}, 1);
+      scene.add(hd.root); hd.root.updateMatrixWorld(true);
+      // frame the face like the procedural portraits: the head mesh's box (creatures: their top two thirds)
+      const top = hd.rig.head.getWorldPosition(new THREE.Vector3()), hbox = hdM.headBox?.(hd.rig);
+      const c = new THREE.Vector3(), sz = new THREE.Vector3();
+      if (hbox) { hbox.getCenter(c); hbox.getSize(sz); c.y -= sz.y * .08; } else c.set(0, top.y * 0.6, 0);
+      const h = hbox ? Math.max(sz.y, sz.x) * 1.4 : top.y * 0.85;
+      const dist = h / 2 / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
+      cam.position.copy(c).add(new THREE.Vector3(.38, .16, 1).normalize().multiplyScalar(dist));
+      cam.lookAt(c);
+      renderer.setClearColor(0x000000, 0);
+      renderer.render(scene, cam);
+      if (bg) { g.save(); g.beginPath(); g.arc(size / 2, size / 2, size * .46, 0, TAU); g.clip(); }
+      g.drawImage(renderer.domElement, 0, 0, size, size);
+      if (bg) g.restore();
+      scene.remove(hd.root); disposeTree(hd.root);   // keeps the template's geometry; frees the clone's bone texture
+      portraitCache.set(key, out);
+      return out;
+    }
     const { root, rig } = buildRacer(id);
     for (let i = 0; i < 20; i++) animateRacer(rig, IDLE, 1 / 30);
     scene.add(root); root.updateMatrixWorld(true);
@@ -855,19 +890,28 @@ export function renderPortrait(id, size = 128, { bg = true } = {}) {
     g.fillStyle = '#fff'; g.font = `bold ${size * .5}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillText(def.name[0], size / 2, size / 2);
   }
-  portraitCache.set(key, out);
+  if (!out.pending) portraitCache.set(key, out);
   return out;
 }
 export function disposePortraits() {
-  if (pr) { pr.renderer.dispose(); pr.renderer.forceContextLoss?.(); pr = null; }
+  dropPortraitRenderer();
   portraitCache.clear();
 }
 function shade(hex, k) {
   const c = new THREE.Color(hex).multiplyScalar(k);
   return '#' + c.getHexString();
 }
-// Geometry is per-racer; materials are shared (MAT / atlas) and must NOT be disposed here.
-export function disposeTree(root) { root.traverse(o => { if (o.isMesh) o.geometry.dispose(); }); }
+// Geometry is per-racer; materials are shared (MAT / atlas) and must NOT be disposed here. An HD driver's
+// geometry is the loaded template's (geometry.userData.hdShared): keep it (disposing only made every race
+// re-upload it). Its SKELETON is per instance and owns a bone texture on the GPU — dispose that (it used to
+// leak one texture per rigged HD racer per race: leakcheck +35 textures a cycle).
+export function disposeTree(root) {
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    if (!o.geometry.userData.hdShared) o.geometry.dispose();
+    if (o.isSkinnedMesh) o.skeleton?.dispose();
+  });
+}
 
 /** Triangle / draw-call count for a built racer (visible meshes). */
 export function racerStats(root) {

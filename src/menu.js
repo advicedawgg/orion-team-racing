@@ -109,7 +109,7 @@ const stage = (() => {
   }
   function actor(id, x = 0, y = 0, z = 0, ry = 0, extraS = {}) {
     let b = null;
-    try { b = api.R.buildRacer(id, { hd: !!S.settings().hd && !!HDM?.hasHD?.(id), paint: M.stagePaint || null }); } catch (e) { console.warn('[menu] buildRacer', id, e); }
+    try { b = api.R.buildRacer(id, { hd: api.G.hd !== false, paint: M.stagePaint || null }); } catch (e) { console.warn('[menu] buildRacer', id, e); }
     if (!b) return null;
     b.root.position.set(x, y, z); b.root.rotation.y = ry;
     scene.add(b.root);
@@ -407,7 +407,6 @@ function applyRaceSettings() {
   G.racerId = M.racer;
   G.autoAccel = s.autoAccel === 'on' || (s.autoAccel === 'easy' && M.diff === 'easy');
   G.easyBoost = s.kidAssist !== false;   // OFF means off on Easy too (2P already passes explicit booleans)
-  if (!api.Q.has('hd')) G.hd = !!s.hd;
   G.solo = M.mode === 'tt';
   G.sitOut = M.mode === 'cup' ? M.cup?.sitOut : undefined;   // the cup keeps the same 8 racers all cup
   G.noItems = M.mode === 'tt';
@@ -990,7 +989,6 @@ const AUTO_LBL = { easy: 'EASY ONLY', on: 'ALWAYS', off: 'OFF' };
 const QUAL_LBL = { auto: 'AUTO', high: 'FANCY', low: 'FAST' };   // qa agent: main.js setQuality()
 function showSettings() {
   const s = S.settings();
-  const hdAny = !!HDM && Object.keys(HDM.HD_MODELS || {}).length > 0;
   const vol = (k, lbl) => `<div class="opt" data-nav data-adj data-k="${k}" data-key="${k}"><span class="lbl">${lbl}</span>
       <button class="nudge" data-d="-1">−</button><span class="meter" data-k="${k}"><i style="transform:scaleX(${s[k]})"></i></span><button class="nudge" data-d="1">+</button><span class="pct">${Math.round(s[k] * 100)}%</span></div>`;
   const tog = (k, lbl, val, hint) => `<div class="opt tog" data-nav data-adj data-act="tog" data-k="${k}" data-key="${k}"><span class="lbl">${lbl}<small>${hint}</small></span>
@@ -1002,7 +1000,6 @@ function showSettings() {
         ${vol('master', 'VOLUME')}${vol('music', 'MUSIC')}${vol('sfx', 'EFFECTS')}
         ${tog('autoAccel', 'AUTO-GO', AUTO_LBL[s.autoAccel] || 'EASY ONLY', 'kart drives forward by itself')}
         ${tog('kidAssist', 'KID HELPER', s.kidAssist ? 'ON' : 'OFF', 'easy turbos + steering help')}
-        ${hdAny ? tog('hd', 'FANCY RACERS', s.hd ? 'ON' : 'OFF', 'detailed 3D models') : ''}
         ${tog('quality', 'GRAPHICS', QUAL_LBL[s.quality] || 'AUTO', 'FAST = smoother on small computers')}
       </div>
       <div class="res-btns"><button class="mbtn" data-nav data-act="controls" data-key="controls">CONTROLS</button><button class="mbtn big" data-nav data-act="back" data-key="back">◀ BACK</button></div>
@@ -1034,7 +1031,7 @@ function showSettings() {
     if (k === 'master' || k === 'music' || k === 'sfx') { setVal(k, s2[k] + d * 0.1); sfx(k === 'music' ? 'menu_move' : 'star'); return; }
     if (k === 'autoAccel') { const o = ['easy', 'on', 'off']; const v = o[(o.indexOf(s2.autoAccel) + d + 3) % 3]; S.setSetting(k, v); row.querySelector('.val').textContent = AUTO_LBL[v]; }
     else if (k === 'quality') { const o = ['auto', 'high', 'low']; const v = o[(Math.max(0, o.indexOf(s2.quality)) + d + 3) % 3]; S.setSetting(k, v); row.querySelector('.val').textContent = QUAL_LBL[v]; if (!api.Q.has('q')) api.setQuality?.(v); }
-    else { const v = !s2[k]; S.setSetting(k, v); row.querySelector('.val').textContent = v ? 'ON' : 'OFF'; if (k === 'hd' && !api.Q.has('hd')) api.G.hd = v; }
+    else { const v = !s2[k]; S.setSetting(k, v); row.querySelector('.val').textContent = v ? 'ON' : 'OFF'; }
     sfx('menu_move');
   }
 }
@@ -1108,7 +1105,8 @@ function onState(s, prev) {
 function removeGhost() {
   if (M.ghost) {
     api.scene.remove(M.ghost.root);
-    M.ghost.root.traverse(o => { if (o.isMesh) { o.geometry.dispose(); (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.dispose()); } });
+    M.ghost.root.traverse(o => { if (o.isMesh) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { if (o.userData.ghost) m.dispose(); }); });
+    api.R.disposeTree?.(M.ghost.root);   // geometry (not the HD template's) + the HD skeleton's bone texture
     M.ghost = null;
   }
 }
@@ -1122,14 +1120,16 @@ function setupGhost() {
   race.bestTime = S.best(tid).race || null;
   if (data && data.samples.length > 2) {
     try {
-      const b = api.R.buildRacer(data.racer || 'orion', { hd: false });
-      b.root.traverse(o => {
-        if (!o.isMesh) return;
+      const b = api.R.buildRacer(data.racer || 'orion', { hd: api.G.hd !== false });
+      const ghostify = () => b.root.traverse(o => {
+        if (!o.isMesh || o.userData.ghost) return;
+        o.userData.ghost = true;
         o.castShadow = false;
         const clone = m => { const c = m.clone(); c.transparent = true; c.opacity = 0.38; c.depthWrite = false; if (c.color) c.color.lerp(new THREE.Color(0xbfe8ff), 0.5); return c; };
         o.material = Array.isArray(o.material) ? o.material.map(clone) : clone(o.material);
         o.renderOrder = 2;
       });
+      ghostify(); b.rig.hdReady?.then(ghostify);   // the HD driver arrives a moment later: see-through too
       b.root.visible = false;
       api.scene.add(b.root);
       M.ghost = { root: b.root, data };
@@ -1242,7 +1242,6 @@ export async function initMenu(a, { skip = false } = {}) {
   } else {
     M.diff = api.Q.get('diff') || s.difficulty || 'easy';
     M.racer = api.Q.get('racer') || S.get().lastRacer || 'orion';
-    if (!api.Q.has('hd')) api.G.hd = !!s.hd;
   }
   addEventListener('keydown', onKey);
   document.querySelector('[data-btn="pause"]')?.addEventListener('pointerdown', () => { if (inRace()) openPause(); });

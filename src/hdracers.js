@@ -1,7 +1,8 @@
-// hdracers.js — the optional HD driver tier (charfab GLBs in assets/models/<id>.glb). HD agent owns.
+// hdracers.js — the HD drivers (charfab GLBs in assets/models/<id>.glb). HD agent owns.
 //
-// The procedural racers in racers.js are always present; this module only swaps the DRIVER for an
-// AI-generated textured model. The kart stays procedural. The game must run with no GLBs at all:
+// Since 2026-11-09 these are THE drivers (the "FANCY RACERS" setting is gone; ?hd=0 is debug only).
+// racers.js still builds its procedural racer first: the kart is always procedural, and the procedural
+// driver stands in while the GLB loads and stays if it's missing. The game must run with no GLBs at all:
 // loadHDRacer() rejects when a model is missing and the caller keeps its procedural driver.
 //
 // API (used by racers.js buildRacer(id, { hd: true })):
@@ -20,9 +21,13 @@
 //   animateHD(rig, s, dt)        -> same state object as racers.js animateRacer(rig, s, dt).
 //              Leans the spine INTO the corner (+steer = left = lean toward +X), exaggerates in a
 //              slide, turns the head into the turn, hands stay on the wheel which turns with steer,
-//              tucks during boost, bobs on landing, flails when hit/spinning, arms up to cheer,
+//              tucks during boost, bobs on landing, flails when hit/spinning, arms up to cheer
+//              (palms to the front: each hand's palm normal is measured from its mesh at load),
 //              slumps when sad. Call it every render frame after the kart has been positioned.
 //   preloadHD(ids)               -> Promise, warms the loader cache (menus can call it early).
+//   hdState(id)                  -> 'ready' | 'loading' | 'none' (no model, or its GLB failed), sync.
+//   buildHDNow(id, opts)         -> { root, rig } synchronously once hdState is 'ready', else null (portraits).
+//   handFrame(rig, side)         -> debug: a hand's measured frame (palm normal etc., see measureHand).
 //
 // Two model kinds (HD_MODELS[id].kind):
 //   'rig'    - Make-It-Animatable mixamorig skeleton, bound in the A-pose the render was made in.
@@ -41,12 +46,12 @@ export const HD_MODELS = {
   orion:   { kind: 'rig', height: 1.50 },
   kingdad: { kind: 'rig', height: 1.62 },
   mum:     { kind: 'rig', height: 1.50 },
-  taj:     { kind: 'rig', height: 1.36, armsUp: 0.45 },   // smaller kid than Orion; hair/shirt stretch if the arms go right up
+  taj:     { kind: 'rig', height: 1.36, armsUp: 0.45 },   // smaller kid than Orion; hair/shirt stretch if the arms go right up (0.75 drags hair strands up the arm, 11-09)
   grumblin: { kind: 'static', height: 0.9, dz: 0.02, yaw: -0.3 },
   jelly:    { kind: 'static', height: 1.05, lift: 0.02, yaw: -0.12 },
   zapdrone: { kind: 'static', height: 0.85, lift: 0.18, yaw: -1.6 },
   prickle:  { kind: 'static', height: 0.95, dz: 0.02 },
-  sootie:  { kind: 'rig', height: 1.32, up: 'legs', armsUp: 0.4 },   // jacket shell stretches if the arms go right up
+  sootie:  { kind: 'rig', height: 1.32, up: 'legs', armsUp: 0.7 },   // jacket shell stretches if the arms go right up (0.4 → 0.7 on 11-09: paws by the ears, the jacket follows like sleeves)
 };
 
 export function hasHD(id) { return Object.prototype.hasOwnProperty.call(HD_MODELS, id); }
@@ -105,6 +110,7 @@ const ANIM_BONES = ['Hips', ...SPINE, 'Neck', 'Head', 'LeftShoulder', 'RightShou
 function prepMaterials(obj) {
   obj.traverse(o => {
     if (!o.isMesh) return;
+    o.geometry.userData.hdShared = true;   // every instance shares the template's geometry: racers.js disposeTree keeps it
     o.castShadow = true; o.receiveShadow = false;
     const ms = Array.isArray(o.material) ? o.material : [o.material];
     for (const m of ms) {
@@ -132,16 +138,95 @@ function seatContactY(scene, hips) {
   return minY;
 }
 
-const templates = new Map();
+/** eigenvectors of a symmetric 3x3 (row-major array of 9), ascending eigenvalues: [{ val, vec }] (Jacobi) */
+function eig3(m) {
+  const a = m.slice(), v = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+  for (let sweep = 0; sweep < 24; sweep++) {
+    let off = 0; for (const [p, q] of [[0, 1], [0, 2], [1, 2]]) off += a[p * 3 + q] ** 2;
+    if (off < 1e-18) break;
+    for (const [p, q] of [[0, 1], [0, 2], [1, 2]]) {
+      const apq = a[p * 3 + q]; if (Math.abs(apq) < 1e-20) continue;
+      const th = (a[q * 3 + q] - a[p * 3 + p]) / (2 * apq);
+      const tt = Math.sign(th || 1) / (Math.abs(th) + Math.sqrt(th * th + 1)), c = 1 / Math.sqrt(tt * tt + 1), s = tt * c;
+      for (let k = 0; k < 3; k++) { const akp = a[k * 3 + p], akq = a[k * 3 + q]; a[k * 3 + p] = c * akp - s * akq; a[k * 3 + q] = s * akp + c * akq; }
+      for (let k = 0; k < 3; k++) { const apk = a[p * 3 + k], aqk = a[q * 3 + k]; a[p * 3 + k] = c * apk - s * aqk; a[q * 3 + k] = s * apk + c * aqk; }
+      for (let k = 0; k < 3; k++) { const vkp = v[k * 3 + p], vkq = v[k * 3 + q]; v[k * 3 + p] = c * vkp - s * vkq; v[k * 3 + q] = s * vkp + c * vkq; }
+    }
+  }
+  return [0, 1, 2].map(i => ({ val: a[i * 4], vec: new THREE.Vector3(v[i], v[3 + i], v[6 + i]) })).sort((x, y) => x.val - y.val);
+}
+
+/**
+ * A hand's real orientation, measured from the mesh: the rigs have no finger bones, and the TRELLIS hands
+ * come in whatever roll the reference image had (the old "thumbs forward" guess left one hand of most
+ * racers edge-on in the cheer). World space, current pose: c = centroid of the vertices skinned >= 0.6
+ * to the Hand bone, f = wrist → c (the fingers), flat = the flattest direction across f — the palm's
+ * normal LINE (sign arbitrary: the caller picks palm vs back). null if the hand has too few vertices.
+ * (Telling the thumb side from the mesh was tried: the bulge is too weak on these cartoon hands.)
+ */
+function measureHand(meshRoot, hand) {
+  meshRoot.updateMatrixWorld(true);
+  const wrist = hand.getWorldPosition(new THREE.Vector3()), pts = [], v = new THREE.Vector3();
+  meshRoot.traverse(o => {
+    if (!o.isSkinnedMesh) return;
+    const bi = o.skeleton.bones.indexOf(hand); if (bi < 0) return;
+    const g = o.geometry.attributes, si = g.skinIndex, sw = g.skinWeight, pos = g.position;
+    for (let i = 0; i < pos.count; i++) {
+      let w = 0; for (let k = 0; k < 4; k++) if (si.getComponent(i, k) === bi) w += sw.getComponent(i, k);
+      if (w < 0.6) continue;
+      v.fromBufferAttribute(pos, i); o.applyBoneTransform(i, v); v.applyMatrix4(o.matrixWorld); pts.push(v.clone());
+    }
+  });
+  if (pts.length < 12) return null;
+  const c = new THREE.Vector3(); for (const p of pts) c.add(p); c.divideScalar(pts.length);
+  const f = c.clone().sub(wrist); if (f.lengthSq() < 1e-10) return null; f.normalize();
+  const C = new Array(9).fill(0);
+  for (const p of pts) { const d = [p.x - c.x, p.y - c.y, p.z - c.z]; for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) C[i * 3 + j] += d[i] * d[j]; }
+  const flat = eig3(C).map(e => e.vec.clone().addScaledVector(f, -e.vec.dot(f))).filter(x => x.lengthSq() > 0.05)[0];
+  return flat ? { c, f, flat: flat.normalize(), count: pts.length } : null;
+}
+/** world Box3 of a rigged HD racer's head — the vertices skinned >= 0.5 to the Head bone, minus anything hanging
+ *  well below the head joint (Taj's long hair); null for a static creature. Portraits frame on it. */
+export function headBox(rig) {
+  const hb = rig.bones?.Head; if (!hb) return null;
+  rig.root.updateMatrixWorld(true);
+  const j = hb.getWorldPosition(new THREE.Vector3()), top = rig.head.getWorldPosition(new THREE.Vector3()).y;
+  const floor = j.y - 0.35 * Math.max(0.05, top - j.y), box = new THREE.Box3(), v = new THREE.Vector3();
+  rig.inner.traverse(o => {
+    if (!o.isSkinnedMesh) return;
+    const bi = o.skeleton.bones.indexOf(hb); if (bi < 0) return;
+    const g = o.geometry.attributes, si = g.skinIndex, sw = g.skinWeight, pos = g.position;
+    for (let i = 0; i < pos.count; i += 2) {
+      let w = 0; for (let k = 0; k < 4; k++) if (si.getComponent(i, k) === bi) w += sw.getComponent(i, k);
+      if (w < 0.5) continue;
+      v.fromBufferAttribute(pos, i); o.applyBoneTransform(i, v); v.applyMatrix4(o.matrixWorld);
+      if (v.y >= floor) box.expandByPoint(v);
+    }
+  });
+  return box.isEmpty() ? null : box;
+}
+/** debug / tools: a live HD rig's hand — c, f measured now; n = the template's palm normal in its current pose */
+export function handFrame(rig, side) {
+  const hand = rig.bones?.[side + 'Hand'], P = rig.t?.palm?.[side]; if (!hand || !P) return null;
+  const m = measureHand(rig.inner, hand); if (!m) return null;
+  const n = P.n.clone().applyQuaternion(hand.getWorldQuaternion(new THREE.Quaternion()));
+  return { c: m.c, f: m.f, n, t: new THREE.Vector3().crossVectors(m.f, n).multiplyScalar(side === 'Left' ? -1 : 1).normalize(), count: m.count };
+}
+
+const templates = new Map(), loaded = new Map(), failed = new Set();
 function loadTemplate(id) {
   let p = templates.get(id);
   if (!p) {
     p = getLoader().loadAsync(MODEL_URL(id)).then(gltf => buildTemplate(id, gltf));
-    p.catch(() => templates.delete(id));   // allow a retry later
+    p.then(t => { loaded.set(id, t); failed.delete(id); }, () => { templates.delete(id); failed.add(id); });   // a failure may be retried later
     templates.set(id, p);
   }
   return p;
 }
+/** 'ready' (template loaded: buildHDNow works), 'loading', or 'none' (no HD model, or its GLB failed) */
+export const hdState = id => loaded.has(id) ? 'ready' : !hasHD(id) || failed.has(id) ? 'none' : 'loading';
+/** synchronous loadHDRacer for a template that's already loaded (portraits); null otherwise */
+export function buildHDNow(id, opts = {}) { const t = loaded.get(id); return t ? instantiate(id, t, opts) : null; }
 export function preloadHD(ids = Object.keys(HD_MODELS)) {
   return Promise.allSettled(ids.filter(hasHD).map(loadTemplate));
 }
@@ -183,14 +268,21 @@ function buildTemplate(id, gltf) {
   const armLen = shoulderL.distanceTo(w('LeftForeArm')) + w('LeftForeArm').distanceTo(w('LeftHand'));
   const shoulderMid = shoulderL.clone().add(shoulderR).multiplyScalar(0.5);
   const headTop = new THREE.Box3().setFromObject(scene, true).max.y;
-  // each hand's thumb in the hand bone's own frame: the rest pose is a T/A-pose, thumbs forward (+z)
-  const thumb = {};
-  for (const side of ['Left', 'Right']) thumb[side] = new THREE.Vector3(0, 0, 1).applyQuaternion(get(B(side + 'Hand')).getWorldQuaternion(new THREE.Quaternion()).invert());
+  // each hand's palm normal in the hand bone's own frame, measured from the mesh (measureHand). The rest
+  // pose has the arms down with the palms to the thighs (checked on all 5 rigs: thumbs on the forward
+  // edge), so of the flat axis' two signs the palm is the one facing in toward the body.
+  const palm = {};
+  for (const [side, sx] of [['Left', 1], ['Right', -1]]) {
+    const hb = get(B(side + 'Hand')), m = hb && measureHand(scene, hb);
+    if (!m) continue;
+    const n = m.flat.clone(); if (n.x * -sx < 0) n.negate();
+    palm[side] = { n: n.applyQuaternion(hb.getWorldQuaternion(new THREE.Quaternion()).invert()) };
+  }
   const base = {};
   for (const n of ANIM_BONES) { const b = get(B(n)); if (b) base[n] = b.quaternion.clone(); }
   scene.traverse(o => { if (o.isSkinnedMesh) { o.computeBoundingSphere(); o.boundingSphere.radius *= 1.35; } });
   return {
-    kind: 'rig', def, holder, base, armLen, headTop, thumb,
+    kind: 'rig', def, holder, base, armLen, headTop, palm,
     shoulderMid, shoulderHalf: shoulderL.distanceTo(shoulderR) / 2,
     headH: headTop - w('Head').y,
   };
@@ -239,7 +331,9 @@ function makeWheel(r) {
 
 export async function loadHDRacer(id, opts = {}) {
   if (!hasHD(id)) throw new Error(`no HD model for ${id}`);
-  const t = await loadTemplate(id);
+  return instantiate(id, await loadTemplate(id), opts);
+}
+function instantiate(id, t, opts) {
   const root = new THREE.Group(); root.name = 'hd:' + id; root.userData.hdRoot = true;
   const inner = t.kind === 'rig' ? cloneSkinned(t.holder) : t.holder.clone(true);
   root.add(inner);
@@ -269,6 +363,15 @@ export async function loadHDRacer(id, opts = {}) {
 }
 
 const approach = (cur, tgt, rate, dt) => cur + (tgt - cur) * Math.min(1, rate * dt);
+const CHEER_PALM = [0.25, 0.2, 1];   // cheer palm direction (character frame; x is ×sx = outward): to the front, a touch out and up
+const WRIST_MAX = 0.6;               // rad the wrist may bend to finish turning the palm
+/** apply a WORLD-space rotation q to a bone about its own joint */
+function rotateBoneWorld(bone, q) {
+  bone.getWorldQuaternion(_q3); _q3.premultiply(q);
+  bone.parent.getWorldQuaternion(_q4).invert();
+  bone.quaternion.copy(_q4.multiply(_q3));
+  bone.updateMatrixWorld(true);
+}
 /** rotate a bone by `angle` about a WORLD-space axis through its own joint */
 function twistBone(bone, axis, angle) {
   _q1.setFromAxisAngle(axis, angle);
@@ -374,17 +477,23 @@ export function animateHD(rig, s = {}, dt = 1 / 60) {
     rig.root.localToWorld(_ta);
     _pole.set(sx * 0.7, -0.75, -0.25).applyQuaternion(rootQ);
     ik2(up, lo, hand, _ta, _pole);
-    // cheering: roll the arm about its own axis so the palm faces forward and the thumb points OUT
-    // (the plain IK swing leaves the T-pose roll: backs of the hands to the camera, thumbs down)
-    if (cw > 0.01 && rig.t.thumb) {
+    // cheering: turn the PALM to the front (a touch out and up). The IK swing leaves whatever roll the
+    // rest pose had, so: roll the (straight) arm about its own axis, mostly in the forearm (rolling the upper
+    // arm wrings the shoulder skin), then the wrist does the rest, capped so the wrist skin doesn't candy-wrap.
+    const P = rig.t.palm?.[side];
+    if (cw > 0.01 && P) {
       const ax = hand.getWorldPosition(_v5).sub(lo.getWorldPosition(_v6)).normalize();
-      const th = _v6.copy(rig.t.thumb[side]).applyQuaternion(hand.getWorldQuaternion(_q4));
-      const want = _v7.set(sx, 0.3, 0.2).applyQuaternion(rootQ);
-      th.addScaledVector(ax, -th.dot(ax)); want.addScaledVector(ax, -want.dot(ax));
-      if (th.lengthSq() > 1e-6 && want.lengthSq() > 1e-6) {
-        const ang = Math.atan2(ax.dot(_v8.crossVectors(th, want)), th.dot(want)) * cw;
-        twistBone(up, ax, ang * 0.25); twistBone(lo, ax, ang * 0.75);   // mostly the forearm: rolling the upper arm wrings the shoulder skin
+      const want = _v7.set(sx * CHEER_PALM[0], CHEER_PALM[1], CHEER_PALM[2]).applyQuaternion(rootQ).normalize();
+      const pn = _v6.copy(P.n).applyQuaternion(hand.getWorldQuaternion(_q4));
+      const a = pn.addScaledVector(ax, -pn.dot(ax)), b = _v8.copy(want).addScaledVector(ax, -want.dot(ax));
+      if (a.lengthSq() > 1e-6 && b.lengthSq() > 1e-6) {
+        const ang = Math.atan2(ax.dot(_v4.crossVectors(a, b)), a.dot(b)) * cw;
+        twistBone(up, ax, ang * 0.25); twistBone(lo, ax, ang * 0.75);
       }
+      const pn2 = _v6.copy(P.n).applyQuaternion(hand.getWorldQuaternion(_q4));
+      _q1.setFromUnitVectors(pn2, want);
+      const wAng = 2 * Math.acos(Math.min(1, Math.abs(_q1.w)));
+      if (wAng > 1e-4) { _q2.identity().slerp(_q1, Math.min(1, WRIST_MAX / wAng) * cw); rotateBoneWorld(hand, _q2); }
     }
   }
   rig.head.position.y = rig.t.headTop * rig.k * (1 - land * 0.1) - sp.sad * 0.05;

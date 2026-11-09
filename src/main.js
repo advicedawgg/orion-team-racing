@@ -6,7 +6,7 @@
 //
 // URL debug params (DESIGN.md): track, racer, skip, cam=x,y,z,tx,ty,tz, t (fast-forward s with
 // AI driving), ai=1 (AI drives the player), hud=0, diff=easy|medium|hard, slot (player grid slot
-// 0..7), laps, seed, touch=1, hd=1, shadows=0, fx=0, q=low|high|auto (quality).   window.__OTR exposes state for tests.
+// 0..7), laps, seed, touch=1, hd=0 (debug: old procedural drivers), shadows=0, fx=0, q=low|high|auto (quality).   window.__OTR exposes state for tests.
 // O-T-R letters (DESIGN.md "Modes and UI"): G.letters (menu.js: 1P Quick Race / Time Trial) puts them in the race;
 // letters=1|0 forces them on/off, ctrgot=1 starts with all three collected (screenshots, never saved), paint=gold|rainbow
 // paints the player's kart (all URL-only).
@@ -51,6 +51,7 @@ try { audio = (await import('./audio.js')).audio || NOAUDIO; } catch (e) { conso
 let R = null;
 try { R = await import('./racers.js'); if (!R.buildRacer || !R.RACERS) throw new Error('racers.js incomplete'); }
 catch (e) { console.warn('[otr] racers.js missing/broken, using box karts', e); R = await import('./kartbox.js'); }
+R.setPortraitHD?.(Q.get('hd') !== '0');   // portraits of the HD racers (?hd=0: the old procedural ones, debug)
 let MENU = null;   // ui agent: title/menus/results/pause (menu.js). Missing = core's placeholder title card.
 try { MENU = await import('./menu.js'); } catch (e) { console.warn('[otr] menu.js missing/broken, placeholder title', e); }
 
@@ -138,7 +139,7 @@ const G = {
   difficulty: Q.get('diff') || 'easy', racerId: Q.get('racer') || 'orion', trackId: Q.get('track') || TRACKS[0].id,
   slot: qn('slot', 6), laps: Q.has('laps') ? qn('laps', 3) : undefined, seed: qn('seed', 1),
   acc: 0, timeScale: 1, paused: false, override: null, pendA: false, pendB: false, t: 0, frames: 0,
-  hd: Q.get('hd') === '1',
+  hd: Q.get('hd') !== '0',   // HD racers always (2026-11-09: the low-def drivers are retired; ?hd=0 = debug only)
   letters: false, paint: Q.get('paint') || 'std',   // menu.js sets both per race (O-T-R letters / the unlocked kart paint)
   quality: 'auto', qLevel: 'high', autoLow: false,
   // 2P (menu.js sets these from the join screen; URL players=2 for tests)

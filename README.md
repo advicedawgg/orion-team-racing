@@ -25,7 +25,7 @@ show up as a standard Xbox 360 pad.
 Handy URLs:
 - `?track=castle&racer=kingdad&skip=1` jumps straight into a race.
 - `&diff=hard`, `&ai=1` (the AI drives you), `&t=30` (fast-forward), `&laps=1`, `&hud=0`.
-- `&q=low|high|auto` sets graphics quality. `&hd=1` turns on the HD racer models.
+- `&q=low|high|auto` sets graphics quality. `&hd=0` swaps the HD racers for the old procedural ones (debugging only).
 - `&players=2` races two players split-screen (`&racer2=kingdad`, `&dev1=`/`&dev2=` `auto|kb|kbL|kbR|pad:N`,
   `&auto2=1`, `&helper1=0|1`, `&helper2=0|1`).
 - `?screen=podium|select|tracks|settings|…` opens one menu screen.
@@ -93,7 +93,6 @@ Start on either pad pauses. The join screen shows which device each player has.
   - volumes
   - AUTO-GO (drive forward by itself: on in Easy by default)
   - KID HELPER (easy turbos, no overheating)
-  - FANCY RACERS (HD models)
   - GRAPHICS (AUTO / FANCY / FAST, see Performance below)
 
 ## Tracks
@@ -223,7 +222,7 @@ src/fx.js             particles + skid marks (2+1 draw calls)
 src/trackmesh.js      track → road/walls/terrain/sky meshes, texture loader
 src/scenery/*.js      per-theme props (beach, ice, volcano, castle, star, jungle, bedroom; kit.js/propkit.js helpers)
 src/tracks/*.js       track data (one file each) + index.js registry
-src/racers.js         8 procedural racers + animation         src/hdracers.js  optional HD driver models
+src/racers.js         8 procedural racers + animation         src/hdracers.js  the HD driver models
 src/hud.js src/itemhud.js src/menu.js src/save.js    HUD, menus, save (localStorage)
 src/audio.js          SFX, VO, music, synthesised engines
 src/protocol.js       online wire contract (PURE)            src/netgame.js   online race, client half (PURE)

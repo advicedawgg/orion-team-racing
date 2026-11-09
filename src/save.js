@@ -9,7 +9,7 @@
 //     shortcuts: { <trackId>: [branchId, …] },          // branches the player has driven (minimap shows them)
 //     letters: { <trackId>: true },                     // O-T-R: all three letters collected in one finished race
 //     settings: { master, music, sfx (0..1), autoAccel: 'easy'|'on'|'off', kidAssist: bool,
-//                 hd: bool, difficulty: 'easy'|'medium'|'hard', quality: 'auto'|'high'|'low',
+//                 difficulty: 'easy'|'medium'|'hard', quality: 'auto'|'high'|'low',   (hd/hdDefaultV: retired 2026-11-09, HD always)
 //                 mpAuto: [p1, p2], mpHelper: [p1, p2] (2 PLAYERS join screen, per player; absent until toggled),
 //                 paint: 'std'|'gold'|'rainbow' (the player's kart, once unlocked) },
 //     lastRacer, lastTrack,
@@ -28,7 +28,7 @@ export const DEFAULTS = () => ({
   best: {},
   shortcuts: {},
   letters: {},
-  settings: { master: 0.9, music: 0.7, sfx: 1, autoAccel: 'easy', kidAssist: true, hd: true, hdDefaultV: 1, difficulty: 'easy', quality: 'auto', paint: 'std' },
+  settings: { master: 0.9, music: 0.7, sfx: 1, autoAccel: 'easy', kidAssist: true, difficulty: 'easy', quality: 'auto', paint: 'std' },
   lastRacer: 'orion', lastTrack: null,
 });
 
@@ -63,10 +63,6 @@ export function load() {
     if (raw) {
       const stored = JSON.parse(raw);
       data = merge(DEFAULTS(), stored);
-      // 2026-09-25: FANCY RACERS became the default (switching it on later hitches while the GLBs load).
-      // One-time flip for saves written while the default was off. Read the flag off the RAW stored object —
-      // after merge() the defaults would make it look already migrated.
-      if (!stored.settings || stored.settings.hdDefaultV !== 1) { data.settings.hd = true; data.settings.hdDefaultV = 1; save(); }
     }
   } catch (e) { console.warn('[save] unreadable save, starting fresh', e); }
   return data;

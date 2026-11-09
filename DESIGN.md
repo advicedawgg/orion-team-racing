@@ -177,11 +177,29 @@ Super Orion baddies with strong silhouettes picked from SO2's `ENEMY` table (e.g
 hardhat, jelly, zapdrone, flapjack, prickle, hopper).
 
 Two model tiers:
-1. **Procedural (always present)**: chunky N64/CTR-style low-poly built from boxes/cylinders/
+1. **Procedural (always built)**: chunky N64/CTR-style low-poly built from boxes/cylinders/
    spheres with canvas-drawn texture atlases, like SO2's Orion. ~1–3k tris per racer incl. kart.
-2. **HD (optional, charfab)**: AI-generated textured GLBs in `assets/models/<id>.glb`, rigged
-   (mixamorig) or static. If present and the `hd` setting is on, `buildRacer` uses it; otherwise
-   falls back to procedural. The game must run perfectly with no GLBs at all.
+   Since 2026-11-09 (user: "the low def ones can be retired") its DRIVER is only a stand-in while the
+   HD one loads, the fallback if a GLB is missing, and `?hd=0` for debugging; the kart body is still this.
+2. **HD (THE drivers, charfab)**: AI-generated textured GLBs in `assets/models/<id>.glb`, rigged
+   (mixamorig) or static. Always on: the FANCY RACERS setting is gone (old saves' `hd`/`hdDefaultV` are
+   ignored), test URLs load them too, the Time Trial ghost is one, and the portraits (HUD, menus,
+   results, online) are rendered from them (racers.js `renderPortrait`: a stand-in portrait isn't
+   cached while its GLB loads; hud.js `racersReady` settles after `hdPortraitsReady()` and screens re-ask).
+   The game must still run perfectly with no GLBs at all.
+   **Teardown** (racers.js `disposeTree`): an HD instance's geometry is the template's (`geometry.userData.hdShared`)
+   and is kept; its skeleton is per instance and its bone texture is disposed. Before 2026-11-09 nothing disposed
+   the skeletons (one GPU texture leaked per rigged HD racer per race: `leakcheck.mjs 3` textures 84 → 119 → 154)
+   and the shared geometry was re-uploaded every race; now textures 49/49/49, geometries 130/130/130.
+   **HD cost** (`playtest.mjs beach --perf`, Arc B60, HD vs the old procedural drivers on 2026-11-09): load 3.2 s
+   (1.8), grid 152 calls (162) / 399 ktris (198) / GPU p50 3.71 ms (0.69), mid-race 66/96 calls (64/101) / 232 ktris
+   (175) / CPU p50 2.3 ms (1.9) / GPU p50 2.34 ms (0.66), whole frame p50/p95 3.0/6.8 ms (1.8/4.6). Players were
+   already on HD by default since 2026-09-25 (FANCY RACERS default ON).
+   **Cheer hands** (2026-11-09): the rigs have no finger bones, so each hand's palm normal is measured from
+   its mesh at load (`measureHand`: the flattest axis of the Hand-skinned vertices; the rest pose has the
+   palms to the thighs, which picks the sign) and the cheer rolls the straight arm (¼ upper, ¾ forearm) and
+   then the wrist (≤ 0.6 rad) to put the palm to the front. The old "thumbs forward" guess left one hand
+   edge-on on most racers. Sootie's `armsUp` 0.4 → 0.7; Taj stays 0.45 (0.75 drags hair strands up the arm).
    `src/hdracers.js` (HD agent): `HD_MODELS`, `hasHD(id)`, `loadHDRacer(id, opts) → Promise<{root, rig}>`
    (root origin = seat contact, +Z forward, parented to `rig.driver`), `animateHD(rig, s, dt)` (same state
    as `animateRacer`), `preloadHD(ids)`. Only the DRIVER is swapped; the kart stays procedural.
@@ -923,8 +941,7 @@ instance — keep small props shadowless).
   headless Chrome). Settings: volumes (master/music/sfx), **AUTO-GO** (auto-accelerate: `easy` =
   on in Easy only (default) / `on` / `off`; touch auto-accelerates while no pad is connected, and a pad
   hides the touch buttons), shown as a kart badge on each difficulty chip it applies to, **KID HELPER**
-  (`kidAssist`, default on → `easyBoost` on every difficulty; OFF is off on Easy too), **FANCY RACERS** (HD models, shown
-  only if `hdracers.js` lists any), **GRAPHICS** (`quality`: `auto` (default) / `high` "FANCY" /
+  (`kidAssist`, default on → `easyBoost` on every difficulty; OFF is off on Easy too), **GRAPHICS** (`quality`: `auto` (default) / `high` "FANCY" /
   `low` "FAST" → main.js `setQuality`, see **Quality**), CONTROLS help (keys / pad buttons / touch glyphs + turbo how-to).
 - **Kid-first**: no reading needed — title (any key/tap) → Quick Race (focused) → racer (last one
   focused) → track → race is four presses of A. Results always celebrate: 1st = "YOU WIN!" +
@@ -1246,7 +1263,7 @@ GPU browser over WebRTC; 1-lap races):
   into a race, `&cam=x,y,z,tx,ty,tz` pins the camera, `&t=12` fast-forwards the sim 12 s with AI
   driving the player, `&ai=1` lets AI drive the player, `&hud=0`. Also `&diff=easy|medium|hard`,
   `&slot=0..7` (player grid slot, default 6), `&laps=N`, `&seed=N`, `&touch=1` (force touch UI),
-  `&auto=1` (auto-accelerate), `&hd=1`, `&shadows=0`, `&fx=0`, `&q=low|high|auto` (quality),
+  `&auto=1` (auto-accelerate), `&hd=0` (debug: procedural drivers), `&shadows=0`, `&fx=0`, `&q=low|high|auto` (quality),
   `&players=2` (split screen; `&racer2=`, `&dev1=`/`&dev2=` `auto|kb|kbL|kbR|pad:N`, `&auto2=0|1`,
   `&helper1=`/`&helper2=0|1`), `&fixture=1` / `&branch=<id>` (shortcuts, see **Branches**), `&letters=1|0`,
   `&ctrgot=1`, `&ctr=all|<ids>`, `&paint=gold|rainbow` (O-T-R letters, see **Modes and UI**). `window.__OTR` exposes game

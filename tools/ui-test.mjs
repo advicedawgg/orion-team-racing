@@ -213,6 +213,10 @@ try {
         await page.evaluate(() => { const o = window.__OTR; o.advance(3.7); o.race.autoPlayer = true; o.advance(9); o.race.autoPlayer = false; o.hold(true); });
         await sleep(400); await shot('tt2-ghost');
         log('ghost vs player', await page.evaluate(() => { const o = window.__OTR, g = o.menu.M.ghost.root, P = o.player; return JSON.stringify({ visible: g.visible, dist: Math.hypot(g.position.x - P.pos.x, g.position.z - P.pos.z).toFixed(1) }); }));
+        // the ghost is an HD racer too (2026-11-09): its skinned driver meshes must all be the see-through ghost material
+        const gh = await page.evaluate(() => { let skinned = 0, ghosted = 0, opaque = 0; window.__OTR.menu.M.ghost.root.traverse(o => { if (!o.isMesh) return; if (o.isSkinnedMesh) { skinned++; if (o.userData.ghost) ghosted++; } if ([].concat(o.material).some(m => !m.transparent || m.opacity > 0.5)) opaque++; }); return { skinned, ghosted, opaque }; });
+        log('ghost HD meshes', JSON.stringify(gh));
+        if (!(gh.skinned > 0 && gh.ghosted === gh.skinned && gh.opaque === 0)) throw new Error('ghost is not a see-through HD racer: ' + JSON.stringify(gh));
         await page.evaluate(() => window.__OTR.hold(false));
       }
       await finishRace();
