@@ -42,6 +42,7 @@ The full list is in DESIGN.md under "Verification".
 | hop + power slide | Space | RB | ⤴ |
 | turbo during a slide (when the bar is red) | Shift | LB | ⚡ |
 | use item (hold ↓ to throw it backwards) | E or Enter | B or Y | ◆ |
+| look behind you (fire an item while looking back = it goes backwards) | | stick or d-pad ↓ | |
 | pause | Esc or P | Start | ❚❚ |
 | mute / full-screen | M / F | | |
 

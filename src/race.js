@@ -28,6 +28,7 @@ export const COUNTDOWN = 3.6;          // s from the start of the countdown to G
 export const START_WINDOW = [-0.25, 0.1]; // press accelerate in here (s relative to GO) for a start boost (Hard; ai.js cfg.startWin per difficulty)
 export const AFTER_PLAYER = 20;        // s the race keeps going after the player finishes before it's called
 export const MP_WAIT = 90;             // 2P: s after the FIRST human finishes before the race is called anyway
+export const REV = { pop: 0.5, smoke: 0.7 };   // over-revved: a backfire every `pop` s while still held; black smoke `smoke` s after GO
 
 /**
  * entrants: [{ racerId, stats }] (grid order: index 0 = pole). playerIndex: which one is the
@@ -68,7 +69,7 @@ export function createRace({ track, entrants, playerIndex = -1, players = null, 
       return this.order.map((k, i) => ({ kart: k, racerId: k.racerId, place: i + 1, time: k.finishTime, finished: k.finished, estimated: !!k.estimated, lapTimes: k.lapTimes }));
     },
   };
-  for (const k of karts) { k.lap = 1; k.lapsDone = 0; k.nextCp = 0; k.lapStartT = 0; k._thrEdge = -99; k._thrPrev = 0; }
+  for (const k of karts) { k.lap = 1; k.lapsDone = 0; k.nextCp = 0; k.lapStartT = 0; k._thrEdge = -99; k._thrPrev = 0; k.rev = 0; k.overRev = false; k.misfireT = 0; }
   race.noStall = noStall ?? easy;
   race.startWin = cfg.startWin || START_WINDOW;
   return race;
@@ -98,6 +99,7 @@ function stepRace(race, playerCtrl = NOCTRL) {
       const thr = k.isPlayer && !race.autoPlayer ? revOf(ctrlOf(playerCtrl, k)) : 0;
       if (thr > 0.5 && k._thrPrev <= 0.5) k._thrEdge = t;
       k._thrPrev = thr;
+      if (k.isPlayer && !k.remote) revGauge(race, k, t, thr > 0.5);
     }
     if (t >= 0) {
       race.phase = 'race';
@@ -107,7 +109,9 @@ function stepRace(race, playerCtrl = NOCTRL) {
         if (k.remote) continue;          // online: its owner does its start boost
         if (k.isPlayer && !race.autoPlayer) {
           if (k._thrPrev > 0.5 && k._thrEdge >= race.startWin[0]) startBoost(race, k);
-          else if (k._thrPrev > 0.5 && k._thrEdge > race._cd0 && !race.noStall) { k.stallT = T.STALL_T; emit(race, 'stall', k); }
+          else if (k._thrPrev > 0.5 && k._thrEdge > race._cd0 && !race.noStall) { k.stallT = T.STALL_T; emit(race, 'stall', k); if (k._bfN !== race.stepN) emit(race, 'kart', k, { e: 'backfire', v: 1 }); }
+          if (k.overRev) k.misfireT = Math.max(REV.smoke, k.stallT);   // the misfire smokes on past GO (and through a stall)
+          k.rev = 0; k.overRev = false;
         } else if (brains[k.index].r() < race.cfg.start || (k.isPlayer && race.autoPlayer)) startBoost(race, k);
       }
     } else {
@@ -119,6 +123,7 @@ function stepRace(race, playerCtrl = NOCTRL) {
       return;
     }
   }
+  for (const k of race.humans) if (k.misfireT > 0) k.misfireT = Math.max(0, k.misfireT - DT);
   // late start boost: a clean press just after GO still counts
   if (t <= race.startWin[1] && !race.autoPlayer) for (const k of race.humans) {
     if (k._sb || k.remote) continue;
@@ -236,6 +241,34 @@ function stepRace(race, playerCtrl = NOCTRL) {
       emit(race, 'race_done', null);
     }
   }
+}
+
+/**
+ * The start-line rev gauge (HUD meter, exhaust, engine note) for a human during the countdown. It's the
+ * start-boost rule made visible, not a new rule: a FRESH accelerate press (not one held since before the
+ * lights) fills k.rev 0 → 1 over |startWin[0]| s — exactly the hold that's still a start boost at GO. Holding
+ * past full = over-rev (k.overRev): that press can't boost any more (its edge is before startWin[0]) and stalls
+ * at GO unless noStall, so it misfires right then: black smoke + a backfire (kart event, v = size), and
+ * another pop every REV.pop s while it's still held. Let go and the gauge drops back; press again to retry.
+ */
+function revGauge(race, k, t, held) {
+  const span = -race.startWin[0];
+  if (held && k._thrEdge > race._cd0) {
+    const h = t - k._thrEdge;
+    k.rev = Math.min(1, h / span);
+    if (!k.overRev && h >= span && k._thrEdge < race.startWin[0]) {
+      k.overRev = true; k._popT = REV.pop; k._bfN = race.stepN;
+      emit(race, 'kart', k, { e: 'backfire', v: 1 });
+    } else if (k.overRev && t < 0 && (k._popT -= DT) <= 0) {
+      k._popT = REV.pop;
+      emit(race, 'kart', k, { e: 'backfire', v: 0.55 });
+    }
+  } else {
+    if (k.overRev) k.misfireT = Math.max(k.misfireT, 0.35);   // let go of a misfire: a last puff of smoke
+    k.rev = Math.max(0, k.rev - DT * 5); k.overRev = false;
+  }
+  if (k.overRev) k.misfireT = Math.max(k.misfireT, 0.2);
+  else if (k.misfireT > 0) k.misfireT = Math.max(0, k.misfireT - DT);
 }
 
 function startBoost(race, k) {

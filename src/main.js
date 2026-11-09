@@ -356,14 +356,14 @@ function endRace() {
 function playerCtrl() {
   const c = G.override || (G.mp ? In.players[0].controls : In.controls);
   const out = { steer: c.steer || 0, throttle: c.throttle || 0, rev: c.rev ?? c.throttle ?? 0, brake: c.brake || 0, hopA: !!c.hopA || G.pendA, hopB: !!c.hopB || G.pendB,
-    item: !!c.item || G.pendI, itemBack: (c.brake || 0) > 0.3 };   // items: held + latched tap; ↓ = throw backward
+    item: !!c.item || G.pendI, itemBack: (c.brake || 0) > 0.3 || !!c.lookBack, lookBack: !!c.lookBack };   // items: held + latched tap; ↓ / looking back = throw backward
   return out;
 }
 /** 2P: player 2's control object (same latching as P1's) */
 function player2Ctrl() {
   const c = G.override2 || In.players[1].controls, p = G.pend2;
   return { steer: c.steer || 0, throttle: c.throttle || 0, rev: c.rev ?? c.throttle ?? 0, brake: c.brake || 0, hopA: !!c.hopA || p.A, hopB: !!c.hopB || p.B,
-    item: !!c.item || p.I, itemBack: (c.brake || 0) > 0.3 };
+    item: !!c.item || p.I, itemBack: (c.brake || 0) > 0.3 || !!c.lookBack, lookBack: !!c.lookBack };
 }
 function stepSim() {
   const race = G.race;
@@ -438,8 +438,9 @@ function kartEvent(k, name, v, me, at) {
       if (me && name === 'turbo3') audio.bark?.(k.racerId, 'boost');
       break;
     }
-    case 'fizzle': audio.play('fizzle', { vol, at }); fx?.burst('fizzle', k.pos, { n: 8 }); break;
-    case 'overheat': audio.play('overheat', { vol, at }); fx?.burst('overheat', k.pos, { n: 14 }); break;
+    case 'fizzle': audio.play('fizzle', { vol, at }); fx?.burst('fizzle', k.pos, { n: 8 }); backfire(k, 0.6, vol, at); break;
+    case 'overheat': audio.play('overheat', { vol, at }); fx?.burst('overheat', k.pos, { n: 14 }); backfire(k, 1, vol, at); break;
+    case 'backfire': backfire(k, v ?? 1, vol, at); break;   // race.js: the start-line over-rev (misfire)
     case 'pad': audio.play('pad', { vol, at }); fx?.burst('pad', k.pos, { n: 14 }); break;
     case 'hang1': case 'hang2': audio.play(name === 'hang2' ? 'turbo2' : 'turbo1', { vol, at }); break;
     case 'start_boost': audio.play('start_boost', { vol, at }); fx?.burst('turbo', k.pos, { n: 16 }); break;
@@ -451,6 +452,12 @@ function kartEvent(k, name, v, me, at) {
     case 'shield_pop': audio.play('shield_pop', { vol, at }); break;
     case 'shortcut': if (me) foundShortcut(k, v, false); break;
   }
+}
+/** a misfire: a bang and a flash of flame + black smoke out of the exhaust (size 0..1) */
+function backfire(k, size, vol, at) {
+  audio.play('backfire', { vol: vol * (0.55 + 0.45 * size), rate: 1.08 - 0.16 * size + (Math.random() - 0.5) * 0.08, at });
+  fx?.backfire?.(k, G.visuals[k.index]?.rig, size);
+  if (k.isPlayer && size >= 0.8) viewOf(k).chase.shake(0.12);
 }
 /** a human came out of the far end of a branch: remember it (save.js, per track); the first time, the
  *  minimap starts drawing it and a big SHORTCUT! callout pops (kid-readable: a star icon, no reading needed) */
@@ -610,6 +617,9 @@ function render(dt) {
   const nv = G.mp ? 2 : 1;
   for (let j = 0; j < nv; j++) {   // one chase camera per human (2P: P1 top, P2 bottom)
     const k = race.humans[j] || P, v = G.visuals[k.index];
+    // pad ↓ (stick / d-pad) held: look behind (input.js lookBack) — not once the AI has your kart, or while paused
+    const src = j === 0 ? (G.override || (G.mp ? In.players[0].controls : In.controls)) : (G.override2 || In.players[1].controls);
+    views[j].chase.back = !!src?.lookBack && !k.finished && !G.paused && race.phase !== 'done';
     views[j].chase.update(dt, k, { x: v.ix, y: v.iy, z: v.iz }, lerpAng(v.pyaw - k.drift * k.driftAngle, k.yaw, alpha), G.track, G.tm.groundAt);
   }
   cullKarts(nv);
@@ -625,10 +635,10 @@ function render(dt) {
   }
   // audio: 1P listens at the camera; 2P at the midpoint of the two cameras (P1's heading). Both
   // players' engines are "player" voices (audio.js gives each human kart its own), so both stay loud.
-  const fwd = { x: Math.sin(chase.yaw), z: Math.cos(chase.yaw) };
+  const fwd = { x: Math.sin(chase.viewYaw ?? chase.yaw), z: Math.cos(chase.viewYaw ?? chase.yaw) };   // looking back: so is the listener
   if (G.mp) { _near.x = (camera.position.x + camera2.position.x) / 2; _near.y = (camera.position.y + camera2.position.y) / 2; _near.z = (camera.position.z + camera2.position.z) / 2; audio.listener(_near, fwd); }
   else audio.listener(camera.position, fwd);
-  for (const k of race.karts) audio.engineUpdate(k.index, { speed: Math.abs(k.speed), maxSpeed: baseTop(k), throttle: k.ctrl?.throttle ?? k.throttle, drift: k.drift !== 0, boost: k.boostT > 0, air: k.air, pos: k.pos, offroad: !k.onRoad && !k.air, charge: k.drift ? k.charge : 0, racerId: k.racerId });
+  for (const k of race.karts) audio.engineUpdate(k.index, { speed: Math.abs(k.speed), maxSpeed: baseTop(k), throttle: k.ctrl?.throttle ?? k.throttle, drift: k.drift !== 0, boost: k.boostT > 0, air: k.air, pos: k.pos, offroad: !k.onRoad && !k.air, charge: k.drift ? k.charge : 0, rev: k.rev || 0, overRev: !!k.overRev, racerId: k.racerId });
   for (const h of race.humans) {
     const off = offLoops.get(h);
     if (h.respawnT <= 0 && !h.onRoad && !h.air && Math.abs(h.speed) > 5) { if (!off) offLoops.set(h, audio.play('offroad', { loop: true, vol: G.mp ? 0.45 : 0.6 })); }
@@ -639,6 +649,7 @@ function render(dt) {
     const k = race.humans[j] || P;
     Object.assign(hudView, { lap: k.lap, laps: race.laps, place: k.place, speed: k.speed, charge: k.charge, redStart: redStart(k), inRed: k.inRed,
       drift: k.drift, overheat: k.overheat, turbos: k.turbos, boostT: k.boostT, boostMaxT: k.boostMaxT, stars: k.stars, finished: k.finished,
+      rev: k.rev || 0, overRev: !!k.overRev,
       raceTime: k.finished ? k.finishTime : Math.max(0, race.t), wrongWay: false });
     views[j].hud.update(hudView, race);
   }

@@ -3,8 +3,13 @@
 // No lights are ever added or removed at runtime.
 //
 //   const fx = createFx(scene);
-//   fx.kart(k, rig, dt, cam)   // per kart per frame: exhaust flames, drift sparks, dust, skids
+//   fx.kart(k, rig, dt, cam)   // per kart per frame: exhaust flames + smoke, drift sparks, dust, skids
 //   fx.burst(kind, pos, opts)  // one-shots: 'land', 'fizzle', 'overheat', 'wall', 'splash', 'poof', 'pad', 'turbo'
+//   fx.backfire(k, rig, size)  // a misfire (fizzle / overheat / start-line over-rev): flame pop + black smoke out the pipes
+//
+// Exhaust SMOKE tells the engine's story (DESIGN.md "The feel"): white puffs that grow as the slide meter
+// charges (and as the engine revs on the start line, k.rev), then thick black smoke once it's misfired
+// (overheat, fizzle, an over-rev k.overRev / k.misfireT, a start stall).
 //   fx.update(dt, camera)      // once per frame, after emitting
 import * as THREE from 'three';
 
@@ -17,6 +22,8 @@ export const FLAME = {
   boost1: 0xffb02e, boost2: 0xffd23f,
   boost3: 0xb54dff,     // purple: stage-3 turbo
   smoke: 0x2a2530,
+  white: 0xe6e9ee,      // exhaust vapour while charging / revving
+  black: 0x17151b,      // misfire smoke
 };
 const SURF_DUST = { sand: 0xf3dfae, grass: 0x7cc35a, snow: 0xffffff, dirt: 0xa77f55, mud: 0x6d5236, rock: 0x9a9084, road: 0xd9d4c8, ice: 0xe6f6ff, lava: 0xff7a2a };
 
@@ -106,8 +113,23 @@ export function createFx(scene) {
             life: 0.14 + Math.random() * 0.07, s0: big, s1: 0.05, color: flameC, drag: 3, alpha: 0.55 });
         }
       }
-      if (k.overheat || k.fizzleT > 0) {
-        for (const a of anchors) if (Math.random() < 30 * dt * lod) spawn(alp, { x: a[0], y: a[1], z: a[2], vx: vx * 0.5 + rnd(0.6), vy: 1.2 + Math.random(), vz: vz * 0.5 + rnd(0.6), life: 0.8, s0: 0.35, s1: 1.0, color: FLAME.smoke, alpha: 0.75, drag: 2 });
+      // white vapour: grows with the slide charge, or with the rev on the start line
+      const wl = k.drift && !k.overheat && k.turbos < 3 ? 0.2 + 0.8 * k.charge : k.rev > 0 && !k.overRev ? k.rev : 0;
+      if (wl > 0) {
+        // soft, see-through puffs that billow up and back (a parked kart revving mustn't stack them into a solid blob)
+        const n = (3 + 20 * wl) * dt * lod;
+        for (const a of anchors) for (let i = 0; i < n + (Math.random() < n % 1 ? 1 : 0); i++) {
+          spawn(alp, { x: a[0], y: a[1], z: a[2], vx: vx * 0.5 - fx_ * (1.6 + 2.2 * wl) + rnd(0.7), vy: 0.7 + Math.random(), vz: vz * 0.5 - fz_ * (1.6 + 2.2 * wl) + rnd(0.7),
+            life: 0.55 + 0.45 * wl, s0: 0.16 + 0.12 * wl, s1: 0.55 + 0.8 * wl, color: FLAME.white, alpha: 0.13 + 0.25 * wl, drag: 1.5 });
+        }
+      }
+      // black smoke: misfired (overheat, fizzle, start-line over-rev / stall)
+      if (k.overheat || k.fizzleT > 0 || k.overRev || k.misfireT > 0 || k.stallT > 0) {
+        const n = 30 * dt * lod;
+        for (const a of anchors) for (let i = 0; i < n + (Math.random() < n % 1 ? 1 : 0); i++) {
+          spawn(alp, { x: a[0], y: a[1], z: a[2], vx: vx * 0.5 - fx_ * 1.4 + rnd(0.7), vy: 1.2 + Math.random() * 1.1, vz: vz * 0.5 - fz_ * 1.4 + rnd(0.7),
+            life: 0.85 + Math.random() * 0.35, s0: 0.3, s1: 1.05 + Math.random() * 0.35, color: FLAME.black, alpha: 0.82, drag: 2 });
+        }
       }
       // --- wheels: drift sparks, dust off-road, skid marks
       const wheels = rig?.wheels;
@@ -167,6 +189,33 @@ export function createFx(scene) {
         for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2; spawn(add, { x: p.x, y: p.y + 0.5, z: p.z, vx: Math.cos(a) * 4 + (o.vx || 0) * 0.5, vy: 1 + Math.random() * 2, vz: Math.sin(a) * 4 + (o.vz || 0) * 0.5, life: 0.35, s0: 0.36, s1: 0.05, color: c, drag: 3, alpha: 0.7 }); }
       } else if (kind === 'sparkle') {
         for (let i = 0; i < n; i++) spawn(add, { x: p.x + rnd(0.8), y: p.y + 0.5 + Math.random(), z: p.z + rnd(0.8), vx: rnd(1), vy: 1 + Math.random(), vz: rnd(1), life: 0.7, s0: 0.25, s1: 0.02, color: o.color ?? 0xfff3a0, drag: 1 });
+      }
+    },
+
+    /** A misfire out of the exhaust pipes: a white-hot flash, an orange tongue of flame shooting back, a few
+     *  sparks and a black puff. size 0..1 (1 = the first bang; smaller pops after it). */
+    backfire(k, rig, size = 1) {
+      if (!k || k.respawnT > 0) return;
+      const fx_ = Math.sin(k.yaw), fz_ = Math.cos(k.yaw), vx = k.vel.x, vz = k.vel.z;
+      const anchors = [];
+      if (rig?.exhausts?.length) for (const a of rig.exhausts) { a.getWorldPosition(_v); anchors.push([_v.x, _v.y, _v.z]); }
+      else anchors.push([k.pos.x - fx_ * 0.9, k.pos.y + 0.5, k.pos.z - fz_ * 0.9]);
+      const sp = 7 + 6 * size;
+      for (const a of anchors) {
+        spawn(add, { x: a[0] - fx_ * 0.15, y: a[1], z: a[2] - fz_ * 0.15, vx: vx - fx_ * 2, vy: 0.3, vz: vz - fz_ * 2, life: 0.09, s0: 0.25 + 0.3 * size, s1: 0.12, color: 0xfff1c4, drag: 2, alpha: 0.9 });
+        for (let i = 0, n = 5 + Math.round(5 * size); i < n; i++) {
+          const f = Math.random();
+          spawn(add, { x: a[0], y: a[1], z: a[2], vx: vx - fx_ * sp * (0.6 + 0.6 * f) + rnd(1.4), vy: 0.4 + rnd(0.7), vz: vz - fz_ * sp * (0.6 + 0.6 * f) + rnd(1.4),
+            life: 0.1 + Math.random() * 0.12, s0: 0.2 + 0.18 * size, s1: 0.04, color: f < 0.5 ? 0xff6a1a : 0xffb52e, drag: 4, alpha: 0.85 });
+        }
+        for (let i = 0, n = 2 + Math.round(4 * size); i < n; i++) {
+          spawn(add, { x: a[0], y: a[1], z: a[2], vx: vx - fx_ * sp * 0.7 + rnd(2.5), vy: 1.5 + Math.random() * 2.5, vz: vz - fz_ * sp * 0.7 + rnd(2.5),
+            life: 0.3 + Math.random() * 0.15, s0: 0.07, s1: 0.02, color: 0xffd27a, grav: 14, drag: 1 });
+        }
+        for (let i = 0, n = 3 + Math.round(4 * size); i < n; i++) {
+          spawn(alp, { x: a[0] + rnd(0.15), y: a[1], z: a[2] + rnd(0.15), vx: vx * 0.5 - fx_ * (1.5 + 2.5 * Math.random()) + rnd(0.8), vy: 0.9 + Math.random() * 1.2, vz: vz * 0.5 - fz_ * (1.5 + 2.5 * Math.random()) + rnd(0.8),
+            life: 0.8 + Math.random() * 0.4, s0: 0.3 + 0.15 * size, s1: 1.0 + 0.5 * size, color: FLAME.black, alpha: 0.85, drag: 2.2 });
+        }
       }
     },
 

@@ -2,9 +2,11 @@
 // Call update() once per rendered frame BEFORE reading. Read `controls` for driving and
 // hit(name) for edge-triggered menu/buttons. NEVER binds Ctrl (Ctrl+W closes the tab).
 //
-//   controls = { steer (-1..1, +left), throttle (0..1), brake (0..1), rev (0..1), hopA, hopB (held), item (held) }
+//   controls = { steer (-1..1, +left), throttle (0..1), brake (0..1), rev (0..1), hopA, hopB (held), item (held), lookBack }
 //   rev = the raw accelerate press. Same as throttle, except under AUTO-GO (throttle pinned at 1), where it's what
 //   the player actually pressed (touch: the hop button). race.js reads it for start-boost edges only.
+//   lookBack = a pad's stick or d-pad pushed DOWN (not brake: that's X/LT): main.js swings the chase camera round
+//   to look behind, and an item fired while it's held goes backward (like ↓/brake + item on the keyboard).
 //   hit('hopA'|'hopB'|'item'|'pause'|'mute'|'fullscreen'|'confirm'|'back'|'up'|'down'|'left'|'right')
 //
 // Shoulder taps shorter than a frame are latched so a quick press is never lost; main.js also
@@ -39,7 +41,7 @@ const BOUND = new Set([...Object.keys(KEYMAP), ...Object.keys(KEYMAP_L), ...Obje
 const codes = new Set(), codeLatch = new Set();      // keyboard: held KeyboardEvent.codes + taps shorter than a frame
 const pad = new Set(), touch = new Set(), latched = new Set();
 const held = new Set(), prev = new Set();
-let padSteer = 0, padThr = 0, padBrk = 0, touchSteer = 0;
+let padSteer = 0, padThr = 0, padBrk = 0, padLook = false, touchSteer = 0;
 let anyGesture = null, touchShown = true;
 const pads = new Map();                              // Gamepad.index → { names, steer, thr, brk, a, start }
 const joins = [];
@@ -47,7 +49,7 @@ const joins = [];
 /** Settings the game may flip. autoAccel = always accelerate unless braking (default ON in Easy). touchUI forces it
  *  too, but only while no gamepad is connected (a touchscreen Steam Deck plays on its pad). */
 export const settings = { autoAccel: false, touchUI: false };
-export const controls = { steer: 0, throttle: 0, brake: 0, rev: 0, hopA: false, hopB: false, item: false };
+export const controls = { steer: 0, throttle: 0, brake: 0, rev: 0, hopA: false, hopB: false, item: false, lookBack: false };
 /** AUTO-GO in effect for 1P right now (the setting, or touch with no pad) */
 export const autoOn = () => settings.autoAccel || (settings.touchUI && !pads.size);
 export const down = n => held.has(n);
@@ -96,8 +98,11 @@ function readPad(p, st) {
   if (b(4)) names.add('hopB');
   if (b(1) || b(3)) names.add('item');
   if (b(9)) names.add('pause');
-  if (b(12) || (p.axes[1] || 0) < -0.6) names.add('up');
-  if (b(13) || (p.axes[1] || 0) > 0.6) names.add('down');
+  const ay = p.axes[1] || 0;
+  if (b(12) || ay < -0.6) names.add('up');
+  if (b(13) || ay > 0.6) names.add('down');
+  // look back: d-pad down, or the stick pushed mostly DOWN (a hard diagonal while steering doesn't count)
+  st.look = b(13) || (ay > 0.65 && ay > Math.abs(ax));
   if (b(14) || ax < -0.6) names.add('left');
   if (b(15) || ax > 0.6) names.add('right');
   if (b(0)) names.add('confirm');
@@ -105,10 +110,10 @@ function readPad(p, st) {
   const a = b(0), start = b(9);
   if ((a && !st.a || start && !st.start) && joins.length < 16) joins.push('pad:' + p.index);
   st.a = a; st.start = start;
-  st.active = names.size > 0 || st.thr > 0 || st.brk > 0 || st.steer !== 0;
+  st.active = names.size > 0 || st.thr > 0 || st.brk > 0 || st.steer !== 0 || st.look;
 }
 function pollPad() {
-  pad.clear(); padSteer = padThr = padBrk = 0;
+  pad.clear(); padSteer = padThr = padBrk = 0; padLook = false;
   const list = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
   const seen = new Set();
   let first = null;
@@ -117,7 +122,7 @@ function pollPad() {
     const idx = p.index ?? 0;
     seen.add(idx);
     let st = pads.get(idx);
-    if (!st) { st = { names: new Set(), steer: 0, thr: 0, brk: 0, a: false, start: false, active: false }; pads.set(idx, st); }
+    if (!st) { st = { names: new Set(), steer: 0, thr: 0, brk: 0, look: false, a: false, start: false, active: false }; pads.set(idx, st); }
     readPad(p, st);
     if (!first) first = st;
     if (st.active) { lastDevice = 'pad'; lastPad = idx; }
@@ -126,7 +131,7 @@ function pollPad() {
   // 1P: the first connected pad, exactly as before
   if (!first) return;
   for (const n of first.names) pad.add(n);
-  padSteer = first.steer; padThr = first.thr; padBrk = first.brk;
+  padSteer = first.steer; padThr = first.thr; padBrk = first.brk; padLook = first.look;
   if (first.active) gesture();
   for (const st of pads.values()) if (st.active) { gesture(); break; }
 }
@@ -156,20 +161,20 @@ function makePlayer(n) {
   const heldP = new Set(), prevP = new Set(), kb = new Set();
   const P = {
     n, dev: 'auto', device: null, autoAccel: false,
-    controls: { steer: 0, throttle: 0, brake: 0, rev: 0, hopA: false, hopB: false, item: false },
+    controls: { steer: 0, throttle: 0, brake: 0, rev: 0, hopA: false, hopB: false, item: false, lookBack: false },
     down: name => heldP.has(name),
     hit: name => heldP.has(name) && !prevP.has(name),
     _update(dev) {
       P.device = dev;
       prevP.clear(); for (const x of heldP) prevP.add(x);
       heldP.clear(); kb.clear();
-      let pSteer = 0, pThr = 0, pBrk = 0;
+      let pSteer = 0, pThr = 0, pBrk = 0, pLook = false;
       if (dev === 'kb' || dev === 'kbL' || dev === 'kbR') {
         keyNames(dev === 'kb' ? KEYMAP : dev === 'kbL' ? KEYMAP_L : KEYMAP_R, kb);
         for (const x of kb) heldP.add(x);
       } else if (dev && dev.startsWith('pad:')) {
         const st = pads.get(+dev.slice(4));
-        if (st) { for (const x of st.names) heldP.add(x); pSteer = st.steer; pThr = st.thr; pBrk = st.brk; }
+        if (st) { for (const x of st.names) heldP.add(x); pSteer = st.steer; pThr = st.thr; pBrk = st.brk; pLook = st.look; }
       }
       const c = P.controls;
       const kSteer = (heldP.has('left') ? 1 : 0) - (heldP.has('right') ? 1 : 0);
@@ -179,7 +184,7 @@ function makePlayer(n) {
       c.rev = thr;
       if (P.autoAccel) thr = brake > 0.1 ? 0 : 1;
       c.throttle = thr; c.brake = brake;
-      c.hopA = heldP.has('hopA'); c.hopB = heldP.has('hopB'); c.item = heldP.has('item');
+      c.hopA = heldP.has('hopA'); c.hopB = heldP.has('hopB'); c.item = heldP.has('item'); c.lookBack = pLook;
     },
   };
   return P;
@@ -228,6 +233,7 @@ export function update() {
   controls.hopA = down('hopA');
   controls.hopB = down('hopB');
   controls.item = down('item');
+  controls.lookBack = padLook;
 
   if (multiOn) {
     const auto = autoDevices();

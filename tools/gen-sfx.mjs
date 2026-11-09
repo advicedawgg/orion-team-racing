@@ -77,6 +77,8 @@ export const SOUNDS = {
   // O-T-R letters (2026-10-29): one per letter (main.js plays it a step higher each time), and the set's fanfare
   letter: ['collecting a big magic letter token in a kids video game, bright rising glockenspiel chime with sparkles, short, cheerful, no drums', 0.9, 0.65, -15],
   ctr_fanfare: ['short joyful video game bonus fanfare, bright brass and bells, triumphant rising flourish ending on a big sparkly chord, kids game, no vocals', 2.2, 0.55, -14],
+  // 2026-11-09: misfires (slide fizzle / overheat, start-line over-rev) backfire out of the exhaust
+  backfire: ['cartoon go-kart engine backfire, two quick loud pops bang bang out of the exhaust pipe, funny, short, no music', 0.6, 0.65, -13],   // take 2 of 2 kept (sfx-qa 9/10; take 1 was an engine rev, 2/10)
 };
 
 async function main() {

@@ -99,7 +99,13 @@ editing in parallel). Never rewrite or reformat a file you don't own.
   **turbo** (stage 1 small, 2 medium, 3 big), resets the meter, and the slide continues. Up to
   3 turbos per slide. Pressing too early does nothing but resets? **No** — too early = fizzle
   (meter resets, no boost, black puff); letting it fill completely = **overheat** (black smoke,
-  meter locked until slide ends). Too late / too early both show clear feedback.
+  meter locked until slide ends). Too late / too early both show clear feedback: every misfire
+  (fizzle, overheat, start-line over-rev) **backfires** — a bang (`backfire` SFX) and a tongue of
+  flame + sparks + a black puff out of the pipes (`fx.backfire`, main.js `backfire()`).
+- **Exhaust smoke** (2026-11-09, user ask): soft white vapour puffs out of the pipes and grows with
+  the slide charge (and with the start-line rev), then turns to thick black smoke once it's misfired
+  (overheat, fizzle, over-rev, a start stall). Every kart, AI included; no new draw calls (the fx
+  pools), `playtest.mjs beach --perf` unchanged (grid 162 calls, mid 64/101, CPU p50 1.9 ms, GPU 0.66).
 - `easyBoost` (on by default in Easy difficulty and the kid-assist setting): wider red window
   (last 45%) and no overheat.
 - Exhaust flame colour shows the charge: none → blue-white while charging → orange in the
@@ -112,7 +118,14 @@ editing in parallel). Never rewrite or reformat a file you don't own.
 - **Start boost**: press accelerate as "GO!" appears = turbo. The window depends on difficulty
   (`ai.js cfg.startWin`): Easy −0.5..+0.45 s (a kid can react to GO!), Medium −0.35..+0.3, Hard
   −0.25..+0.1. Mashing early = stall briefly (CTR style; disabled on Easy); holding it since before the
-  countdown is not a mash. Under AUTO-GO the kart rolls by itself and the raw A/RT/↑ press
+  countdown is not a mash. **Rev gauge** (race.js `revGauge`, 2026-11-09): a fresh accelerate press
+  during the countdown revs the engine — the slide meter fills white→orange over |startWin[0]| s
+  (exactly the hold that still boosts at GO), white exhaust grows and the engine note climbs. Holding
+  past full = **over-rev**: that press can't boost any more, so it misfires right then (dark shaking
+  meter, OOPS!, black smoke, a backfire + a pop every 0.5 s while held) and stalls at GO (not on
+  Easy). Let go and press again to retry. The rule itself is unchanged: a 3300-case press/release
+  sweep over all three difficulties matched the old boost/stall outcomes exactly. Local only (rev
+  state isn't on the wire); `tools/shot-rev.mjs` screenshots + checks it, `node tools/check-rev.mjs` is the sweep. Under AUTO-GO the kart rolls by itself and the raw A/RT/↑ press
   (`ctrl.rev`; touch: the hop button) earns the boost.
 - **Turbo pads** on tracks: instant medium turbo.
 
@@ -135,8 +148,16 @@ you dead. Falling off the course (only possible on tracks that allow it) = a fri
 | hop / slide (shoulder A) | Space | RB (5) | ⤴ big button |
 | turbo in slide (shoulder B) | Shift | LB (4) | ⚡ button |
 | use item (hold ↓ to throw backward) | E or Enter | B (1) or Y (3) | 🎁 button |
+| look back (an item fired while looking back goes backward) | (↓ throws backward) | stick / d-pad **down** (13) | |
 | pause | Esc or P | Start (9) | ⏸ |
 | mute / fullscreen | M / F | | |
+
+Look back (2026-11-09): on a pad, brake is X/LT, so stick/d-pad **down** was free — holding it
+swings the chase camera to the kart's nose facing back (`ChaseCam.back`, a hard cut) and sets
+`ctrl.lookBack`, which main.js folds into `itemBack`: a Taco Bomb rolls backward, the bubble fires
+backward (rocket/TNT/splat are unchanged). The stick must point mostly down (`ay > 0.65 && ay > |ax|`), so
+a hard steering diagonal doesn't flip the view; off while paused or once the AI has your kart. Per player in
+2P; online it rides the existing `back` flag of USE (no wire change). `tools/input-test.mjs` checks it.
 
 Either shoulder starts a slide and the *other* one boosts, so both hands work. **Never bind
 Ctrl** (Ctrl+W closes the tab — DAWG ARENA lost a week to it). `preventDefault` arrow keys and
@@ -1472,6 +1493,7 @@ unlock is remembered and starts on unlock. Engines can be registered before init
 | `menu_move`, `menu_ok`, `menu_back` | UI blips |
 | `respawn`, `splash` | helper drops you back (sparkle poof), kart into water |
 | `meow` (2), `purr`, `cheer` | Sootie, podium kids cheering |
+| `backfire` | a misfire out of the exhaust: slide fizzle / overheat, start-line over-rev (2026-11-09: kept take 2 of 2, sfx-qa 9–10 "two quick comical exhaust pops"; take 1 was an engine rev) |
 | `letter`, `ctr_fanfare` | O-T-R letter chime (main.js plays it at rate 1 / 1.12 / 1.24 for the 1st / 2nd / 3rd), the set's fanfare on the results badge + the paint unlock (2026-10-29: Gemini sfx-qa 10/10 both; synth fallbacks in audio.js) |
 
 ### VO (ElevenLabs eleven_v3; `vo_*` play on a one-at-a-time announcer channel)

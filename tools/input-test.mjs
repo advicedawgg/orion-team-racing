@@ -59,6 +59,24 @@ await run('pad (Steam Deck / Xbox 360 standard mapping)', async page => {
   const had = (await P(page)).item;
   await set(1, 1); await page.waitForTimeout(120); await set(1, 0); await page.waitForTimeout(200);
   p = await P(page); ok(had && !p.item, `B uses the item (${had} → ${p.item})`);
+  // stick / d-pad DOWN = look back (camera swings to the kart's nose, facing back); an item fired from that view goes backward
+  const LB = () => page.evaluate(() => { const O = window.__OTR, k = O.player, c = O.camera.position;
+    return { back: O.chase.back, ahead: (c.x - k.pos.x) * Math.sin(k.yaw) + (c.z - k.pos.z) * Math.cos(k.yaw) }; });
+  await axis(1, 1); await page.waitForTimeout(200);
+  let lb = await LB(); ok(lb.back && lb.ahead > 1, `stick down = look back (camera ${lb.ahead.toFixed(1)} m ahead of the kart)`);
+  await page.evaluate(() => window.__OTR.items.give(window.__OTR.player, 'taco_bomb')); await page.waitForTimeout(100);
+  const seen = page.evaluate(() => new Promise(res => { let n = 0; const f = () => { const O = window.__OTR, k = O.player, b = O.items.projs.find(q => q.kind === 'taco_bomb' && q.owner === k);
+    if (b) return res({ v: b.v, dir: Math.cos(b.yaw - k.yaw) }); if (++n > 90) return res(null); requestAnimationFrame(f); }; f(); }));
+  await set(1, 1); await page.waitForTimeout(120); await set(1, 0);
+  const bomb = await seen;
+  ok(bomb && bomb.v < 0 && bomb.dir < -0.9, `B while looking back rolls the Taco Bomb backward (v ${bomb?.v?.toFixed(1)}, dir ${bomb?.dir?.toFixed(2)})`);
+  await axis(1, 0); await page.waitForTimeout(200);
+  lb = await LB(); ok(!lb.back && lb.ahead < -1, `stick released = chase view again (camera ${lb.ahead.toFixed(1)} m)`);
+  await set(13, 1); await page.waitForTimeout(150); lb = await LB(); await set(13, 0);
+  ok(lb.back, 'd-pad down = look back too');
+  await axis(0, -0.8); await axis(1, 0.6); await page.waitForTimeout(150); lb = await LB(); await axis(0, 0); await axis(1, 0);
+  ok(!lb.back, 'a hard down-diagonal while steering is not a look back');
+  await page.waitForTimeout(150);
   await set(9, 1); await page.waitForTimeout(150); await set(9, 0); await page.waitForTimeout(300);
   p = await P(page); ok(p.paused && p.screen === 'pause', `START pauses (screen ${p.screen})`);
   await set(7, 0);

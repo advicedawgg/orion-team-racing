@@ -1,6 +1,8 @@
 // camera.js — CTR-style chase camera. Low behind the kart, lags its heading a little so a
 // power slide visibly swings the kart body, looks ahead into corners, kicks the FOV on boost,
-// and never dips under the terrain.
+// and never dips under the terrain. `back = true` (main.js: pad ↓ held) looks behind the kart: the
+// camera jumps to the same boom in FRONT of it and faces back down the road (Mario Kart style), so
+// you see who's chasing you and where a backward bomb goes.
 import * as THREE from 'three';
 
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -18,6 +20,7 @@ export class ChaseCam {
     this.yaw = 0; this.pos = new THREE.Vector3(); this.look = new THREE.Vector3();
     this.y = 0; this.fovK = 0; this.shakeA = 0; this.pinned = null; this.intro = 0;
     this._v = new THREE.Vector3(); this._q = { x: 0, y: 0, z: 0 }; this._pr = {}; this.push = 0;
+    this.back = false; this._back = false; this.viewYaw = 0;   // look-back view (set per frame by main.js); viewYaw = the way the camera faces
     this.fovMul = 1;   // 2P split screen: a half-height view keeps ~the 1P horizontal FOV with a smaller vertical one (main.js)
   }
   /** debug: pin the camera at [x,y,z,tx,ty,tz] (URL ?cam=) */
@@ -44,12 +47,16 @@ export class ChaseCam {
     }
     const lag = k.drift ? CAM.slideLag : CAM.yawLag;
     this.yaw += wrapA(target - this.yaw) * Math.min(1, lag * dt);
-    const back = k.speed < -1 ? 0.75 : 1;
+    const rev = k.speed < -1 ? 0.75 : 1;   // reversing: a little closer
     const dist = CAM.dist + clamp(k.speed / 30, 0, 1.2) * 0.9;
-    const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);
+    // looking back: the same boom swung round to the kart's nose, facing back down the road (a hard cut,
+    // like Mario Kart; the wall push restarts so it can't carry over from the other side)
+    if (this.back !== this._back) { this._back = this.back; this.push = 0; }
+    this.viewYaw = this.back ? this.yaw + Math.PI : this.yaw;
+    const fx = Math.sin(this.viewYaw), fz = Math.cos(this.viewYaw);
     // vertical: follow smoothly (hops and bumps shouldn't jolt the view)
     this.y += (p.y - this.y) * Math.min(1, (k.air ? 3.5 : 9) * dt);
-    const pos = this._v.set(p.x - fx * dist * back, this.y + CAM.height, p.z - fz * dist * back);
+    const pos = this._v.set(p.x - fx * dist * rev, this.y + CAM.height, p.z - fz * dist * rev);
     // wall collision (cheap): the boundary is a line at lat = ±lim along the track, so keep the
     // camera inside it (minus a margin) by sliding it sideways. Stops the boom poking through
     // castle parapets, the spiral's tower, tunnel walls and cliff faces on the outside of hairpins.

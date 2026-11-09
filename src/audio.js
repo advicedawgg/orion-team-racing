@@ -33,6 +33,7 @@ export const SFX_NAMES = [
   // extras (not in the original contract list, free to use)
   'meow', 'purr', 'cheer', 'splash', 'star_spill',
   'letter', 'ctr_fanfare',   // O-T-R letters: one chime per letter (main.js raises its pitch per letter), the set's fanfare
+  'backfire',                // a misfire out of the exhaust: fizzle / overheat / start-line over-rev (main.js backfire())
 ];
 
 // Announcer lines + character barks (ElevenLabs TTS). Missing files are silent no-ops.
@@ -84,15 +85,16 @@ const SYNTH_LEVEL = {
   _: -16, explode: -10, nitro: -10, wall: -13, turbo1: -13, turbo2: -12, turbo3: -11, start_boost: -12, pad: -13,
   countdown: -16, go: -15, menu_move: -18, menu_ok: -16, menu_back: -17, roulette: -18, tnt_tick: -16,
   drift_loop: -18, bomb_roll: -17, charge_red: -17, purr: -17, win: -14, finish: -13, final_lap: -14, lose: -15, letter: -15, ctr_fanfare: -14,
+  backfire: -13,
 };
 // Random pitch variation per play (fraction), so repeated sounds don't machine-gun.
-const VARY = { hop: 0.06, land: 0.06, wall: 0.08, bump: 0.1, star: 0.03, item_box: 0.05, offroad: 0.1, splat: 0.05, explode: 0.05, meow: 0.08 };
+const VARY = { backfire: 0.06, hop: 0.06, land: 0.06, wall: 0.08, bump: 0.1, star: 0.03, item_box: 0.05, offroad: 0.1, splat: 0.05, explode: 0.05, meow: 0.08 };
 // Sounds that duck the music a little when the PLAYER triggers them (at == null).
 const DUCK = { ctr_fanfare: 0.45, turbo1: 0.8, turbo2: 0.72, turbo3: 0.62, start_boost: 0.62, pad: 0.75, super_star: 0.6, explode: 0.7, win: 0.4, lose: 0.4, finish: 0.5, final_lap: 0.6 };
 // Distance model for sounds played with `at` (inverse, like PannerNode 'inverse', + a hard cull).
 export const SPATIAL = { ref: 7, roll: 1.1, max: 110, lpNear: 18 };
 // Max simultaneous voices per sound name (oldest is cut).
-const MAXPER = { roulette: 2, tnt_tick: 2, star: 4, bump: 3, wall: 3, hop: 3, land: 3 };
+const MAXPER = { backfire: 3, roulette: 2, tnt_tick: 2, star: 4, bump: 3, wall: 3, hop: 3, land: 3 };
 const MAX_VOICES = 36;
 // Synth wins over a generated file for these (keep it in step with the listening notes in
 // DESIGN.md's Audio section).
@@ -224,6 +226,12 @@ const RECIPES = {
   turbo2: [0.8, d => { whoosh(d, 0, 0.75, 600, 3200, 0.85); tone(d, { dur: 0.7, f0: 280, f1: 760, type: 'saw', vol: 0.13, a: 0.03 }); tone(d, { dur: 0.6, f0: 560, f1: 1500, vol: 0.08, a: 0.05 }); }],
   turbo3: [1.1, d => { whoosh(d, 0, 1.0, 700, 4200, 0.9); tone(d, { dur: 0.95, f0: 330, f1: 1040, type: 'saw', vol: 0.14, a: 0.03 }); tone(d, { dur: 0.9, f0: 660, f1: 2100, vol: 0.1, a: 0.05 }); sparkle(d, 0.2, 0.7, 10); }],
   fizzle: [0.5, d => { tone(d, { dur: 0.4, f0: 420, f1: 70, type: 'saw', vol: 0.18 }); noise(d, { dur: 0.45, mode: 'hp', c0: 3000, c1: 1500, vol: 0.2, am: 0.8, amHz: 35 }); }],
+  // a sharp crack, a low pop and a smaller second pop (pop-POP), like an exhaust backfire
+  backfire: [0.42, d => {
+    noise(d, { dur: 0.06, mode: 'lp', c0: 7000, c1: 1200, vol: 1.0, a: 0.001 }); tone(d, { dur: 0.2, f0: 150, f1: 42, vol: 0.85, a: 0.002 });
+    noise(d, { t0: 0.11, dur: 0.045, mode: 'lp', c0: 5000, c1: 900, vol: 0.6, a: 0.001 }); tone(d, { t0: 0.11, dur: 0.14, f0: 130, f1: 50, vol: 0.5, a: 0.002 });
+    noise(d, { t0: 0.02, dur: 0.3, mode: 'lp', c0: 900, c1: 200, vol: 0.18, a: 0.01 });
+  }],
   overheat: [1.0, d => { noise(d, { dur: 0.95, mode: 'hp', c0: 4000, c1: 2500, vol: 0.4, a: 0.05 }); tone(d, { dur: 0.8, f0: 160, f1: 60, type: 'square', vol: 0.12, vib: 0.05, vibHz: 12 }); }],
   pad: [0.7, d => { whoosh(d, 0, 0.6, 900, 3800, 0.7); tone(d, { dur: 0.45, f0: 500, f1: 1800, vol: 0.2, a: 0.01 }); tone(d, { t0: 0.05, dur: 0.4, f0: 750, f1: 2700, type: 'tri', vol: 0.12 }); }],
   start_boost: [1.1, d => { whoosh(d, 0, 1.0, 500, 4000, 0.9); tone(d, { dur: 0.9, f0: 260, f1: 900, type: 'saw', vol: 0.14, a: 0.02 }); brass(d, 0.05, 784, 0.12, 0.1); brass(d, 0.17, 1046, 0.3, 0.1); }],
@@ -570,6 +578,9 @@ function engineTargets(k, t) {
   f *= k.pitch;
   f *= 1 + 0.1 * boost;
   if (u.air) f *= 1.14 + 0.1 * thr;                  // wheels free: revs flare
+  // start line (race.js revGauge): revving on the spot climbs toward ~2.3× idle; over-revved = bouncing off the limiter
+  const rv = u.overRev ? 1 : clamp(u.rev ?? 0, 0, 1);
+  if (rv > 0) f *= (1 + 1.3 * rv * (1 - Math.min(1, n))) * (u.overRev ? (Math.floor(t * 13) % 2 ? 1.07 : 0.9) : 1);
   if (!k.isPlayer && k.vr) f *= clamp(343 / (343 + k.vr * 0.6), 0.85, 1.15);   // mild doppler on AI passes
   const drifting = u.drift && !u.air && n > 0.15;
   const charge = clamp(u.charge ?? 0, 0, 1);
@@ -584,8 +595,8 @@ function engineTargets(k, t) {
   if (S.paused) g = 0;
   return {
     f, wob: k.wob + 4 * n,
-    lp: 500 + 1700 * thr + 1400 * n + (u.air ? 800 : 0) + 1500 * boost,
-    drive: 0.9 + 1.8 * thr + 0.8 * boost,
+    lp: 500 + 1700 * thr + 1400 * n + (u.air ? 800 : 0) + 1500 * boost + 1400 * rv,
+    drive: 0.9 + 1.8 * thr + 0.8 * boost + 0.9 * rv,
     whineF: f * 7 + 300 * boost, whineG: 0.1 * boost,
     sqF: 1700 + 900 * charge + 200 * Math.sin(t * 9), sqG: drifting ? 0.28 * Math.min(1, n * 1.4) : 0, drifting,
     rbG: rough ? 0.5 * Math.min(1, n * 2) : 0,

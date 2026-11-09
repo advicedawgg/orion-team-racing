@@ -4,7 +4,9 @@
 //   const hud = createHud(rootEl);  hud.show(bool);  hud.update(view, race?);
 //   hud.count(n|'GO!'|null);  hud.banner(text, ms, cls);  hud.results(rows|null)
 // `view` = { lap, laps, place, speed, charge, redStart, inRed, drift, overheat, turbos, boostT,
-//            boostMaxT, stars, finished, raceTime, wrongWay }.  `race` (optional 2nd arg) gives the
+//            boostMaxT, stars, finished, raceTime, wrongWay, rev, overRev }. rev/overRev = the start-line
+// rev gauge (race.js revGauge): the slide meter fills white→orange while you rev, and goes dark and
+// shakes ('over') once it's over-revved (misfire).  `race` (optional 2nd arg) gives the
 // rank list, minimap, wrong-way detection, turbo pops and the items agent's item slot.
 //
 // Extras for other modules:
@@ -232,11 +234,13 @@ export function createHud(root, { pn = 0 } = {}) {
   }
 
   function turboFeedback(k) {
-    if (!prevK) { prevK = { turbos: k.turbos, fizzleT: k.fizzleT, overheat: k.overheat, hitT: k.hitT }; return; }
+    if (!prevK) { prevK = { turbos: k.turbos, fizzleT: k.fizzleT, overheat: k.overheat, hitT: k.hitT, overRev: !!k.overRev, sb: !!k._sb }; return; }
     if (k.turbos > prevK.turbos && POPS[k.turbos]) api.pop(...POPS[k.turbos]);
     else if (k.overheat && !prevK.overheat) api.pop('OOPS!', 'oops');
     else if (k.fizzleT > 0 && prevK.fizzleT <= 0 && !k.overheat) api.pop('OOPS!', 'oops');
-    prevK.turbos = k.turbos; prevK.fizzleT = k.fizzleT; prevK.overheat = k.overheat;
+    else if (k.overRev && !prevK.overRev) api.pop('OOPS!', 'oops');   // start line: over-revved (misfire)
+    else if (k._sb && !prevK.sb) api.pop(...POPS[2]);                 // start boost
+    prevK.turbos = k.turbos; prevK.fizzleT = k.fizzleT; prevK.overheat = k.overheat; prevK.overRev = !!k.overRev; prevK.sb = !!k._sb;
   }
 
   function wrongWay(k, race, dt) {
@@ -268,8 +272,9 @@ export function createHud(root, { pn = 0 } = {}) {
       set('time', clock(v.raceTime).slice(0, -1), x => el.time.textContent = x);
       set('stars', v.stars, x => { el.stars.textContent = x >= 10 ? '10' : x; el.starsBox.classList.toggle('super', x >= 10); el.starsBox.classList.remove('bump'); void el.starsBox.offsetWidth; el.starsBox.classList.add('bump'); });
       set('red', v.redStart, r => { el.red.style.left = (r * 100) + '%'; el.red.style.width = ((1 - r) * 100) + '%'; });
-      el.charge.style.transform = `scaleX(${v.drift ? v.charge : 0})`;
-      set('mstate', v.overheat ? 'hot' : v.inRed ? 'red' : v.drift ? 'on' : 'off', s => el.meter.dataset.s = s);
+      const revving = !v.drift && (v.rev > 0 || v.overRev);   // start line: the meter is the rev gauge
+      el.charge.style.transform = `scaleX(${v.drift ? v.charge : revving ? (v.overRev ? 1 : v.rev) : 0})`;
+      set('mstate', v.overheat ? 'hot' : revving ? (v.overRev ? 'over' : 'rev') : v.inRed ? 'red' : v.drift ? 'on' : 'off', s => el.meter.dataset.s = s);
       set('pips', v.drift ? v.turbos : -1, n => { [...el.pips.children].forEach((u, i) => u.classList.toggle('on', i < n)); });
       el.boost.style.transform = `scaleX(${Math.min(1, (v.boostT || 0) / 3)})`;
       set('fin', !!v.finished, f => root.classList.toggle('fin', f));
